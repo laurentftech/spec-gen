@@ -192,3 +192,83 @@ export interface EntityProperty {
   description: string;
   required: boolean;
 }
+
+// Drift detection types
+export type DriftSeverity = 'error' | 'warning' | 'info';
+
+export type DriftIssueKind =
+  | 'gap'            // Code changed, spec doesn't cover it
+  | 'stale'          // Spec describes behavior that code no longer implements
+  | 'uncovered'      // New file/function with no matching spec at all
+  | 'orphaned-spec'; // Spec references files that no longer exist
+
+export interface DriftOptions extends GlobalOptions {
+  base: string;
+  files: string[];
+  domains: string[];
+  useLlm: boolean;
+  json: boolean;
+  installHook: boolean;
+  uninstallHook: boolean;
+  failOn: DriftSeverity;
+  maxFiles: number;
+}
+
+export interface DriftIssue {
+  id: string;
+  kind: DriftIssueKind;
+  severity: DriftSeverity;
+  message: string;
+  filePath: string;
+  domain: string | null;
+  specPath: string | null;
+  changedLines?: { added: number; removed: number };
+  suggestion: string;
+}
+
+export interface DriftResult {
+  timestamp: string;
+  baseRef: string;
+  totalChangedFiles: number;
+  specRelevantFiles: number;
+  issues: DriftIssue[];
+  summary: {
+    gaps: number;
+    stale: number;
+    uncovered: number;
+    orphanedSpecs: number;
+    total: number;
+  };
+  hasDrift: boolean;
+  duration: number;
+  mode: 'static' | 'llm-enhanced';
+}
+
+export interface ChangedFile {
+  path: string;
+  status: 'added' | 'modified' | 'deleted' | 'renamed';
+  oldPath?: string;
+  additions: number;
+  deletions: number;
+  isTest: boolean;
+  isConfig: boolean;
+  isGenerated: boolean;
+  extension: string;
+}
+
+export interface SpecMapping {
+  domain: string;
+  specPath: string;
+  declaredSourceFiles: string[];
+  inferredSourceFiles: string[];
+  allSourceFiles: string[];
+  requirements: string[];
+  entities: string[];
+}
+
+export interface SpecMap {
+  byDomain: Map<string, SpecMapping>;
+  byFile: Map<string, string[]>;
+  domainCount: number;
+  totalMappedFiles: number;
+}

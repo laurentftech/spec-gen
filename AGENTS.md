@@ -134,6 +134,52 @@ spec-gen:
     - {domain-2}
 ```
 
+### Step 5: Drift Detection
+
+When specs already exist and code has changed, check for **spec drift** — divergence between the codebase and its specifications.
+
+**When to Check for Drift:**
+- Before committing code (pre-commit hook via `spec-gen drift --install-hook`)
+- When reviewing a branch or PR
+- When asked to validate that specs are up to date
+
+**Drift Detection Process:**
+
+1. **Identify what changed** — Compare the current branch against the base (main/master) using git:
+   - Which source files were added, modified, deleted, or renamed?
+   - Filter out noise: test files, generated files, lock files, static assets, CI configs
+
+2. **Map changes to specs** — For each changed file, determine which spec domain covers it:
+   - Check `> Source files:` header in each `spec.md`
+   - Check `**Implementation**:` references in Technical Notes
+   - Infer from directory structure (file in `src/auth/` → auth domain)
+
+3. **Detect four categories of drift:**
+
+   | Category | Meaning | Severity |
+   |----------|---------|----------|
+   | **Gap** | Code changed but its spec was not updated | error (large changes on key files), warning (moderate), info (small) |
+   | **Stale** | Spec references a deleted or renamed file | error (deleted), warning (renamed) |
+   | **Uncovered** | New source file has no matching spec domain | warning (key files), info (utility files) |
+   | **Orphaned Spec** | Spec declares source files that no longer exist on disk | warning |
+
+4. **Report issues** with actionable suggestions:
+   - Which file changed and by how much (+/- lines)
+   - Which spec domain is affected
+   - What the engineer should do to resolve it
+
+**Drift Detection CLI:**
+```bash
+spec-gen drift                    # Check drift against main branch
+spec-gen drift --base develop     # Compare against develop branch
+spec-gen drift --json             # JSON output for CI pipelines
+spec-gen drift --fail-on error    # Only fail on error-level issues
+spec-gen drift --install-hook     # Install as git pre-commit hook
+spec-gen drift --uninstall-hook   # Remove the hook
+```
+
+**Key Rule**: Drift detection is static analysis by default (no LLM required). It compares git changes against spec file mappings. Use `--use-llm` only when deeper semantic analysis is needed.
+
 ## Output Checklist
 
 Before completing, verify:
@@ -144,6 +190,7 @@ Before completing, verify:
 - [ ] All requirements use RFC 2119 keywords
 - [ ] All scenarios use Given/When/Then format
 - [ ] `openspec/config.yaml` exists with context
+- [ ] No spec drift — run `spec-gen drift` to verify specs match code
 
 ## Example Session
 
@@ -173,6 +220,7 @@ openspec/
 
 Next steps:
 - Run `openspec validate --all` to verify structure
+- Run `spec-gen drift --install-hook` to catch future drift
 - Review generated specs for accuracy
 - Refine requirements and add edge cases
 ```

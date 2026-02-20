@@ -17,6 +17,8 @@ export type ErrorCode =
   | 'INVALID_CONFIG'
   | 'FILE_WRITE_ERROR'
   | 'FILE_READ_ERROR'
+  | 'DRIFT_DETECTED'
+  | 'NO_SPECS_FOUND'
   | 'UNKNOWN_ERROR';
 
 /**
@@ -177,6 +179,23 @@ Run 'spec-gen generate' first if you haven't already.`
       `Failed to read file ${path}${reason ? `: ${reason}` : ''}`,
       'FILE_READ_ERROR',
       `Check that the file exists and you have read permissions.`
+    );
+  },
+
+  driftDetected(issueCount: number): SpecGenError {
+    return new SpecGenError(
+      `Spec drift detected: ${issueCount} issue${issueCount === 1 ? '' : 's'} found`,
+      'DRIFT_DETECTED',
+      `Run 'spec-gen drift' to see details, then update specs to match code changes.
+Use 'spec-gen drift --verbose' for detailed issue descriptions.`
+    );
+  },
+
+  noSpecsFound(): SpecGenError {
+    return new SpecGenError(
+      'No OpenSpec specifications found',
+      'NO_SPECS_FOUND',
+      `Run 'spec-gen generate' to create specifications from your codebase.`
     );
   },
 

@@ -158,6 +158,31 @@ context: |
   Architecture: {detected pattern}
 ```
 
+#### Phase 5: Drift Detection
+
+When specs already exist and code has changed, check for **spec drift** — divergence between the codebase and its specifications. This keeps specs from going stale in multi-engineer environments.
+
+**When to check:** Before committing code, when reviewing PRs, or when asked to validate specs are current.
+
+**Process:**
+
+1. **Identify what changed** — Use git to find added, modified, deleted, or renamed source files compared to the base branch. Filter out test files, generated files, lock files, static assets, and CI configs.
+
+2. **Map changes to specs** — For each changed file, determine which spec domain covers it by checking:
+   - `> Source files:` header in each `spec.md`
+   - `**Implementation**:` references in Technical Notes
+   - Directory structure inference (e.g., `src/auth/` → auth domain)
+
+3. **Detect four categories of drift:**
+   - **Gap**: Code changed but its spec was not updated
+   - **Stale**: Spec references a deleted or renamed file
+   - **Uncovered**: New source file has no matching spec domain
+   - **Orphaned Spec**: Spec declares source files that no longer exist
+
+4. **Report** issues with the affected file, domain, and a suggestion for resolution.
+
+**CLI shorthand:** `spec-gen drift` runs this check. Use `spec-gen drift --install-hook` to add it as a git pre-commit hook.
+
 ### Output Checklist
 
 Before finishing, verify:
@@ -168,6 +193,7 @@ Before finishing, verify:
 - [ ] All requirements use RFC 2119 keywords
 - [ ] All scenarios use Given/When/Then format
 - [ ] `openspec/config.yaml` is created or updated
+- [ ] No spec drift — run `spec-gen drift` to verify specs match code
 
 ### Example Invocation
 
@@ -180,8 +206,10 @@ You should:
 4. Generate spec.md files for each domain
 5. Create overview and architecture specs
 6. Update config.yaml
+7. Run drift check to confirm specs are in sync
 
 Report what you created and suggest next steps:
 - `openspec validate --all` to check structure
+- `spec-gen drift --install-hook` to catch future drift
 - `openspec list --specs` to see generated specs
 - Manual review and refinement of generated specs

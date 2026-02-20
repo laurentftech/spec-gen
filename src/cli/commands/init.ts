@@ -6,7 +6,7 @@
  */
 
 import { Command } from 'commander';
-import { resolve } from 'node:path';
+import { resolve, relative } from 'node:path';
 import { confirm } from '@inquirer/prompts';
 import { logger } from '../../utils/logger.js';
 import {
@@ -62,6 +62,14 @@ After initialization, run 'spec-gen analyze' to scan your codebase.
     const rootPath = process.cwd();
     const openspecPath = resolve(rootPath, options.openspecPath ?? './openspec');
     const force = options.force ?? false;
+
+    // Prevent path traversal — openspec directory must be within the project root
+    const relPath = relative(rootPath, openspecPath);
+    if (relPath.startsWith('..')) {
+      logger.error('OpenSpec path must be within the project directory.');
+      process.exitCode = 1;
+      return;
+    }
 
     logger.section('Initializing spec-gen');
 
@@ -126,7 +134,8 @@ After initialization, run 'spec-gen analyze' to scan your codebase.
         }
       } else {
         logger.error('Configuration exists. Use --force to overwrite in non-interactive mode.');
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
     }
 

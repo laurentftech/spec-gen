@@ -12,6 +12,7 @@ import { initCommand } from './commands/init.js';
 import { analyzeCommand } from './commands/analyze.js';
 import { generateCommand } from './commands/generate.js';
 import { verifyCommand } from './commands/verify.js';
+import { driftCommand } from './commands/drift.js';
 import { runCommand } from './commands/run.js';
 import { configureLogger, logger } from '../utils/logger.js';
 
@@ -48,6 +49,7 @@ Workflow:
   2. spec-gen analyze   Scan codebase, build dependency graph
   3. spec-gen generate  Create OpenSpec files using LLM
   4. spec-gen verify    Validate specs against source code
+  5. spec-gen drift     Detect when code outpaces specs
 
 Quick start:
   $ cd your-project
@@ -76,6 +78,7 @@ program.addCommand(initCommand);
 program.addCommand(analyzeCommand);
 program.addCommand(generateCommand);
 program.addCommand(verifyCommand);
+program.addCommand(driftCommand);
 program.addCommand(runCommand);
 
 // Default command: run full pipeline when path argument is given
