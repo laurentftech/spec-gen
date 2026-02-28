@@ -768,6 +768,22 @@ export class LLMService {
       parsed = JSON.parse(correctedContent) as T;
     }
 
+    // Unwrap single-key object whose value is an array (e.g. {entities:[...]} → [...])
+    // LLM correction attempts sometimes wrap arrays in an object
+    if (
+      parsed !== null &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed)
+    ) {
+      const keys = Object.keys(parsed as object);
+      if (keys.length === 1) {
+        const val = (parsed as Record<string, unknown>)[keys[0]];
+        if (Array.isArray(val)) {
+          parsed = val as unknown as T;
+        }
+      }
+    }
+
     // Validate against schema if provided (after successful parsing)
     if (schema) {
       this.validateSchema(parsed, schema);
