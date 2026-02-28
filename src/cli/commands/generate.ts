@@ -296,9 +296,12 @@ Each spec.md follows OpenSpec conventions:
   - Technical notes linking to source files
 `
   )
-  .action(async (options: Partial<ExtendedGenerateOptions>) => {
+  .action(async function (this: Command, options: Partial<ExtendedGenerateOptions>) {
     const startTime = Date.now();
     const rootPath = process.cwd();
+
+    // Inherit global options (--api-base, --insecure, etc.)
+    const globalOpts = this.optsWithGlobals?.() ?? {};
 
     const opts: ExtendedGenerateOptions = {
       analysis: options.analysis ?? '.spec-gen/analysis/',
@@ -472,13 +475,15 @@ Each spec.md follows OpenSpec conventions:
         return;
       }
 
-      // Create LLM service
+      // Create LLM service (CLI flags > env vars > config file)
       const provider = anthropicKey ? 'anthropic' : 'openai';
       let llm: LLMService;
       try {
         llm = createLLMService({
           provider,
           model: opts.model,
+          apiBase: globalOpts.apiBase ?? specGenConfig.llm?.apiBase,
+          sslVerify: globalOpts.insecure != null ? !globalOpts.insecure : specGenConfig.llm?.sslVerify ?? true,
           enableLogging: true,
           logDir: join(rootPath, '.spec-gen', 'logs'),
         });

@@ -115,6 +115,43 @@ spec-gen drift      # Check for spec drift
 
 > **Note**: `analyze`, `drift` (default mode), and `init` require no API key. Only spec generation, verification, and LLM-enhanced drift detection need one.
 
+### Custom LLM Endpoints (Enterprise / Local Servers)
+
+spec-gen supports custom OpenAI-compatible API endpoints for local models and enterprise servers. Configuration is available through three methods, applied in priority order:
+
+**1. CLI flags** (highest priority — per-invocation):
+```bash
+spec-gen generate --api-base http://localhost:8000/v1
+spec-gen generate --api-base http://localhost:8000/v1 --insecure
+spec-gen verify --api-base https://internal-llm.corp.net/v1
+```
+
+**2. Environment variables** (per-session):
+```bash
+# For OpenAI-compatible servers (vLLM, Ollama, LiteLLM, etc.)
+export OPENAI_API_BASE=http://localhost:8000/v1
+export OPENAI_API_KEY=dummy-key    # Most local servers require any non-empty key
+
+# For Anthropic-compatible endpoints
+export ANTHROPIC_API_BASE=https://internal-proxy.corp.net/v1
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**3. Config file** (persistent per-project):
+```json
+// .spec-gen/config.json
+{
+  "llm": {
+    "apiBase": "http://localhost:8000/v1",
+    "sslVerify": false
+  }
+}
+```
+
+**Priority order:** CLI flags > environment variables > config file > provider defaults.
+
+**Compatible servers:** vLLM, Ollama, LiteLLM, Azure OpenAI, text-generation-inference, LocalAI, and any OpenAI-compatible endpoint.
+
 ## Deterministic vs. LLM-Enhanced
 
 spec-gen distinguishes between two modes of operation:
@@ -238,13 +275,36 @@ spec-gen drift --domains auth,user
 
 | Command | Description | API Key |
 |---------|-------------|---------|
-| `spec-gen` | Full pipeline: init → analyze → generate | Yes |
+| `spec-gen` / `spec-gen run` | Full pipeline: init → analyze → generate | Yes |
 | `spec-gen init` | Initialize configuration | No |
 | `spec-gen analyze` | Run static analysis only | No |
 | `spec-gen generate` | Generate specs from analysis | Yes |
 | `spec-gen verify` | Verify spec accuracy | Yes |
 | `spec-gen drift` | Detect spec drift (static) | No |
 | `spec-gen drift --use-llm` | Detect spec drift (LLM-enhanced) | Yes |
+
+### Global Options
+
+These options apply to all commands:
+
+```bash
+spec-gen [command] [options]
+  --api-base <url>       # Custom LLM API base URL (for OpenAI-compatible servers)
+  --insecure             # Disable SSL certificate verification
+  --config <path>        # Path to config file (default: .spec-gen/config.json)
+  -q, --quiet            # Minimal output (errors only)
+  -v, --verbose          # Show debug information
+  --no-color             # Disable colored output (also enables timestamps)
+```
+
+| Option | Affects | Description |
+|--------|---------|-------------|
+| `--api-base` | `generate`, `verify`, `drift --use-llm` | Override the LLM provider endpoint URL |
+| `--insecure` | `generate`, `verify`, `drift --use-llm` | Skip TLS certificate checks (self-signed certs) |
+| `--config` | All commands | Use alternate config file path |
+| `--quiet` | All commands | Only show errors |
+| `--verbose` | All commands | Show debug output |
+| `--no-color` | All commands | Plain text output (useful for CI logs) |
 
 ### Command Options
 
@@ -263,14 +323,15 @@ spec-gen drift [options]
   --uninstall-hook       # Remove pre-commit hook
 ```
 
-**Full Pipeline:**
+**Full Pipeline (`run`):**
 ```bash
-spec-gen [options]
-  --force        # Reinitialize even if config exists
-  --reanalyze    # Force fresh analysis
-  --model <name> # LLM model (default: claude-sonnet-4-20250514)
-  --dry-run      # Show what would be done
-  -y, --yes      # Skip confirmation prompts
+spec-gen run [options]
+  --force          # Reinitialize even if config exists
+  --reanalyze      # Force fresh analysis
+  --model <name>   # LLM model (default: claude-sonnet-4-20250514)
+  --dry-run        # Show what would be done
+  -y, --yes        # Skip confirmation prompts
+  --max-files <n>  # Maximum files to analyze (default: 500)
 ```
 
 **Analyze:**
@@ -295,10 +356,12 @@ spec-gen generate [options]
 **Verify:**
 ```bash
 spec-gen verify [options]
-  --samples <n>      # Number of files to verify (default: 5)
-  --threshold <0-1>  # Minimum score to pass (default: 0.7)
-  --verbose          # Show detailed comparison
-  --json             # Output as JSON
+  --samples <n>       # Number of files to verify (default: 5)
+  --threshold <0-1>   # Minimum score to pass (default: 0.7)
+  --files <paths>     # Specific files to verify (comma-separated)
+  --domains <list>    # Only verify specific domains
+  --verbose           # Show detailed comparison
+  --json              # Output as JSON
 ```
 
 ## How It Works
@@ -372,7 +435,7 @@ Each spec follows OpenSpec conventions:
 
 ## Configuration
 
-spec-gen creates `.spec-gen/config.json`:
+`spec-gen init` creates `.spec-gen/config.json`:
 
 ```json
 {
@@ -390,6 +453,35 @@ spec-gen creates `.spec-gen/config.json`:
   }
 }
 ```
+
+### Optional: Custom LLM Configuration
+
+Add an `llm` block to configure custom endpoints. This section is entirely optional — when omitted, spec-gen uses the default Anthropic or OpenAI endpoints.
+
+```json
+{
+  "llm": {
+    "apiBase": "http://localhost:8000/v1",
+    "sslVerify": false
+  }
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `llm.apiBase` | `string` | Provider default | Custom API base URL |
+| `llm.sslVerify` | `boolean` | `true` | Verify SSL certificates |
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `ANTHROPIC_API_KEY` | Anthropic API key (used by default when set) |
+| `OPENAI_API_KEY` | OpenAI API key (used when Anthropic key is not set) |
+| `ANTHROPIC_API_BASE` | Custom Anthropic-compatible endpoint URL |
+| `OPENAI_API_BASE` | Custom OpenAI-compatible endpoint URL |
+| `DEBUG` | Set to any value to enable stack traces on errors |
+| `CI` | Automatically detected; enables timestamps in output |
 
 ## Usage Options
 
@@ -470,9 +562,7 @@ npm run typecheck    # Type check
 - [AGENTS.md](AGENTS.md) — LLM system prompt for direct prompting
 - [Architecture](docs/ARCHITECTURE.md) — Internal design and module organization
 - [Algorithms](docs/ALGORITHMS.md) — Analysis algorithms explained
+- [OpenSpec Integration](docs/OPENSPEC-INTEGRATION.md) — How spec-gen integrates with the OpenSpec ecosystem
+- [OpenSpec Format](docs/OPENSPEC-FORMAT.md) — Spec format reference
 - [Philosophy](docs/PHILOSOPHY.md) — "Archaeology over Creativity" explained
 - [Troubleshooting](docs/TROUBLESHOOTING.md) — Common issues and solutions
-
-## License
-
-[MIT](LICENSE)

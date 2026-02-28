@@ -41,6 +41,8 @@ program
   .option('-v, --verbose', 'Show debug information', false)
   .option('--no-color', 'Disable colored output (also enables timestamps)')
   .option('--config <path>', 'Path to config file', '.spec-gen/config.json')
+  .option('--api-base <url>', 'Custom LLM API base URL (for local/enterprise OpenAI-compatible servers)')
+  .option('--insecure', 'Disable SSL certificate verification (for internal/self-signed certs)')
   .addHelpText(
     'after',
     `

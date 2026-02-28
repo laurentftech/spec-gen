@@ -56,13 +56,13 @@ project-root/
 │   │   └── archive/                    # Completed changes
 │   └── schemas/                        # Custom workflow schemas
 ├── .spec-gen/                          # spec-gen working directory
-│   ├── config.json                     # spec-gen configuration
-│   ├── analysis/                       # Analysis artifacts
+│   ├── config.json                     # spec-gen configuration (commit this)
+│   ├── analysis/                       # Analysis artifacts (regeneratable)
 │   ├── outputs/                        # Generation reports
 │   ├── verification/                   # Verification results
 │   ├── backups/                        # Backed up specs
 │   ├── runs/                           # Run metadata
-│   └── logs/                           # Debug logs
+│   └── logs/                           # LLM request/response logs
 └── .gitignore                          # Updated to include .spec-gen/
 ```
 
@@ -307,6 +307,37 @@ spec-gen generate --merge
 # (check the "## Generated Analysis" sections)
 
 # 4. Manually reconcile if needed
+```
+
+### Continuous Drift Detection
+
+```bash
+# 1. Install pre-commit hook (runs static mode — fast, no API key)
+spec-gen drift --install-hook
+
+# 2. Check drift on a feature branch
+spec-gen drift --base main
+
+# 3. Use LLM to filter false positives
+spec-gen drift --use-llm
+
+# 4. CI/CD integration
+spec-gen drift --json --fail-on error
+```
+
+### Using Custom LLM Endpoints
+
+For enterprise teams or local model servers:
+
+```bash
+# Generate specs with a local vLLM server
+spec-gen generate --api-base http://localhost:8000/v1
+
+# Verify with an internal endpoint and self-signed cert
+spec-gen verify --api-base https://llm.internal.corp/v1 --insecure
+
+# Or configure once in .spec-gen/config.json:
+# { "llm": { "apiBase": "http://localhost:8000/v1", "sslVerify": false } }
 ```
 
 ## Domain Naming Conventions

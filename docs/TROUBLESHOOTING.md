@@ -4,9 +4,20 @@ Common issues and solutions when using spec-gen.
 
 ## Installation Issues
 
-### Skill Not Found
+### CLI Not Found
 
-**Problem**: `/spec-gen` command not recognized
+**Problem**: `spec-gen` command not recognized after install
+
+**Solution**:
+```bash
+cd spec-gen
+npm install && npm run build && npm link
+```
+If `npm link` requires permissions: `sudo npm link`
+
+### Skill Not Found (Claude Code)
+
+**Problem**: `/spec-gen` command not recognized in Claude Code
 
 **Solution**:
 1. Verify the skill file exists:
@@ -26,6 +37,86 @@ Common issues and solutions when using spec-gen.
 mkdir -p .claude/skills
 chmod 755 .claude/skills
 ```
+
+## API Key & LLM Issues
+
+### No API Key Found
+
+**Problem**: `No LLM API key found.`
+
+**Solution**: Set one of:
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+# or
+export OPENAI_API_KEY=sk-...
+```
+
+Only `generate`, `verify`, and `drift --use-llm` require an API key. Commands like `analyze`, `drift`, and `init` work without one.
+
+### Custom Endpoint Not Working
+
+**Problem**: Errors when using `--api-base` with a local or enterprise server
+
+**Solutions**:
+
+1. **Verify the URL is valid and includes the version path**:
+   ```bash
+   # Correct:
+   spec-gen generate --api-base http://localhost:8000/v1
+
+   # Wrong (missing /v1):
+   spec-gen generate --api-base http://localhost:8000
+   ```
+
+2. **For self-signed certificates**:
+   ```bash
+   spec-gen generate --api-base https://internal.corp.net/v1 --insecure
+   ```
+
+3. **Check that the server is running and reachable**:
+   ```bash
+   curl http://localhost:8000/v1/models
+   ```
+
+4. **Local servers often need a dummy API key**:
+   ```bash
+   export OPENAI_API_KEY=dummy-key
+   spec-gen generate --api-base http://localhost:8000/v1
+   ```
+
+### SSL Certificate Error
+
+**Problem**: `UNABLE_TO_VERIFY_LEAF_SIGNATURE` or similar TLS error
+
+**Solution**: Use the `--insecure` flag or set `sslVerify: false` in config:
+```bash
+spec-gen generate --insecure
+```
+Or in `.spec-gen/config.json`:
+```json
+{
+  "llm": {
+    "sslVerify": false
+  }
+}
+```
+
+> **Warning**: This disables SSL verification process-wide. Only use with trusted internal servers.
+
+### Wrong Provider Selected
+
+**Problem**: spec-gen is using Anthropic when you want OpenAI (or vice versa)
+
+**How provider selection works**: If `ANTHROPIC_API_KEY` is set, Anthropic is used. Otherwise, if `OPENAI_API_KEY` is set, OpenAI is used. To force a specific provider, only set that provider's API key.
+
+### Configuration Priority
+
+Settings are resolved in this order (first match wins):
+
+1. CLI flags (`--api-base`, `--insecure`)
+2. Environment variables (`OPENAI_API_BASE`, `ANTHROPIC_API_BASE`)
+3. Config file (`.spec-gen/config.json` → `llm.apiBase`, `llm.sslVerify`)
+4. Provider defaults (`https://api.anthropic.com/v1` or `https://api.openai.com/v1`)
 
 ## Generation Issues
 
@@ -161,6 +252,53 @@ Focus on core business domains only. Ignore utilities, helpers, and infrastructu
 2. Reduce scope per run
 3. Use the agents.md approach which can work incrementally
 
+## Drift Detection Issues
+
+### No Base Branch Detected
+
+**Problem**: `Could not detect base branch`
+
+**Solution**: Specify the base branch explicitly:
+```bash
+spec-gen drift --base main
+# or
+spec-gen drift --base develop
+```
+
+### Too Many False Positives
+
+**Problem**: Drift detection flags changes that don't affect specs (renames, formatting)
+
+**Solution**: Use LLM-enhanced mode to filter non-relevant changes:
+```bash
+spec-gen drift --use-llm
+```
+This sends each diff to the LLM for semantic analysis, classifying changes as relevant or not.
+
+### Pre-Commit Hook Issues
+
+**Problem**: Pre-commit hook blocks commits unexpectedly
+
+**Solutions**:
+1. Check current drift status: `spec-gen drift`
+2. Lower the fail threshold: edit the hook to use `--fail-on error` instead of `--fail-on warning`
+3. Temporarily bypass: `git commit --no-verify` (use sparingly)
+4. Remove the hook: `spec-gen drift --uninstall-hook`
+
+### Drift Not Detecting Changes
+
+**Problem**: Changed code but no drift reported
+
+**Possible causes**:
+1. Changes are on the same branch as the base ref
+2. The changed files don't map to any spec domain
+3. The spec was updated alongside the code
+
+**Debug**: Run with `--verbose` to see what's being analyzed:
+```bash
+spec-gen drift --verbose
+```
+
 ## Integration Issues
 
 ### Existing OpenSpec Conflict
@@ -185,15 +323,24 @@ Show me what you would add to config.yaml before making changes.
 
 ## Getting Help
 
+### Debug Mode
+
+Set `DEBUG=1` for stack traces on errors:
+```bash
+DEBUG=1 spec-gen generate
+```
+
 ### Still Stuck?
 
 1. **Check the docs**:
    - [Philosophy](./PHILOSOPHY.md) — Understanding the approach
    - [OpenSpec Format](./OPENSPEC-FORMAT.md) — Format reference
+   - [Architecture](./ARCHITECTURE.md) — Internal design
+   - [OpenSpec Integration](./OPENSPEC-INTEGRATION.md) — Ecosystem integration
 
-2. **File an issue**:
-   - Include: Project type, error message, relevant code structure
-   - Don't include: Sensitive code or credentials
+2. **File an issue** on [GitHub](https://github.com/clay-good/spec-gen/issues):
+   - Include: Project type, error message, relevant code structure, Node.js version
+   - Don't include: Sensitive code, API keys, or credentials
 
 3. **Try manual approach**:
    - Use the spec format reference

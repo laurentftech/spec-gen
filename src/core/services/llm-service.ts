@@ -77,6 +77,10 @@ export interface LLMServiceOptions {
   provider?: 'anthropic' | 'openai';
   /** Model override */
   model?: string;
+  /** Custom API base URL (e.g., for local/enterprise OpenAI-compatible servers) */
+  apiBase?: string;
+  /** Disable SSL verification (for internal/self-signed certificates) */
+  sslVerify?: boolean;
   /** Maximum retry attempts */
   maxRetries?: number;
   /** Initial retry delay in ms */
@@ -101,6 +105,45 @@ interface RetryConfig {
   initialDelay: number;
   maxDelay: number;
   timeout: number;
+}
+
+// ============================================================================
+// SSL / FETCH HELPERS
+// ============================================================================
+
+/**
+ * Disable TLS certificate verification for all fetch requests in this process.
+ *
+ * Node.js native fetch does not support per-request TLS configuration.
+ * The only reliable cross-version approach is the NODE_TLS_REJECT_UNAUTHORIZED
+ * environment variable, which is process-global.  This is set once and logged
+ * prominently so the user is aware.
+ */
+function disableSslVerification(): void {
+  if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0') return; // already disabled
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
+
+/**
+ * Validate and normalise an API base URL.
+ * Returns the cleaned URL or throws on invalid input.
+ */
+function normalizeApiBase(url: string): string {
+  // Must be a valid, absolute URL
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Invalid API base URL: "${url}". Must be a valid URL (e.g., http://localhost:8000/v1).`);
+  }
+
+  // Only allow http and https schemes
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`Unsupported protocol in API base URL: "${parsed.protocol}". Only http and https are allowed.`);
+  }
+
+  // Strip trailing slashes for consistent path joining
+  return parsed.toString().replace(/\/+$/, '');
 }
 
 // ============================================================================
@@ -158,11 +201,13 @@ export class AnthropicProvider implements LLMProvider {
 
   private apiKey: string;
   private model: string;
-  private baseUrl = 'https://api.anthropic.com/v1';
+  private baseUrl: string;
 
-  constructor(apiKey: string, model = 'claude-3-5-sonnet-20241022') {
+  constructor(apiKey: string, model = 'claude-3-5-sonnet-20241022', baseUrl?: string, sslVerify = true) {
     this.apiKey = apiKey;
     this.model = model;
+    this.baseUrl = baseUrl ? normalizeApiBase(baseUrl) : 'https://api.anthropic.com/v1';
+    if (!sslVerify) disableSslVerification();
   }
 
   countTokens(text: string): number {
@@ -241,11 +286,13 @@ export class OpenAIProvider implements LLMProvider {
 
   private apiKey: string;
   private model: string;
-  private baseUrl = 'https://api.openai.com/v1';
+  private baseUrl: string;
 
-  constructor(apiKey: string, model = 'gpt-4o') {
+  constructor(apiKey: string, model = 'gpt-4o', baseUrl?: string, sslVerify = true) {
     this.apiKey = apiKey;
     this.model = model;
+    this.baseUrl = baseUrl ? normalizeApiBase(baseUrl) : 'https://api.openai.com/v1';
+    if (!sslVerify) disableSslVerification();
   }
 
   countTokens(text: string): number {
@@ -406,6 +453,8 @@ export class LLMService {
     this.options = {
       provider: options.provider ?? 'anthropic',
       model: options.model ?? '',
+      apiBase: options.apiBase ?? '',
+      sslVerify: options.sslVerify ?? true,
       maxRetries: options.maxRetries ?? 3,
       initialDelay: options.initialDelay ?? 1000,
       maxDelay: options.maxDelay ?? 30000,
@@ -721,6 +770,7 @@ export class LLMService {
  */
 export function createLLMService(options: LLMServiceOptions = {}): LLMService {
   const providerName = options.provider ?? 'anthropic';
+  const sslVerify = options.sslVerify ?? true;
   let provider: LLMProvider;
 
   if (providerName === 'anthropic') {
@@ -728,15 +778,21 @@ export function createLLMService(options: LLMServiceOptions = {}): LLMService {
     if (!apiKey) {
       throw new Error('ANTHROPIC_API_KEY environment variable is not set');
     }
-    provider = new AnthropicProvider(apiKey, options.model ?? 'claude-3-5-sonnet-20241022');
+    const apiBase = options.apiBase ?? process.env.ANTHROPIC_API_BASE ?? undefined;
+    provider = new AnthropicProvider(apiKey, options.model ?? 'claude-3-5-sonnet-20241022', apiBase, sslVerify);
   } else if (providerName === 'openai') {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       throw new Error('OPENAI_API_KEY environment variable is not set');
     }
-    provider = new OpenAIProvider(apiKey, options.model ?? 'gpt-4o');
+    const apiBase = options.apiBase ?? process.env.OPENAI_API_BASE ?? undefined;
+    provider = new OpenAIProvider(apiKey, options.model ?? 'gpt-4o', apiBase, sslVerify);
   } else {
     throw new Error(`Unknown provider: ${providerName}`);
+  }
+
+  if (!sslVerify) {
+    logger.warning('SSL verification is disabled. Use only for trusted internal servers.');
   }
 
   return new LLMService(provider, options);

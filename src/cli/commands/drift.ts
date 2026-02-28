@@ -374,6 +374,25 @@ Pre-commit hook:
       // PHASE 1: VALIDATION
       // ========================================================================
 
+      if (!opts.json) {
+        logger.section('Spec Drift Detection');
+      }
+
+      // Check git repo
+      if (!(await isGitRepository(rootPath))) {
+        logger.error('Not a git repository. Drift detection requires git.');
+        process.exitCode = 1;
+        return;
+      }
+
+      // Load spec-gen config
+      const specGenConfig = await readSpecGenConfig(rootPath);
+      if (!specGenConfig) {
+        logger.error('No spec-gen configuration found. Run "spec-gen init" first.');
+        process.exitCode = 1;
+        return;
+      }
+
       // Create LLM service if --use-llm is specified
       let llm: LLMService | undefined;
       if (opts.useLlm) {
@@ -393,6 +412,8 @@ Pre-commit hook:
         try {
           llm = createLLMService({
             provider,
+            apiBase: globalOpts.apiBase ?? specGenConfig.llm?.apiBase,
+            sslVerify: globalOpts.insecure != null ? !globalOpts.insecure : specGenConfig.llm?.sslVerify ?? true,
             enableLogging: true,
             logDir: join(rootPath, '.spec-gen', 'logs'),
           });
@@ -404,25 +425,6 @@ Pre-commit hook:
           process.exitCode = 1;
           return;
         }
-      }
-
-      if (!opts.json) {
-        logger.section('Spec Drift Detection');
-      }
-
-      // Check git repo
-      if (!(await isGitRepository(rootPath))) {
-        logger.error('Not a git repository. Drift detection requires git.');
-        process.exitCode = 1;
-        return;
-      }
-
-      // Load spec-gen config
-      const specGenConfig = await readSpecGenConfig(rootPath);
-      if (!specGenConfig) {
-        logger.error('No spec-gen configuration found. Run "spec-gen init" first.');
-        process.exitCode = 1;
-        return;
       }
 
       // Determine openspec path

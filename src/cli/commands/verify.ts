@@ -299,9 +299,12 @@ Output:
 A score >= threshold indicates specs are production-ready.
 `
   )
-  .action(async (options: Partial<ExtendedVerifyOptions>) => {
+  .action(async function (this: Command, options: Partial<ExtendedVerifyOptions>) {
     const startTime = Date.now();
     const rootPath = process.cwd();
+
+    // Inherit global options (--api-base, --insecure, etc.)
+    const globalOpts = this.optsWithGlobals?.() ?? {};
 
     const opts: ExtendedVerifyOptions = {
       samples: typeof options.samples === 'string'
@@ -389,12 +392,14 @@ A score >= threshold indicates specs are production-ready.
         return;
       }
 
-      // Create LLM service
+      // Create LLM service (CLI flags > env vars > config file)
       const provider = anthropicKey ? 'anthropic' : 'openai';
       let llm: LLMService;
       try {
         llm = createLLMService({
           provider,
+          apiBase: globalOpts.apiBase ?? specGenConfig.llm?.apiBase,
+          sslVerify: globalOpts.insecure != null ? !globalOpts.insecure : specGenConfig.llm?.sslVerify ?? true,
           enableLogging: true,
           logDir: join(rootPath, '.spec-gen', 'logs'),
         });

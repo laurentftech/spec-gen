@@ -4,15 +4,15 @@ This document describes the internal architecture of spec-gen.
 
 ## Overview
 
-spec-gen is a CLI tool that reverse-engineers OpenSpec specifications from existing codebases. It follows a pipeline architecture with four main phases:
+spec-gen is a CLI tool that reverse-engineers OpenSpec specifications from existing codebases. It follows a pipeline architecture with five main phases:
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│    Init     │ ──▶ │   Analyze   │ ──▶ │  Generate   │ ──▶ │   Verify    │
-│             │     │             │     │             │     │             │
-│ Project     │     │ Static      │     │ LLM-based   │     │ Accuracy    │
-│ Detection   │     │ Analysis    │     │ Extraction  │     │ Testing     │
-└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│    Init     │ ──▶ │   Analyze   │ ──▶ │  Generate   │ ──▶ │   Verify    │     │    Drift    │
+│             │     │             │     │             │     │             │     │             │
+│ Project     │     │ Static      │     │ LLM-based   │     │ Accuracy    │     │ Spec-Code   │
+│ Detection   │     │ Analysis    │     │ Extraction  │     │ Testing     │     │ Sync Check  │
+└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
 ```
 
 ## Module Organization
@@ -23,19 +23,27 @@ The CLI layer handles user interaction and command-line parsing. It uses Command
 
 ```
 src/cli/
-├── index.ts           # Main entry point, command registration
+├── index.ts           # Main entry point, command registration, global options
 └── commands/
     ├── init.ts        # Initialize configuration
     ├── analyze.ts     # Run static analysis
     ├── generate.ts    # Generate specs with LLM
     ├── verify.ts      # Verify spec accuracy
+    ├── drift.ts       # Detect spec-to-code drift
     └── run.ts         # Full pipeline orchestration
 ```
+
+**Global Options** (defined in `index.ts`, inherited by all commands via `optsWithGlobals()`):
+- `--api-base <url>` — Custom LLM API base URL
+- `--insecure` — Disable SSL certificate verification
+- `--config <path>` — Path to config file
+- `-q, --quiet` / `-v, --verbose` / `--no-color` — Output control
 
 **Design Principles:**
 - Commands are thin wrappers that call core modules
 - No business logic in CLI layer
-- Consistent option naming across commands
+- Commands use `this.optsWithGlobals()` to inherit global options
+- Three-tier config priority: CLI flags > environment variables > config file
 - User-friendly error messages and progress indicators
 
 ### Core Layer (`src/core/`)
@@ -100,13 +108,31 @@ verifier/
 3. Compare predictions to actual code
 4. Calculate accuracy scores
 
+#### Drift Detection (`src/core/drift/`)
+
+Spec-to-code drift detection using git analysis:
+
+```
+drift/
+├── drift-detector.ts      # Core drift detection engine
+├── spec-mapper.ts         # Maps source files to spec domains
+├── git-analyzer.ts        # Git diff parsing and change analysis
+└── llm-enhancer.ts        # Optional LLM-based semantic filtering
+```
+
+**Drift Categories:**
+- **Gap**: Code changed but its spec wasn't updated
+- **Stale**: Spec references deleted or renamed files
+- **Uncovered**: New files with no matching spec domain
+- **Orphaned**: Spec declares files that no longer exist
+
 #### Services (`src/core/services/`)
 
 Shared services used across modules:
 
 ```
 services/
-├── llm-service.ts         # LLM provider abstraction
+├── llm-service.ts         # LLM provider abstraction (Anthropic + OpenAI)
 ├── config-manager.ts      # Configuration loading/saving
 ├── project-detector.ts    # Language/framework detection
 └── gitignore-manager.ts   # Gitignore handling
@@ -122,6 +148,23 @@ interface FileMetadata { ... }
 interface ScoredFile extends FileMetadata { ... }
 interface DependencyNode { ... }
 interface DependencyEdge { ... }
+
+// Configuration types
+interface SpecGenConfig {
+  version: string;
+  projectType: ProjectType;
+  openspecPath: string;
+  analysis: AnalysisConfig;
+  generation: GenerationConfig;
+  llm?: LLMConfig;           // Optional custom endpoint config
+  createdAt: string;
+  lastRun: string | null;
+}
+
+interface LLMConfig {
+  apiBase?: string;           // Custom API base URL
+  sslVerify?: boolean;        // SSL verification (default: true)
+}
 
 // Options types
 interface GlobalOptions { ... }
@@ -268,11 +311,35 @@ interface LLMProvider {
   maxContextTokens: number;
   maxOutputTokens: number;
 }
+
+interface LLMServiceOptions {
+  provider?: 'anthropic' | 'openai';
+  model?: string;
+  apiBase?: string;      // Custom API base URL
+  sslVerify?: boolean;   // SSL certificate verification (default: true)
+  maxRetries?: number;
+  timeout?: number;
+  logDir?: string;
+  enableLogging?: boolean;
+}
 ```
 
 **Supported Providers:**
-- Anthropic Claude (primary)
-- OpenAI GPT (fallback)
+- Anthropic Claude (primary, used when `ANTHROPIC_API_KEY` is set)
+- OpenAI GPT (fallback, used when only `OPENAI_API_KEY` is set)
+- Any OpenAI-compatible endpoint (vLLM, Ollama, LiteLLM, etc.)
+
+**Custom Endpoint Support:**
+
+Both providers accept a custom `baseUrl` via the `apiBase` option. The URL is validated and normalized by `normalizeApiBase()` which rejects non-http(s) protocols and strips trailing slashes.
+
+When `sslVerify: false` is configured, `disableSslVerification()` sets `NODE_TLS_REJECT_UNAUTHORIZED=0` process-wide (Node.js native `fetch()` does not support per-request TLS configuration).
+
+**Configuration Priority:**
+```
+CLI --api-base flag  >  OPENAI_API_BASE / ANTHROPIC_API_BASE env var  >  config.json llm.apiBase  >  provider default
+CLI --insecure flag  >  config.json llm.sslVerify  >  true (default)
+```
 
 **Features:**
 - Automatic retry with exponential backoff
@@ -280,6 +347,7 @@ interface LLMProvider {
 - JSON response extraction
 - Request/response logging
 - Cost tracking
+- URL validation and normalization for custom endpoints
 
 ## Error Handling Strategy
 
@@ -352,14 +420,14 @@ class SpecGenError extends Error {
 
 ### Planned Enhancements
 
-1. **More Languages** - Python, Go, Java support
-2. **Incremental Analysis** - Only re-analyze changed files
-3. **Custom Prompts** - User-provided LLM prompts
-4. **Spec Diffing** - Show changes between generations
+1. **More Languages** — Deeper Python, Go, Java support
+2. **Incremental Analysis** — Only re-analyze changed files
+3. **Custom Prompts** — User-provided LLM prompts
+4. **Spec Diffing** — Show changes between generations
 
 ### Extension Points
 
 - Custom significance scorers
 - Language-specific parsers
-- Alternative LLM providers
+- Alternative LLM providers via custom `--api-base` endpoint
 - Output format plugins

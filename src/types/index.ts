@@ -20,6 +20,7 @@ export interface SpecGenConfig {
   openspecPath: string;
   analysis: AnalysisConfig;
   generation: GenerationConfig;
+  llm?: LLMConfig;
   createdAt: string;
   lastRun: string | null;
 }
@@ -33,6 +34,13 @@ export interface AnalysisConfig {
 export interface GenerationConfig {
   model: string;
   domains: string | string[];
+}
+
+export interface LLMConfig {
+  /** Custom API base URL for OpenAI-compatible servers */
+  apiBase?: string;
+  /** Whether to verify SSL certificates (default: true) */
+  sslVerify?: boolean;
 }
 
 // File metadata types

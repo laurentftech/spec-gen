@@ -308,9 +308,12 @@ Smart Defaults:
 The pipeline saves run metadata to .spec-gen/runs/ for tracking.
 `
   )
-  .action(async (options: Partial<RunOptions>) => {
+  .action(async function (this: Command, options: Partial<RunOptions>) {
     const startTime = Date.now();
     const rootPath = process.cwd();
+
+    // Inherit global options (--api-base, --insecure, etc.)
+    const globalOpts = this.optsWithGlobals?.() ?? {};
 
     const opts: RunOptions = {
       force: options.force ?? false,
@@ -552,13 +555,15 @@ The pipeline saves run metadata to .spec-gen/runs/ for tracking.
         return;
       }
 
-      // Create LLM service
+      // Create LLM service (CLI flags > env vars > config file)
       const provider = anthropicKey ? 'anthropic' : 'openai';
       let llm: LLMService;
       try {
         llm = createLLMService({
           provider,
           model: opts.model,
+          apiBase: globalOpts.apiBase ?? specGenConfig?.llm?.apiBase,
+          sslVerify: globalOpts.insecure != null ? !globalOpts.insecure : specGenConfig?.llm?.sslVerify ?? true,
           enableLogging: true,
           logDir: join(rootPath, '.spec-gen', 'logs'),
         });
