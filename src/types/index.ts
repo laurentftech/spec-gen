@@ -31,7 +31,10 @@ export interface AnalysisConfig {
 }
 
 export interface GenerationConfig {
-  model: string;
+  provider?: 'anthropic' | 'openai' | 'openai-compat' | 'gemini';
+  model?: string;
+  openaiCompatBaseUrl?: string;
+  skipSslVerify?: boolean;
   domains: string | string[];
 }
 

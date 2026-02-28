@@ -121,9 +121,11 @@ export async function runAnalysis(
   // Phase 1: Repository Mapping
   logger.analysis('Scanning directory structure...');
 
+  const configExclude = config?.analysis?.excludePatterns ?? [];
+
   const mapper = new RepositoryMapper(rootPath, {
-    maxFiles: options.maxFiles,
-    excludePatterns: options.exclude.length > 0 ? options.exclude : undefined,
+    maxFiles: options.maxFiles ?? config?.analysis?.maxFiles ?? 500,
+    excludePatterns: [...configExclude, ...options.exclude],
   });
 
   const repoMap = await mapper.map();

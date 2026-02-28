@@ -195,7 +195,10 @@ export class OpenSpecFormatGenerator {
       } else if (domain.services.length > 0) {
         domain.description = domain.services[0].purpose;
       } else if (domain.endpoints.length > 0) {
-        domain.description = `Provides ${domain.endpoints.length} API endpoints`;
+        const firstPurpose = domain.endpoints[0]?.purpose;
+        domain.description = firstPurpose
+          ? firstPurpose
+          : `Provides ${domain.endpoints.length} API endpoint${domain.endpoints.length > 1 ? 's' : ''}`;
       }
     }
 
@@ -237,7 +240,7 @@ export class OpenSpecFormatGenerator {
     architecture: ArchitectureSynthesis
   ): GeneratedSpec {
     const lines: string[] = [];
-    const date = new Date().toISOString().split('T')[0];
+    const date = new Date().toISOString().slice(0, 16).replace('T', ' ');
 
     // Header
     lines.push('# System Overview');
@@ -276,8 +279,8 @@ export class OpenSpecFormatGenerator {
     lines.push(`- **Architecture**: ${this.formatArchitecture(survey.architecturePattern)}`);
     lines.push('');
 
-    // Key Capabilities
-    lines.push('## Key Capabilities');
+    // Requirements
+    lines.push('## Requirements');
     lines.push('');
 
     // Generate capabilities from architecture
@@ -288,6 +291,11 @@ export class OpenSpecFormatGenerator {
       for (const decision of architecture.keyDecisions) {
         lines.push(`- ${decision}`);
       }
+      lines.push('');
+      lines.push('#### Scenario: CapabilitiesProvided');
+      lines.push('- **GIVEN** the system is operational');
+      lines.push('- **WHEN** a user interacts with the system');
+      lines.push('- **THEN** the system provides the documented capabilities');
       lines.push('');
     }
 
@@ -308,12 +316,18 @@ export class OpenSpecFormatGenerator {
     if (this.options.includeTechnicalNotes) {
       lines.push('## Technical Notes');
       lines.push('');
-      lines.push(`- **Architecture Style**: ${architecture.architectureStyle}`);
+      const archStyleNote = typeof architecture.architectureStyle === 'string'
+        ? architecture.architectureStyle
+        : (architecture.architectureStyle as any)?.pattern ?? (architecture.architectureStyle as any)?.name ?? JSON.stringify(architecture.architectureStyle);
+      lines.push(`- **Architecture Style**: ${archStyleNote}`);
       if (architecture.securityModel && architecture.securityModel !== 'Unknown') {
         lines.push(`- **Security Model**: ${architecture.securityModel}`);
       }
       if (architecture.integrations.length > 0) {
-        lines.push(`- **External Integrations**: ${architecture.integrations.join(', ')}`);
+        const integrationNames = architecture.integrations.map(i =>
+          typeof i === 'string' ? i : (i as any).name ?? JSON.stringify(i)
+        );
+        lines.push(`- **External Integrations**: ${integrationNames.join(', ')}`);
       }
       lines.push('');
     }
@@ -331,7 +345,7 @@ export class OpenSpecFormatGenerator {
    */
   private generateDomainSpec(domain: DomainGroup, survey: ProjectSurveyResult): GeneratedSpec {
     const lines: string[] = [];
-    const date = new Date().toISOString().split('T')[0];
+    const date = new Date().toISOString().slice(0, 16).replace('T', ' ');
 
     // Header
     lines.push(`# ${this.capitalize(domain.name)} Specification`);
@@ -411,13 +425,47 @@ export class OpenSpecFormatGenerator {
       for (const operation of service.operations) {
         lines.push(`### Requirement: ${this.formatRequirementName(operation.name)}`);
         lines.push('');
-        lines.push(`The system SHALL ${operation.description.toLowerCase()}`);
+        lines.push(`The system SHALL ${(operation.description ?? '').toLowerCase()}`);
         lines.push('');
 
         // Operation scenarios
         for (const scenario of operation.scenarios) {
           this.addScenario(lines, scenario);
         }
+      }
+    }
+
+    // Fallback: if no requirements were generated, add a placeholder
+    const hasRequirements =
+      domain.entities.some(e => e.validations.length > 0) ||
+      domain.services.some(s => s.operations.length > 0);
+    if (!hasRequirements) {
+      if (domain.endpoints.length > 0) {
+        for (const endpoint of domain.endpoints) {
+          const reqName = this.formatRequirementName(
+            endpoint.purpose || `${endpoint.method}${endpoint.path}`
+          );
+          lines.push(`### Requirement: ${reqName}`);
+          lines.push('');
+          lines.push(`The system SHALL ${(endpoint.purpose ?? 'handle this endpoint').toLowerCase()}`);
+          lines.push('');
+          lines.push(`#### Scenario: ${reqName}Success`);
+          lines.push(`- **GIVEN** the system is operational`);
+          lines.push(`- **WHEN** ${endpoint.method} ${endpoint.path} is called`);
+          lines.push(`- **THEN** the request is processed successfully`);
+          lines.push('');
+        }
+      } else {
+        const reqName = this.formatRequirementName(`${domain.name}Overview`);
+        lines.push(`### Requirement: ${reqName}`);
+        lines.push('');
+        lines.push(`The ${domain.name} domain SHALL provide its documented functionality.`);
+        lines.push('');
+        lines.push(`#### Scenario: ${reqName}Works`);
+        lines.push('- **GIVEN** the system is operational');
+        lines.push('- **WHEN** the domain functionality is invoked');
+        lines.push('- **THEN** the expected outcome is produced');
+        lines.push('');
       }
     }
 
@@ -461,7 +509,7 @@ export class OpenSpecFormatGenerator {
     domains: DomainGroup[]
   ): GeneratedSpec {
     const lines: string[] = [];
-    const date = new Date().toISOString().split('T')[0];
+    const date = new Date().toISOString().slice(0, 16).replace('T', ' ');
 
     // Header
     lines.push('# Architecture Specification');
@@ -478,7 +526,18 @@ export class OpenSpecFormatGenerator {
     // Architecture Style
     lines.push('## Architecture Style');
     lines.push('');
-    lines.push(this.wrapText(architecture.architectureStyle));
+    const archStyle = architecture.architectureStyle;
+    const archStyleStr = typeof archStyle === 'string'
+      ? archStyle
+      : (archStyle as any)?.pattern ?? (archStyle as any)?.name ?? JSON.stringify(archStyle);
+    const archJustification = typeof archStyle === 'object' && archStyle !== null
+      ? (archStyle as any)?.justification
+      : undefined;
+    lines.push(this.wrapText(archStyleStr));
+    if (archJustification) {
+      lines.push('');
+      lines.push(`*${archJustification}*`);
+    }
     lines.push('');
 
     // Requirements
@@ -569,7 +628,11 @@ export class OpenSpecFormatGenerator {
       lines.push('| System | Purpose |');
       lines.push('|--------|---------|');
       for (const integration of architecture.integrations) {
-        lines.push(`| ${integration} | External integration |`);
+        const name = typeof integration === 'string' ? integration : (integration as any).name ?? String(integration);
+        const purpose = typeof integration === 'object' && integration !== null
+          ? ((integration as any).purpose ?? 'External integration')
+          : 'External integration';
+        lines.push(`| ${name} | ${purpose} |`);
       }
       lines.push('');
     }
@@ -587,7 +650,7 @@ export class OpenSpecFormatGenerator {
    */
   private generateApiSpec(endpoints: ExtractedEndpoint[], survey: ProjectSurveyResult): GeneratedSpec {
     const lines: string[] = [];
-    const date = new Date().toISOString().split('T')[0];
+    const date = new Date().toISOString().slice(0, 16).replace('T', ' ');
 
     // Header
     lines.push('# API Specification');
@@ -601,11 +664,13 @@ export class OpenSpecFormatGenerator {
     lines.push('This document specifies the HTTP API exposed by the system.');
     lines.push('');
 
-    // Authentication
+    // Requirements section (always present)
+    lines.push('## Requirements');
+    lines.push('');
+
+    // Authentication requirement
     const authMethods = new Set(endpoints.map(e => e.authentication).filter(Boolean));
     if (authMethods.size > 0) {
-      lines.push('## Authentication');
-      lines.push('');
       lines.push('### Requirement: APIAuthentication');
       lines.push('');
       lines.push(`The API SHALL require authentication via: ${Array.from(authMethods).join(', ')}`);
@@ -633,19 +698,13 @@ export class OpenSpecFormatGenerator {
       endpointsByResource.set(resource, existing);
     }
 
-    // Endpoints
-    lines.push('## Endpoints');
-    lines.push('');
-
+    // Endpoint requirements (under ## Requirements, no separate ## Endpoints section)
     for (const [resource, resourceEndpoints] of endpointsByResource) {
-      lines.push(`### ${resource} Endpoints`);
-      lines.push('');
-
       for (const endpoint of resourceEndpoints) {
         const reqName = this.formatRequirementName(`${endpoint.method}${resource}`);
-        lines.push(`#### Requirement: ${reqName}`);
+        lines.push(`### Requirement: ${reqName}`);
         lines.push('');
-        lines.push(`The API SHALL support \`${endpoint.method} ${endpoint.path}\` to ${endpoint.purpose.toLowerCase()}`);
+        lines.push(`The API SHALL support \`${endpoint.method} ${endpoint.path}\` to ${(endpoint.purpose ?? '').toLowerCase()}`);
         lines.push('');
 
         // Request schema
@@ -675,7 +734,7 @@ export class OpenSpecFormatGenerator {
 
         // Default success scenario if none provided
         if (endpoint.scenarios.length === 0) {
-          lines.push(`##### Scenario: ${reqName}Success`);
+          lines.push(`#### Scenario: ${reqName}Success`);
           lines.push('- **GIVEN** an authenticated user');
           lines.push(`- **WHEN** \`${endpoint.method} ${endpoint.path}\` is called with valid data`);
           lines.push('- **THEN** the response status is 200 OK');
@@ -697,11 +756,12 @@ export class OpenSpecFormatGenerator {
    */
   private addScenario(lines: string[], scenario: Scenario): void {
     lines.push(`#### Scenario: ${this.formatRequirementName(scenario.name)}`);
-    lines.push(`- **GIVEN** ${scenario.given}`);
-    lines.push(`- **WHEN** ${scenario.when}`);
-    lines.push(`- **THEN** ${scenario.then}`);
+    lines.push(`- **GIVEN** ${scenario.given ?? 'the system is in a valid state'}`);
+    lines.push(`- **WHEN** ${scenario.when ?? 'the operation is invoked'}`);
+    lines.push(`- **THEN** ${scenario.then ?? 'the expected outcome occurs'}`);
     if (scenario.and && scenario.and.length > 0) {
-      for (const andClause of scenario.and) {
+      const andClauses = Array.isArray(scenario.and) ? scenario.and : [scenario.and];
+      for (const andClause of andClauses) {
         lines.push(`- **AND** ${andClause}`);
       }
     }
@@ -711,7 +771,8 @@ export class OpenSpecFormatGenerator {
   /**
    * Format a requirement name (PascalCase, no spaces)
    */
-  private formatRequirementName(name: string): string {
+  private formatRequirementName(name: string | undefined): string {
+    if (!name) return 'Unnamed';
     return name
       .split(/[\s_-]+/)
       .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
@@ -779,10 +840,11 @@ export class OpenSpecFormatGenerator {
   /**
    * Wrap text at max line width
    */
-  private wrapText(text: string): string {
+  private wrapText(text: unknown): string {
     if (!text) return '';
+    const str = typeof text === 'string' ? text : JSON.stringify(text);
 
-    const words = text.split(/\s+/);
+    const words = str.split(/\s+/);
     const lines: string[] = [];
     let currentLine = '';
 

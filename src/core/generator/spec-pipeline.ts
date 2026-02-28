@@ -345,7 +345,11 @@ export class SpecGenerationPipeline {
         totalTokens += result.tokens;
         completedStages.push('survey');
       } else {
-        logger.warning('Survey stage failed, using defaults');
+        const errorMsg = result.error ?? 'Unknown error';
+        logger.warning(`Survey stage failed: ${errorMsg}`);
+        if (errorMsg.includes('Unauthorized') || errorMsg.includes('401') || errorMsg.includes('403')) {
+          throw new Error(`API authentication failed: ${errorMsg}. Check your API key (OPENAI_COMPAT_API_KEY, ANTHROPIC_API_KEY, etc.)`);
+        }
         survey = this.getDefaultSurvey(repoStructure);
         skippedStages.push('survey');
       }

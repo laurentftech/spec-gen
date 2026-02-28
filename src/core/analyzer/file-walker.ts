@@ -385,7 +385,7 @@ export class FileWalker {
   /**
    * Check if we should skip a directory
    */
-  private shouldSkipDirectory(dirName: string, depth: number): boolean {
+  private shouldSkipDirectory(dirName: string, depth: number, relativeDir?: string): boolean {
     // Always skip these directories
     if (SKIP_DIRECTORIES.has(dirName)) {
       return true;
@@ -394,6 +394,16 @@ export class FileWalker {
     // Skip these only when not at root
     if (depth > 0 && SKIP_DIRECTORIES_NOT_ROOT.has(dirName)) {
       return true;
+    }
+
+    // Check exclude patterns against relative path
+    if (relativeDir) {
+      for (const pattern of this.options.excludePatterns) {
+        const normalized = pattern.replace(/\/\*\*$/, '').replace(/\/$/, '');
+        if (relativeDir === normalized || relativeDir.startsWith(normalized + '/')) {
+          return true;
+        }
+      }
     }
 
     return false;
@@ -408,9 +418,10 @@ export class FileWalker {
       return true;
     }
 
-    // Check additional exclude patterns
+    // Check exclude patterns against relative path
     for (const pattern of this.options.excludePatterns) {
-      if (relativePath.includes(pattern) || fileName.includes(pattern)) {
+      const normalized = pattern.replace(/\/\*\*$/, '').replace(/\/$/, '');
+      if (relativePath === normalized || relativePath.startsWith(normalized + '/')) {
         return true;
       }
     }
@@ -465,13 +476,13 @@ export class FileWalker {
         if (this.options.signal.aborted) break;
         if (this.files.length >= this.options.maxFiles) break;
 
-        if (this.shouldSkipDirectory(entry.name, depth)) {
+        const subPath = join(dirPath, entry.name);
+        const relativeSubPath = relative(this.rootPath, subPath);
+
+        if (this.shouldSkipDirectory(entry.name, depth, relativeSubPath)) {
           this.recordSkip(`directory:${entry.name}`);
           continue;
         }
-
-        const subPath = join(dirPath, entry.name);
-        const relativeSubPath = relative(this.rootPath, subPath);
 
         // Check against ignore patterns
         if (this.ig && this.ig.ignores(relativeSubPath + '/')) {
