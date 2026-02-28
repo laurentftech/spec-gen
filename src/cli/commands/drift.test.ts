@@ -218,6 +218,8 @@ describe('drift command', () => {
         stale: 1,
         uncovered: 3,
         orphanedSpecs: 0,
+        adrGaps: 0,
+        adrOrphaned: 0,
         total: 6,
       };
 

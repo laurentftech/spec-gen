@@ -1,88 +1,12 @@
 # spec-gen
 
-> Reverse-engineer OpenSpec specifications from existing codebases — then keep them in sync as code evolves.
+Reverse-engineer [OpenSpec](https://github.com/Fission-AI/OpenSpec) specifications from existing codebases, then keep them in sync as code evolves.
 
-**"Archaeology over Creativity"** — Extract the truth of what your code does, grounded in static analysis. Not what you imagine it should do.
+## The Problem
 
-## Why This Exists
+Most software has no specification. The code is the spec, scattered across thousands of files, tribal knowledge, and stale documentation. Tools like `openspec init` create empty scaffolding, but someone still has to write everything. By the time specs are written manually, the code has already changed.
 
-Most real-world software has no specification. The code *is* the spec — scattered across thousands of files, tribal knowledge, and stale documentation. When teams adopt AI-assisted development (Claude Code, Cursor, Copilot), the velocity of code change accelerates, but the understanding of *what the system is supposed to do* doesn't keep up.
-
-**spec-gen bridges this gap.** It reverse-engineers [OpenSpec](https://github.com/Fission-AI/OpenSpec) specifications from existing codebases, then provides continuous drift detection to ensure specs stay in sync as code evolves.
-
-### The Brownfield Problem
-
-Greenfield projects can write specs first. But what about the 99% of teams with existing systems?
-
-- `openspec init` creates empty scaffolding — you still have to write everything
-- Manually documenting thousands of lines of existing logic is tedious and error-prone
-- By the time specs are written, the code has already changed
-
-**spec-gen automates the reverse-engineering process and enforces ongoing accuracy.**
-
-## Where spec-gen Fits: The AI Development Workflow
-
-For teams using Claude Code and OpenSpec for spec-driven development, spec-gen fills a critical role across three phases:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    AI Development Workflow                       │
-│                                                                 │
-│   PLAN                    REFLECT                ACT            │
-│   Context Engineering     Compound Learning      Spec-Driven    │
-│                                                  Execution      │
-│   ┌─────────────────┐    ┌────────────────┐    ┌─────────────┐ │
-│   │ spec-gen        │    │ spec-gen       │    │ OpenSpec     │ │
-│   │ analyze         │───>│ drift          │───>│ specs guide  │ │
-│   │                 │    │                │    │ development  │ │
-│   │ Discovery:      │    │ Learning:      │    │              │ │
-│   │ - File walker   │    │ - What changed │    │ Execution:   │ │
-│   │ - Dep graph     │    │ - What drifted │    │ - Specs as   │ │
-│   │ - Domain        │    │ - What's stale │    │   contracts  │ │
-│   │   clustering    │    │ - What's new   │    │ - AI reads   │ │
-│   │ - Significance  │    │                │    │   specs for  │ │
-│   │   scoring       │    │ Feed insights  │    │   context    │ │
-│   │                 │    │ back into      │    │ - Specs      │ │
-│   │ Build better    │    │ specs          │    │   constrain  │ │
-│   │ inputs for AI   │    │                │    │   AI output  │ │
-│   └─────────────────┘    └────────────────┘    └─────────────┘ │
-│                                                                 │
-│   No API key needed       Deterministic or       OpenSpec +     │
-│   Pure static analysis    LLM-enhanced           Claude Code    │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Phase 1: Plan (Context Engineering)
-
-**spec-gen analyze** builds a rich understanding of your codebase through pure static analysis — no API key needed:
-
-- Discovers files, respecting .gitignore, scoring each by significance
-- Parses imports/exports to build a dependency graph
-- Clusters related files into business domains automatically
-- Produces structured context that makes LLM generation dramatically better
-
-This is *context engineering* — making better inputs through extensive research, discovery, and organization.
-
-### Phase 2: Reflect (Compound Learning)
-
-**spec-gen drift** answers: "What did we learn from this?" After every code change, drift detection tells you:
-
-- Which code changed but specs weren't updated (gaps)
-- Which specs reference deleted or renamed files (stale)
-- Which new files have no spec coverage (uncovered)
-- Which specs reference files that no longer exist (orphaned)
-
-This creates a compound learning loop — every change feeds back into better specs, which feed back into better AI context.
-
-### Phase 3: Act (Spec-Driven Execution)
-
-**OpenSpec specs** become the contract that guides development. When Claude Code reads your specs, it understands:
-
-- What the system is supposed to do (requirements with SHALL/MUST/SHOULD)
-- How it should behave (Given/When/Then scenarios)
-- Where things are implemented (technical notes with file paths)
-
-Specs constrain AI output. Instead of guessing, the AI builds against a verified specification.
+spec-gen automates this. It analyzes your codebase through static analysis, generates structured specifications using an LLM, and continuously detects when code and specs fall out of sync.
 
 ## Quick Start
 
@@ -95,51 +19,173 @@ npm install && npm run build && npm link
 # Navigate to your project
 cd /path/to/your-project
 
-# Run the full pipeline
-spec-gen init       # Initialize configuration
+# Run the pipeline
+spec-gen init       # Detect project type, create config
 spec-gen analyze    # Static analysis (no API key needed)
 spec-gen generate   # Generate specs (requires API key)
-spec-gen verify     # Verify accuracy
 spec-gen drift      # Check for spec drift
 ```
 
-## Requirements
+## What It Does
 
-- **Node.js 20+**
-- **API Key** (for generate, verify, and drift --use-llm):
-  ```bash
-  export ANTHROPIC_API_KEY=sk-ant-...
-  # or
-  export OPENAI_API_KEY=sk-...
-  ```
+**1. Analyze** (no API key needed)
 
-> **Note**: `analyze`, `drift` (default mode), and `init` require no API key. Only spec generation, verification, and LLM-enhanced drift detection need one.
+Scans your codebase using pure static analysis:
+- Walks the directory tree, respects .gitignore, scores files by significance
+- Parses imports and exports to build a dependency graph
+- Clusters related files into business domains automatically
+- Produces structured context that makes LLM generation more accurate
 
-### Custom LLM Endpoints (Enterprise / Local Servers)
+**2. Generate** (API key required)
 
-spec-gen supports custom OpenAI-compatible API endpoints for local models and enterprise servers. Configuration is available through three methods, applied in priority order:
+Sends the analysis context to an LLM to produce specifications:
+- Stage 1: Project survey and categorization
+- Stage 2: Entity extraction (core data models)
+- Stage 3: Service analysis (business logic)
+- Stage 4: API extraction (HTTP endpoints)
+- Stage 5: Architecture synthesis (overall structure)
+- Stage 6: ADR enrichment (Architecture Decision Records, with `--adr`)
 
-**1. CLI flags** (highest priority — per-invocation):
+**3. Verify** (API key required)
+
+Tests generated specs by predicting file contents from specs alone, then comparing predictions to actual code. Reports an accuracy score and identifies gaps.
+
+**4. Drift Detection** (no API key needed)
+
+Compares git changes against spec file mappings to find divergence:
+- **Gap**: Code changed but its spec was not updated
+- **Stale**: Spec references deleted or renamed files
+- **Uncovered**: New files with no matching spec domain
+- **Orphaned**: Spec declares files that no longer exist
+- **ADR gap**: Code changed in a domain referenced by an ADR
+- **ADR orphaned**: ADR references domains that no longer exist in specs
+
+## Drift Detection
+
+Drift detection is the core of ongoing spec maintenance. It runs in milliseconds, needs no API key, and works entirely from git diffs and spec file mappings.
+
+```bash
+$ spec-gen drift
+
+  Spec Drift Detection
+
+  Analyzing git changes...
+  Base ref: main
+  Branch: feature/add-notifications
+  Changed files: 12
+
+  Loading spec mappings...
+  Spec domains: 6
+  Mapped source files: 34
+
+  Detecting drift...
+
+   Issues Found: 3
+
+   [ERROR] gap: src/services/user-service.ts
+      Spec: openspec/specs/user/spec.md
+      File changed (+45/-12 lines) but spec was not updated
+
+   [WARNING] uncovered: src/services/email-queue.ts
+      New file has no matching spec domain
+
+   [INFO] adr-gap: openspec/decisions/adr-0001-jwt-auth.md
+      Code changed in domain(s) auth referenced by ADR-001
+
+   Summary:
+     Gaps: 2
+     Uncovered: 1
+     ADR gaps: 1
+```
+
+### ADR Drift Detection
+
+When `openspec/decisions/` contains Architecture Decision Records, drift detection automatically checks whether code changes affect domains referenced by ADRs. ADR issues are reported at `info` severity since code changes rarely invalidate architectural decisions. Superseded and deprecated ADRs are excluded.
+
+### LLM-Enhanced Mode
+
+Static drift detection catches structural changes but cannot tell whether a change actually affects spec-documented behavior. A variable rename triggers the same alert as a genuine behavior change.
+
+`--use-llm` post-processes gap issues by sending each file's diff and its matching spec to the LLM. The LLM classifies each gap as relevant (keeps the alert) or not relevant (downgrades to info). This reduces false positives.
+
+```bash
+spec-gen drift              # Static mode: fast, deterministic
+spec-gen drift --use-llm    # LLM-enhanced: fewer false positives
+```
+
+## CI/CD Integration
+
+spec-gen is designed to run in automated pipelines. The deterministic commands (`init`, `analyze`, `drift`) need no API key and produce consistent results.
+
+### Pre-Commit Hook
+
+```bash
+spec-gen drift --install-hook     # Install
+spec-gen drift --uninstall-hook   # Remove
+```
+
+The hook runs in static mode (fast, no API key needed) and blocks commits when drift is detected at warning level or above.
+
+### GitHub Actions / CI Pipelines
+
+```yaml
+# .github/workflows/spec-drift.yml
+name: Spec Drift Check
+on: [pull_request]
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # Full history needed for git diff
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install -g spec-gen
+      - run: spec-gen drift --fail-on error --json
+```
+
+```bash
+# Or in any CI script
+spec-gen drift --fail-on error --json    # JSON output, fail on errors only
+spec-gen drift --fail-on warning         # Fail on warnings too
+spec-gen drift --domains auth,user       # Check specific domains
+spec-gen drift --no-color                # Plain output for CI logs
+```
+
+### Deterministic vs. LLM-Enhanced
+
+| | Deterministic (Default) | LLM-Enhanced |
+|---|---|---|
+| **API key** | No | Yes |
+| **Speed** | Milliseconds | Seconds per LLM call |
+| **Commands** | `analyze`, `drift`, `init` | `generate`, `verify`, `drift --use-llm` |
+| **Reproducibility** | Identical every run | May vary |
+| **Best for** | CI, pre-commit hooks, quick checks | Initial generation, reducing false positives |
+
+## Custom LLM Endpoints
+
+spec-gen works with any OpenAI-compatible API endpoint. Configuration is available through three methods, in priority order:
+
+**1. CLI flags** (per-invocation):
 ```bash
 spec-gen generate --api-base http://localhost:8000/v1
 spec-gen generate --api-base http://localhost:8000/v1 --insecure
-spec-gen verify --api-base https://internal-llm.corp.net/v1
 ```
 
 **2. Environment variables** (per-session):
 ```bash
-# For OpenAI-compatible servers (vLLM, Ollama, LiteLLM, etc.)
 export OPENAI_API_BASE=http://localhost:8000/v1
-export OPENAI_API_KEY=dummy-key    # Most local servers require any non-empty key
+export OPENAI_API_KEY=dummy-key
 
-# For Anthropic-compatible endpoints
+# Or for Anthropic-compatible endpoints
 export ANTHROPIC_API_BASE=https://internal-proxy.corp.net/v1
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-**3. Config file** (persistent per-project):
+**3. Config file** (per-project):
 ```json
-// .spec-gen/config.json
 {
   "llm": {
     "apiBase": "http://localhost:8000/v1",
@@ -148,290 +194,106 @@ export ANTHROPIC_API_KEY=sk-ant-...
 }
 ```
 
-**Priority order:** CLI flags > environment variables > config file > provider defaults.
+Priority: CLI flags > environment variables > config file > provider defaults.
 
-**Compatible servers:** vLLM, Ollama, LiteLLM, Azure OpenAI, text-generation-inference, LocalAI, and any OpenAI-compatible endpoint.
-
-## Deterministic vs. LLM-Enhanced
-
-spec-gen distinguishes between two modes of operation:
-
-| | Deterministic (Default) | LLM-Enhanced |
-|---|---|---|
-| **API key required** | No | Yes |
-| **Speed** | Fast (milliseconds) | Slower (seconds per LLM call) |
-| **Commands** | `analyze`, `drift`, `init` | `generate`, `verify`, `drift --use-llm` |
-| **How it works** | Static analysis, git diffing, pattern matching | Sends code context to Claude/GPT for semantic understanding |
-| **Reproducibility** | Identical results every run | May vary between runs |
-| **Best for** | CI pipelines, pre-commit hooks, quick checks | Initial spec generation, reducing false positives, deep analysis |
-
-**The default is always deterministic.** You opt into LLM features explicitly when you need deeper understanding.
-
-### When to Use `--use-llm` with Drift Detection
-
-Static drift detection catches structural changes — file X changed, spec Y wasn't updated. But it can't tell whether the change actually affects spec-documented behavior. A variable rename, a comment change, or an internal refactor triggers the same alert as a genuine behavior change.
-
-`--use-llm` post-processes gap issues by sending each file's diff and its matching spec to the LLM:
-
-```bash
-# Static mode (default) — fast, deterministic, great for CI
-spec-gen drift
-
-# LLM-enhanced — reduces false positives by classifying changes semantically
-spec-gen drift --use-llm
-```
-
-The LLM classifies each gap as either:
-- **Relevant**: The change affects spec-documented behavior (keeps the alert)
-- **Not relevant**: Internal change like refactoring, formatting, or comments (downgrades to info)
-
-This means fewer false alerts and more signal when specs genuinely need updating.
-
-## Drift Detection In Action
-
-Here's what spec drift detection looks like on a real project:
-
-```bash
-$ spec-gen drift
-
-  Spec Drift Detection
-
-  ✓ Analyzing git changes...
-  ℹ Base ref: main
-  ℹ Branch: feature/add-notifications
-  ℹ Changed files: 12
-
-  ✓ Loading spec mappings...
-  ℹ Spec domains: 6
-  ℹ Mapped source files: 34
-
-  ⚡ Detecting drift...
-
-   Issues Found: 4
-
-   ✗ [ERROR] gap: src/services/user-service.ts
-      Spec: openspec/specs/user/spec.md
-      File `src/services/user-service.ts` changed (+45/-12 lines) but spec `openspec/specs/user/spec.md` was not updated
-      +45/-12 lines
-      -> Review the user spec to ensure it still accurately describes the behavior in src/services/user-service.ts
-
-   ⚠ [WARNING] gap: src/models/notification.ts
-      Spec: openspec/specs/notifications/spec.md
-      File `src/models/notification.ts` changed (+28/-3 lines) but spec `openspec/specs/notifications/spec.md` was not updated
-      +28/-3 lines
-      -> Review the notifications spec to ensure it still accurately describes the behavior in src/models/notification.ts
-
-   ⚠ [WARNING] uncovered: src/services/email-queue.ts
-      New file `src/services/email-queue.ts` has no matching spec domain
-      +89/-0 lines
-      -> Consider adding `src/services/email-queue.ts` to an existing spec domain or creating a new spec
-
-   → [INFO] gap: src/utils/format-date.ts
-      Spec: openspec/specs/user/spec.md
-      -> Review the user spec to ensure it still accurately describes the behavior in src/utils/format-date.ts
-
-   ──────────────────────────────────────
-
-   Summary:
-     Gaps: 3
-     Uncovered: 1
-
-  ℹ Duration: 0.3s
-
-  ✗ Drift detected: 1 error, 2 warnings
-```
-
-With `--use-llm`, that info-level gap on `format-date.ts` (a utility rename) would be automatically dismissed as not spec-relevant, while the error on `user-service.ts` (new notification triggers) would be enriched with the LLM's reasoning.
-
-### Pre-Commit Hook
-
-Install drift detection as a pre-commit hook to catch drift before it reaches the repository:
-
-```bash
-# Install
-spec-gen drift --install-hook
-
-# The hook runs in static mode (fast, no LLM, no API key needed)
-# Blocks commits when drift is detected at warning level or above
-
-# Remove
-spec-gen drift --uninstall-hook
-```
-
-### CI/CD Integration
-
-```bash
-# In your CI pipeline
-spec-gen drift --json --fail-on error
-
-# Only block on errors, allow warnings
-spec-gen drift --fail-on error
-
-# Check specific domains
-spec-gen drift --domains auth,user
-```
+Compatible with vLLM, Ollama, LiteLLM, Azure OpenAI, text-generation-inference, LocalAI, and any OpenAI-compatible server.
 
 ## Commands
 
 | Command | Description | API Key |
 |---------|-------------|---------|
-| `spec-gen` / `spec-gen run` | Full pipeline: init → analyze → generate | Yes |
 | `spec-gen init` | Initialize configuration | No |
-| `spec-gen analyze` | Run static analysis only | No |
-| `spec-gen generate` | Generate specs from analysis (add `--adr` for ADRs) | Yes |
+| `spec-gen analyze` | Run static analysis | No |
+| `spec-gen generate` | Generate specs from analysis | Yes |
+| `spec-gen generate --adr` | Also generate Architecture Decision Records | Yes |
 | `spec-gen verify` | Verify spec accuracy | Yes |
 | `spec-gen drift` | Detect spec drift (static) | No |
 | `spec-gen drift --use-llm` | Detect spec drift (LLM-enhanced) | Yes |
+| `spec-gen run` | Full pipeline: init, analyze, generate | Yes |
 
 ### Global Options
 
-These options apply to all commands:
-
 ```bash
-spec-gen [command] [options]
-  --api-base <url>       # Custom LLM API base URL (for OpenAI-compatible servers)
-  --insecure             # Disable SSL certificate verification
-  --config <path>        # Path to config file (default: .spec-gen/config.json)
-  -q, --quiet            # Minimal output (errors only)
-  -v, --verbose          # Show debug information
-  --no-color             # Disable colored output (also enables timestamps)
+--api-base <url>       # Custom LLM API base URL
+--insecure             # Disable SSL certificate verification
+--config <path>        # Config file path (default: .spec-gen/config.json)
+-q, --quiet            # Errors only
+-v, --verbose          # Debug output
+--no-color             # Plain text output (enables timestamps)
 ```
 
-| Option | Affects | Description |
-|--------|---------|-------------|
-| `--api-base` | `generate`, `verify`, `drift --use-llm` | Override the LLM provider endpoint URL |
-| `--insecure` | `generate`, `verify`, `drift --use-llm` | Skip TLS certificate checks (self-signed certs) |
-| `--config` | All commands | Use alternate config file path |
-| `--quiet` | All commands | Only show errors |
-| `--verbose` | All commands | Show debug output |
-| `--no-color` | All commands | Plain text output (useful for CI logs) |
+### Drift Options
 
-### Command Options
-
-**Drift Detection:**
 ```bash
 spec-gen drift [options]
-  --base <ref>           # Git ref to compare against (default: auto-detect main/master)
+  --base <ref>           # Git ref to compare against (default: auto-detect)
   --files <paths>        # Specific files to check (comma-separated)
   --domains <list>       # Only check specific domains
-  --use-llm              # Use LLM for semantic analysis (reduces false positives)
-  --json                 # Output results as JSON
-  --fail-on <severity>   # Exit non-zero threshold: error, warning, info (default: warning)
-  --max-files <n>        # Maximum changed files to analyze (default: 100)
-  --verbose              # Show detailed issue information
-  --install-hook         # Install as git pre-commit hook
+  --use-llm              # LLM semantic analysis
+  --json                 # JSON output
+  --fail-on <severity>   # Exit non-zero threshold: error, warning, info
+  --max-files <n>        # Max changed files to analyze (default: 100)
+  --install-hook         # Install pre-commit hook
   --uninstall-hook       # Remove pre-commit hook
 ```
 
-**Full Pipeline (`run`):**
-```bash
-spec-gen run [options]
-  --force          # Reinitialize even if config exists
-  --reanalyze      # Force fresh analysis
-  --model <name>   # LLM model (default: claude-sonnet-4-20250514)
-  --dry-run        # Show what would be done
-  -y, --yes        # Skip confirmation prompts
-  --max-files <n>  # Maximum files to analyze (default: 500)
-  --adr            # Also generate Architecture Decision Records
-```
+### Generate Options
 
-**Analyze:**
-```bash
-spec-gen analyze [options]
-  --output <path>   # Output directory (default: .spec-gen/analysis/)
-  --max-files <n>   # Maximum files to analyze (default: 500)
-  --include <glob>  # Additional patterns to include
-  --exclude <glob>  # Additional patterns to exclude
-```
-
-**Generate:**
 ```bash
 spec-gen generate [options]
-  --model <name>     # LLM model to use
-  --dry-run          # Preview without writing
-  --domains <list>   # Only generate specific domains
-  --merge            # Merge with existing specs
-  --no-overwrite     # Skip existing files
-  --adr              # Also generate Architecture Decision Records
-  --adr-only         # Generate only ADRs (skip specs)
+  --model <name>         # LLM model to use
+  --dry-run              # Preview without writing
+  --domains <list>       # Only generate specific domains
+  --merge                # Merge with existing specs
+  --no-overwrite         # Skip existing files
+  --adr                  # Also generate ADRs
+  --adr-only             # Generate only ADRs
 ```
 
-**Verify:**
+### Analyze Options
+
+```bash
+spec-gen analyze [options]
+  --output <path>        # Output directory (default: .spec-gen/analysis/)
+  --max-files <n>        # Max files (default: 500)
+  --include <glob>       # Additional include patterns
+  --exclude <glob>       # Additional exclude patterns
+```
+
+### Verify Options
+
 ```bash
 spec-gen verify [options]
-  --samples <n>       # Number of files to verify (default: 5)
-  --threshold <0-1>   # Minimum score to pass (default: 0.7)
-  --files <paths>     # Specific files to verify (comma-separated)
-  --domains <list>    # Only verify specific domains
-  --verbose           # Show detailed comparison
-  --json              # Output as JSON
+  --samples <n>          # Files to verify (default: 5)
+  --threshold <0-1>      # Minimum score to pass (default: 0.7)
+  --files <paths>        # Specific files to verify
+  --domains <list>       # Only verify specific domains
+  --json                 # JSON output
 ```
-
-## How It Works
-
-### 1. Static Analysis (No API Key)
-
-- **File Discovery**: Walks the directory tree, respecting .gitignore
-- **Significance Scoring**: Ranks files by importance (schemas > services > utilities)
-- **Import/Export Parsing**: Builds a dependency graph
-- **Cluster Detection**: Groups related files into business domains
-
-### 2. LLM Generation (API Key Required)
-
-Using the analysis as context, spec-gen queries an LLM to extract specifications:
-
-- **Stage 1**: Project Survey — Quick categorization
-- **Stage 2**: Entity Extraction — Core data models
-- **Stage 3**: Service Analysis — Business logic
-- **Stage 4**: API Extraction — HTTP endpoints
-- **Stage 5**: Architecture Synthesis — Overall structure
-- **Stage 6**: ADR Enrichment — Architecture Decision Records (with `--adr` flag)
-
-### 3. Verification
-
-Tests generated specs by predicting file contents from specs alone:
-
-- Selects files NOT used in generation
-- LLM predicts what each file should contain
-- Compares predictions to actual code
-- Reports accuracy score and identifies gaps
-
-### 4. Drift Detection
-
-Compares git changes against spec file mappings to find divergence:
-
-- **Gap**: Code changed but its spec wasn't updated
-- **Stale**: Spec references deleted or renamed files
-- **Uncovered**: New files with no matching spec domain
-- **Orphaned**: Spec declares files that no longer exist
 
 ## Output
 
-spec-gen writes directly to OpenSpec's structure:
+spec-gen writes to the OpenSpec directory structure:
 
 ```
 openspec/
-├── config.yaml              # Project context and metadata
-├── specs/
-│   ├── overview/spec.md     # System overview
-│   ├── user/spec.md         # Domain: User management
-│   ├── order/spec.md        # Domain: Order processing
-│   ├── auth/spec.md         # Domain: Authentication
-│   ├── architecture/spec.md # System architecture
-│   └── api/spec.md          # API specification
-└── decisions/               # Architecture Decision Records (with --adr)
-    ├── index.md             # Table of all ADRs with links
-    ├── adr-0001-*.md        # Individual ADR files
-    └── ...
+  config.yaml                # Project metadata
+  specs/
+    overview/spec.md         # System overview
+    architecture/spec.md     # Architecture
+    auth/spec.md             # Domain: Authentication
+    user/spec.md             # Domain: User management
+    api/spec.md              # API specification
+  decisions/                 # With --adr flag
+    index.md                 # ADR index
+    adr-0001-*.md            # Individual decisions
 ```
 
-Each spec follows OpenSpec conventions:
-- Requirements with RFC 2119 keywords (SHALL, MUST, SHOULD)
-- Scenarios in Given/When/Then format
-- Technical notes linking to implementation files
-- Source file declarations for drift detection mapping
+Each spec uses RFC 2119 keywords (SHALL, MUST, SHOULD), Given/When/Then scenarios, and technical notes linking to implementation files.
 
-### Analysis Artifacts (.spec-gen/analysis/)
+### Analysis Artifacts
+
+Static analysis output is stored in `.spec-gen/analysis/`:
 
 | File | Description |
 |------|-------------|
@@ -439,7 +301,7 @@ Each spec follows OpenSpec conventions:
 | `dependency-graph.json` | Import/export relationships |
 | `llm-context.json` | Context prepared for LLM |
 | `dependencies.mermaid` | Visual dependency graph |
-| `SUMMARY.md` | Human-readable analysis |
+| `SUMMARY.md` | Human-readable analysis summary |
 
 ## Configuration
 
@@ -462,9 +324,7 @@ Each spec follows OpenSpec conventions:
 }
 ```
 
-### Optional: Custom LLM Configuration
-
-Add an `llm` block to configure custom endpoints. This section is entirely optional — when omitted, spec-gen uses the default Anthropic or OpenAI endpoints.
+Add an optional `llm` block for custom endpoints:
 
 ```json
 {
@@ -475,61 +335,27 @@ Add an `llm` block to configure custom endpoints. This section is entirely optio
 }
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `llm.apiBase` | `string` | Provider default | Custom API base URL |
-| `llm.sslVerify` | `boolean` | `true` | Verify SSL certificates |
-
 ### Environment Variables
 
 | Variable | Description |
 |----------|-------------|
-| `ANTHROPIC_API_KEY` | Anthropic API key (used by default when set) |
-| `OPENAI_API_KEY` | OpenAI API key (used when Anthropic key is not set) |
-| `ANTHROPIC_API_BASE` | Custom Anthropic-compatible endpoint URL |
-| `OPENAI_API_BASE` | Custom OpenAI-compatible endpoint URL |
-| `DEBUG` | Set to any value to enable stack traces on errors |
-| `CI` | Automatically detected; enables timestamps in output |
+| `ANTHROPIC_API_KEY` | Anthropic API key (used by default) |
+| `OPENAI_API_KEY` | OpenAI API key (fallback) |
+| `ANTHROPIC_API_BASE` | Custom Anthropic-compatible endpoint |
+| `OPENAI_API_BASE` | Custom OpenAI-compatible endpoint |
+| `DEBUG` | Enable stack traces on errors |
+| `CI` | Auto-detected; enables timestamps in output |
 
-## Usage Options
+## Requirements
 
-spec-gen provides 4 ways to reverse-engineer specifications:
-
-### Option 1: CLI Tool (Recommended)
-
-The full-featured command-line tool with static analysis, LLM generation, verification, and drift detection.
-
-```bash
-spec-gen init && spec-gen analyze && spec-gen generate && spec-gen drift --install-hook
-```
-
-### Option 2: Claude Code Skill
-
-For Claude Code users, copy `skills/claude-spec-gen.md` to `.claude/skills/` in your project:
-
-```
-"Run spec-gen on this codebase"
-"Generate OpenSpec specifications for the user domain"
-"Check for spec drift"
-```
-
-### Option 3: OpenSpec Native Skill
-
-For OpenSpec's built-in skill system:
-
-```bash
-cp skills/openspec-skill.md /path/to/openspec/skills/
-```
-
-### Option 4: Direct LLM Prompting
-
-Copy `AGENTS.md` as a system prompt for any LLM (ChatGPT, Claude, etc.):
-
-```
-1. Paste contents of AGENTS.md
-2. Ask: "Analyze this codebase and generate OpenSpec specs"
-3. Provide file contents or let it explore
-```
+- Node.js 20+
+- API key for `generate`, `verify`, and `drift --use-llm`:
+  ```bash
+  export ANTHROPIC_API_KEY=sk-ant-...
+  # or
+  export OPENAI_API_KEY=sk-...
+  ```
+- `analyze`, `drift`, and `init` require no API key
 
 ## Supported Languages
 
@@ -539,15 +365,28 @@ Copy `AGENTS.md` as a system prompt for any LLM (ChatGPT, Claude, etc.):
 | Python | Basic |
 | Go | Basic |
 
-The tool works best with TypeScript projects due to richer type information.
+TypeScript projects get the best results due to richer type information.
+
+## Usage Options
+
+**CLI Tool** (recommended):
+```bash
+spec-gen init && spec-gen analyze && spec-gen generate && spec-gen drift --install-hook
+```
+
+**Claude Code Skill**: Copy `skills/claude-spec-gen.md` to `.claude/skills/` in your project.
+
+**OpenSpec Skill**: Copy `skills/openspec-skill.md` to your OpenSpec skills directory.
+
+**Direct LLM Prompting**: Use `AGENTS.md` as a system prompt for any LLM.
 
 ## Examples
 
 | Example | Description |
 |---------|-------------|
-| [examples/openspec-analysis/](examples/openspec-analysis/) | Static analysis output from running `spec-gen analyze` on the OpenSpec CLI |
-| [examples/openspec-cli/](examples/openspec-cli/) | Full OpenSpec specifications generated with `spec-gen generate` |
-| [examples/drift-demo/](examples/drift-demo/) | A sample project configured for drift detection |
+| [examples/openspec-analysis/](examples/openspec-analysis/) | Static analysis output from `spec-gen analyze` |
+| [examples/openspec-cli/](examples/openspec-cli/) | Specifications generated with `spec-gen generate` |
+| [examples/drift-demo/](examples/drift-demo/) | Sample project configured for drift detection |
 
 ## Development
 
@@ -555,22 +394,19 @@ The tool works best with TypeScript projects due to richer type information.
 npm install          # Install dependencies
 npm run dev          # Development mode (watch)
 npm run build        # Build
-npm run test:run     # Run tests (891 unit tests)
+npm run test:run     # Run tests (919 unit tests)
 npm run typecheck    # Type check
 ```
 
-### Test Suite
-
-- **891 unit tests** covering all modules including drift detection, spec mapping, LLM enhancement, static analysis, and ADR generation
-- **27 end-to-end tests** for drift detection (gap detection, stale specs, uncovered files, orphaned specs, JSON output, pre-commit hooks, domain filtering, LLM flag handling)
+919 unit tests covering static analysis, spec mapping, drift detection, LLM enhancement, ADR generation, and the full CLI.
 
 ## Links
 
-- [OpenSpec](https://github.com/Fission-AI/OpenSpec) — The spec-driven development framework
-- [AGENTS.md](AGENTS.md) — LLM system prompt for direct prompting
-- [Architecture](docs/ARCHITECTURE.md) — Internal design and module organization
-- [Algorithms](docs/ALGORITHMS.md) — Analysis algorithms explained
-- [OpenSpec Integration](docs/OPENSPEC-INTEGRATION.md) — How spec-gen integrates with the OpenSpec ecosystem
-- [OpenSpec Format](docs/OPENSPEC-FORMAT.md) — Spec format reference
-- [Philosophy](docs/PHILOSOPHY.md) — "Archaeology over Creativity" explained
-- [Troubleshooting](docs/TROUBLESHOOTING.md) — Common issues and solutions
+- [OpenSpec](https://github.com/Fission-AI/OpenSpec) - Spec-driven development framework
+- [Architecture](docs/ARCHITECTURE.md) - Internal design and module organization
+- [Algorithms](docs/ALGORITHMS.md) - Analysis algorithms
+- [OpenSpec Integration](docs/OPENSPEC-INTEGRATION.md) - How spec-gen integrates with OpenSpec
+- [OpenSpec Format](docs/OPENSPEC-FORMAT.md) - Spec format reference
+- [Philosophy](docs/PHILOSOPHY.md) - "Archaeology over Creativity"
+- [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
+- [AGENTS.md](AGENTS.md) - LLM system prompt for direct prompting

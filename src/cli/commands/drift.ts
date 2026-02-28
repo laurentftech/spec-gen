@@ -15,6 +15,7 @@ import {
   getChangedFiles,
   isGitRepository,
   buildSpecMap,
+  buildADRMap,
   detectDrift,
 } from '../../core/drift/index.js';
 import { createLLMService } from '../../core/services/llm-service.js';
@@ -73,6 +74,8 @@ function kindLabel(kind: string): string {
     case 'stale': return 'stale';
     case 'uncovered': return 'uncovered';
     case 'orphaned-spec': return 'orphaned';
+    case 'adr-gap': return 'adr-gap';
+    case 'adr-orphaned': return 'adr-orphaned';
     default: return kind;
   }
 }
@@ -110,6 +113,8 @@ function displaySummary(result: DriftResult): void {
   if (result.summary.stale > 0) parts.push(`Stale: ${result.summary.stale}`);
   if (result.summary.uncovered > 0) parts.push(`Uncovered: ${result.summary.uncovered}`);
   if (result.summary.orphanedSpecs > 0) parts.push(`Orphaned: ${result.summary.orphanedSpecs}`);
+  if (result.summary.adrGaps > 0) parts.push(`ADR gaps: ${result.summary.adrGaps}`);
+  if (result.summary.adrOrphaned > 0) parts.push(`ADR orphaned: ${result.summary.adrOrphaned}`);
 
   if (parts.length === 0) {
     console.log('     No issues found');
@@ -467,7 +472,7 @@ Pre-commit hook:
             totalChangedFiles: 0,
             specRelevantFiles: 0,
             issues: [],
-            summary: { gaps: 0, stale: 0, uncovered: 0, orphanedSpecs: 0, total: 0 },
+            summary: { gaps: 0, stale: 0, uncovered: 0, orphanedSpecs: 0, adrGaps: 0, adrOrphaned: 0, total: 0 },
             hasDrift: false,
             duration: Date.now() - startTime,
             mode: 'static',
@@ -509,9 +514,19 @@ Pre-commit hook:
         repoStructurePath: hasRepoStructure ? repoStructurePath : undefined,
       });
 
+      // Build ADR map (if decisions directory exists)
+      const adrMap = await buildADRMap({
+        rootPath,
+        openspecPath,
+        repoStructurePath: hasRepoStructure ? repoStructurePath : undefined,
+      });
+
       if (!opts.json) {
         logger.info('Spec domains', specMap.domainCount);
         logger.info('Mapped source files', specMap.totalMappedFiles);
+        if (adrMap) {
+          logger.info('ADRs tracked', adrMap.byId.size);
+        }
         logger.blank();
       }
 
@@ -531,6 +546,7 @@ Pre-commit hook:
         openspecRelPath: specGenConfig.openspecPath ?? 'openspec',
         llm,
         baseRef: gitResult.resolvedBase,
+        adrMap: adrMap ?? undefined,
       });
 
       // Fill in the base ref and actual total count (before --max-files truncation)

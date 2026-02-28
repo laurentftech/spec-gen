@@ -12,6 +12,8 @@ import {
   inferDomainFromPath,
   buildSpecMap,
   matchFileToDomains,
+  parseADRRelated,
+  buildADRMap,
 } from './spec-mapper.js';
 
 // ============================================================================
@@ -402,5 +404,228 @@ describe('matchFileToDomains', () => {
     const map = await buildSpecMap({ rootPath: tempDir, openspecPath });
     const domains = matchFileToDomains('src/billing/invoice.ts', map);
     expect(domains).toEqual([]);
+  });
+});
+
+// ============================================================================
+// PARSE ADR RELATED TESTS
+// ============================================================================
+
+describe('parseADRRelated', () => {
+  it('should extract domains and layers from Related section', () => {
+    const content = `# ADR-001: Use JWT
+
+## Status
+accepted
+
+## Related
+**Domains**: auth, user
+**Layers**: services, middleware
+`;
+    const result = parseADRRelated(content);
+    expect(result.domains).toEqual(['auth', 'user']);
+    expect(result.layers).toEqual(['services', 'middleware']);
+  });
+
+  it('should handle single domain and layer', () => {
+    const content = `**Domains**: payment\n**Layers**: api`;
+    const result = parseADRRelated(content);
+    expect(result.domains).toEqual(['payment']);
+    expect(result.layers).toEqual(['api']);
+  });
+
+  it('should return empty arrays when no Related section', () => {
+    const content = `# ADR-002: Something\n\n## Status\naccepted\n\n## Context\nSome context.`;
+    const result = parseADRRelated(content);
+    expect(result.domains).toEqual([]);
+    expect(result.layers).toEqual([]);
+  });
+
+  it('should handle extra whitespace in comma-separated values', () => {
+    const content = `**Domains**: auth ,  user , payment\n**Layers**: api ,  services`;
+    const result = parseADRRelated(content);
+    expect(result.domains).toEqual(['auth', 'user', 'payment']);
+    expect(result.layers).toEqual(['api', 'services']);
+  });
+
+  it('should handle domains without layers', () => {
+    const content = `**Domains**: auth, user`;
+    const result = parseADRRelated(content);
+    expect(result.domains).toEqual(['auth', 'user']);
+    expect(result.layers).toEqual([]);
+  });
+
+  it('should handle layers without domains', () => {
+    const content = `**Layers**: middleware`;
+    const result = parseADRRelated(content);
+    expect(result.domains).toEqual([]);
+    expect(result.layers).toEqual(['middleware']);
+  });
+});
+
+// ============================================================================
+// BUILD ADR MAP TESTS
+// ============================================================================
+
+describe('buildADRMap', () => {
+  let tempDir: string;
+  let openspecPath: string;
+
+  beforeEach(async () => {
+    tempDir = await createTempDir();
+    openspecPath = join(tempDir, 'openspec');
+    await mkdir(join(openspecPath, 'decisions'), { recursive: true });
+  });
+
+  afterEach(async () => {
+    try {
+      await rm(tempDir, { recursive: true, force: true });
+    } catch { /* ignore */ }
+  });
+
+  it('should build ADR map from decision files', async () => {
+    await writeFile(join(openspecPath, 'decisions', 'adr-0001-use-jwt.md'), `# ADR-001: Use JWT for Authentication
+
+## Status
+accepted
+
+## Related
+**Domains**: auth, user
+**Layers**: services
+`);
+    await writeFile(join(openspecPath, 'decisions', 'adr-0002-use-postgres.md'), `# ADR-002: Use PostgreSQL
+
+## Status
+accepted
+
+## Related
+**Domains**: payment
+**Layers**: data
+`);
+
+    const result = await buildADRMap({ rootPath: tempDir, openspecPath });
+    expect(result).not.toBeNull();
+    expect(result!.byId.size).toBe(2);
+    expect(result!.byId.has('ADR-001')).toBe(true);
+    expect(result!.byId.has('ADR-002')).toBe(true);
+
+    // Check domain mapping
+    expect(result!.byDomain.get('auth')).toContain('ADR-001');
+    expect(result!.byDomain.get('user')).toContain('ADR-001');
+    expect(result!.byDomain.get('payment')).toContain('ADR-002');
+  });
+
+  it('should skip superseded ADRs', async () => {
+    await writeFile(join(openspecPath, 'decisions', 'adr-0001-old-approach.md'), `# ADR-001: Old Approach
+
+## Status
+superseded
+
+## Related
+**Domains**: auth
+`);
+
+    const result = await buildADRMap({ rootPath: tempDir, openspecPath });
+    expect(result).toBeNull(); // No valid ADRs → null
+  });
+
+  it('should skip deprecated ADRs', async () => {
+    await writeFile(join(openspecPath, 'decisions', 'adr-0001-deprecated.md'), `# ADR-001: Deprecated Approach
+
+## Status
+deprecated
+
+## Related
+**Domains**: auth
+`);
+
+    const result = await buildADRMap({ rootPath: tempDir, openspecPath });
+    expect(result).toBeNull();
+  });
+
+  it('should skip non-ADR files', async () => {
+    await writeFile(join(openspecPath, 'decisions', 'index.md'), `# Decision Log\n\nOverview of decisions.`);
+    await writeFile(join(openspecPath, 'decisions', 'adr-0001-valid.md'), `# ADR-001: Valid Decision
+
+## Status
+accepted
+
+## Related
+**Domains**: auth
+`);
+
+    const result = await buildADRMap({ rootPath: tempDir, openspecPath });
+    expect(result).not.toBeNull();
+    expect(result!.byId.size).toBe(1);
+    expect(result!.byId.has('ADR-001')).toBe(true);
+  });
+
+  it('should return null when no decisions directory exists', async () => {
+    const result = await buildADRMap({
+      rootPath: tempDir,
+      openspecPath: join(tempDir, 'nonexistent'),
+    });
+    expect(result).toBeNull();
+  });
+
+  it('should return null when decisions directory is empty', async () => {
+    // decisions dir exists but has no adr-*.md files
+    const result = await buildADRMap({ rootPath: tempDir, openspecPath });
+    expect(result).toBeNull();
+  });
+
+  it('should store correct ADR metadata', async () => {
+    await writeFile(join(openspecPath, 'decisions', 'adr-0003-caching.md'), `# ADR-003: Use Redis for Caching
+
+## Status
+accepted
+
+## Related
+**Domains**: cache, performance
+**Layers**: infrastructure
+`);
+
+    const result = await buildADRMap({ rootPath: tempDir, openspecPath });
+    expect(result).not.toBeNull();
+
+    const adr = result!.byId.get('ADR-003');
+    expect(adr).toBeDefined();
+    expect(adr!.title).toBe('Use Redis for Caching');
+    expect(adr!.status).toBe('accepted');
+    expect(adr!.relatedDomains).toEqual(['cache', 'performance']);
+    expect(adr!.relatedLayers).toEqual(['infrastructure']);
+    expect(adr!.adrPath).toContain('openspec/decisions/adr-0003-caching.md');
+  });
+
+  it('should build correct byDomain reverse map', async () => {
+    await writeFile(join(openspecPath, 'decisions', 'adr-0001-jwt.md'), `# ADR-001: JWT
+
+## Status
+accepted
+
+## Related
+**Domains**: auth
+`);
+    await writeFile(join(openspecPath, 'decisions', 'adr-0002-oauth.md'), `# ADR-002: OAuth
+
+## Status
+accepted
+
+## Related
+**Domains**: auth, user
+`);
+
+    const result = await buildADRMap({ rootPath: tempDir, openspecPath });
+    expect(result).not.toBeNull();
+
+    // auth domain should reference both ADRs
+    const authADRs = result!.byDomain.get('auth');
+    expect(authADRs).toContain('ADR-001');
+    expect(authADRs).toContain('ADR-002');
+
+    // user domain should reference only ADR-002
+    const userADRs = result!.byDomain.get('user');
+    expect(userADRs).toContain('ADR-002');
+    expect(userADRs).not.toContain('ADR-001');
   });
 });

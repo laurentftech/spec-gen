@@ -127,6 +127,8 @@ drift/
 - **Stale**: Spec references deleted or renamed files
 - **Uncovered**: New files with no matching spec domain
 - **Orphaned**: Spec declares files that no longer exist
+- **ADR Gap**: Code changed in a domain referenced by an ADR (info severity)
+- **ADR Orphaned**: ADR references domains that no longer exist in specs
 
 #### Services (`src/core/services/`)
 

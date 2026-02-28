@@ -125,6 +125,9 @@ const MOCK_RESPONSES = {
     domainSummary: 'A user management API service',
     suggestedDomains: ['user', 'auth', 'api'],
     confidence: 0.85,
+    schemaFiles: [],
+    serviceFiles: [],
+    apiFiles: [],
   }),
   entities: JSON.stringify([
     {
@@ -238,7 +241,7 @@ describe('SpecGenerationPipeline', () => {
       // Set up mock responses
       provider.setResponse('categorize', MOCK_RESPONSES.survey);
       provider.setResponse('schema/model', MOCK_RESPONSES.entities);
-      provider.setResponse('service/business', MOCK_RESPONSES.services);
+      provider.setResponse('services/modules', MOCK_RESPONSES.services);
       provider.setResponse('API/route', MOCK_RESPONSES.api);
       provider.setResponse('Synthesize', MOCK_RESPONSES.architecture);
       provider.setDefaultResponse(MOCK_RESPONSES.survey);
@@ -385,7 +388,7 @@ describe('SpecGenerationPipeline', () => {
       const { service, provider } = createMockLLMService();
       provider.setResponse('categorize', MOCK_RESPONSES.survey);
       provider.setResponse('schema/model', MOCK_RESPONSES.entities);
-      provider.setResponse('service/business', MOCK_RESPONSES.services);
+      provider.setResponse('services/modules', MOCK_RESPONSES.services);
       provider.setDefaultResponse(MOCK_RESPONSES.architecture);
 
       const pipeline = new SpecGenerationPipeline(service, {
@@ -407,7 +410,7 @@ describe('SpecGenerationPipeline', () => {
       const { service, provider } = createMockLLMService();
       provider.setResponse('categorize', MOCK_RESPONSES.survey);
       provider.setResponse('schema/model', MOCK_RESPONSES.entities);
-      provider.setResponse('service/business', MOCK_RESPONSES.services);
+      provider.setResponse('services/modules', MOCK_RESPONSES.services);
       provider.setDefaultResponse(MOCK_RESPONSES.architecture);
 
       const pipeline = new SpecGenerationPipeline(service, {

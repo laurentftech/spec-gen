@@ -30,6 +30,9 @@ function createMockSurvey(): ProjectSurveyResult {
     domainSummary: 'A user management API service',
     suggestedDomains: ['user', 'auth', 'api'],
     confidence: 0.85,
+    schemaFiles: [],
+    serviceFiles: [],
+    apiFiles: [],
   };
 }
 
@@ -276,7 +279,7 @@ describe('OpenSpecFormatGenerator', () => {
       const specs = generator.generateSpecs(result);
       const overview = specs.find(s => s.type === 'overview')!;
 
-      expect(overview.content).toContain('## Key Capabilities');
+      expect(overview.content).toContain('## Requirements');
       expect(overview.content).toContain('TypeORM for database access');
     });
   });
@@ -460,7 +463,7 @@ describe('OpenSpecFormatGenerator', () => {
       const apiSpec = specs.find(s => s.type === 'api')!;
 
       expect(apiSpec.content).toContain('# API Specification');
-      expect(apiSpec.content).toContain('## Authentication');
+      expect(apiSpec.content).toContain('## Requirements');
       expect(apiSpec.content).toContain('### Requirement: APIAuthentication');
       expect(apiSpec.content).toContain('Bearer token');
     });
@@ -472,9 +475,8 @@ describe('OpenSpecFormatGenerator', () => {
       const specs = generator.generateSpecs(result);
       const apiSpec = specs.find(s => s.type === 'api')!;
 
-      expect(apiSpec.content).toContain('## Endpoints');
-      expect(apiSpec.content).toContain('### User Endpoints');
-      expect(apiSpec.content).toContain('#### Requirement: Getuser');
+      expect(apiSpec.content).toContain('## Requirements');
+      expect(apiSpec.content).toContain('### Requirement: Getuser');
       expect(apiSpec.content).toContain('`GET /users/:id`');
     });
 
@@ -509,7 +511,7 @@ describe('OpenSpecFormatGenerator', () => {
       const apiSpec = specs.find(s => s.type === 'api')!;
 
       // POST /users has no scenarios, should get default
-      expect(apiSpec.content).toContain('##### Scenario: PostuserSuccess');
+      expect(apiSpec.content).toContain('#### Scenario: PostuserSuccess');
       expect(apiSpec.content).toContain('**GIVEN** an authenticated user');
     });
   });

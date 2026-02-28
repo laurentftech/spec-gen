@@ -42,6 +42,9 @@ function createMockSurvey(): ProjectSurveyResult {
     domainSummary: 'A user management API service',
     suggestedDomains: ['user', 'auth'],
     confidence: 0.85,
+    schemaFiles: [],
+    serviceFiles: [],
+    apiFiles: [],
   };
 }
 

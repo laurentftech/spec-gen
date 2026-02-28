@@ -33,6 +33,7 @@ import {
 import { ADRGenerator } from '../../core/generator/adr-generator.js';
 import type { RepoStructure, LLMContext } from '../../core/analyzer/artifact-generator.js';
 import type { DependencyGraphResult } from '../../core/analyzer/dependency-graph.js';
+import { MappingGenerator } from '../../core/generator/mapping-generator.js';
 
 // ============================================================================
 // TYPES
@@ -204,11 +205,16 @@ async function promptConfirmation(message: string, autoYes: boolean): Promise<bo
 /**
  * Verify LLM API connectivity
  */
-async function verifyApiConnectivity(_llm: LLMService): Promise<boolean> {
+async function verifyApiConnectivity(llm: LLMService): Promise<boolean> {
   try {
-    // Simple ping to verify API is reachable
     logger.debug('Verifying LLM API connectivity...');
-    return true; // In production, we'd do a lightweight test request
+    await llm.complete({
+      systemPrompt: 'You are a test assistant.',
+      userPrompt: 'Reply with just: OK',
+      maxTokens: 5,
+      temperature: 0,
+    });
+    return true;
   } catch (error) {
     logger.error(`LLM API verification failed: ${(error as Error).message}`);
     return false;
@@ -228,8 +234,7 @@ export const generateCommand = new Command('generate')
   )
   .option(
     '--model <name>',
-    'LLM model to use for generation',
-    'claude-sonnet-4-20250514'
+    'LLM model to use for generation (default depends on provider)'
   )
   .option(
     '--dry-run',
@@ -320,7 +325,7 @@ Each spec.md follows OpenSpec conventions:
 
     const opts: ExtendedGenerateOptions = {
       analysis: options.analysis ?? '.spec-gen/analysis/',
-      model: options.model ?? 'claude-sonnet-4-20250514',
+      model: options.model ?? '',
       dryRun: options.dryRun ?? false,
       domains: options.domains ?? [],
       adr: options.adr ?? false,
@@ -405,21 +410,49 @@ Each spec.md follows OpenSpec conventions:
       // Check for API key
       const anthropicKey = process.env.ANTHROPIC_API_KEY;
       const openaiKey = process.env.OPENAI_API_KEY;
+      const openaiCompatKey = process.env.OPENAI_COMPAT_API_KEY;
+      const geminiKey = process.env.GEMINI_API_KEY;
 
-      if (!anthropicKey && !openaiKey) {
+      if (!anthropicKey && !openaiKey && !openaiCompatKey && !geminiKey) {
         logger.error('No LLM API key found.');
-        logger.discovery('Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable.');
-        logger.blank();
-        logger.discovery('To get an API key:');
-        logger.discovery('  Anthropic: https://console.anthropic.com/');
-        logger.discovery('  OpenAI: https://platform.openai.com/');
+        logger.discovery('Set one of the following environment variables:');
+        logger.discovery('  ANTHROPIC_API_KEY    → https://console.anthropic.com/');
+        logger.discovery('  OPENAI_API_KEY       → https://platform.openai.com/');
+        logger.discovery('  GEMINI_API_KEY       → https://aistudio.google.com/');
+        logger.discovery('  OPENAI_COMPAT_API_KEY + OPENAI_COMPAT_BASE_URL  → Mistral, Groq, Ollama...');
         process.exitCode = 1;
         return;
       }
 
+      // Resolve provider with priority: config > env var auto-detection
+      const envDetectedProvider = anthropicKey ? 'anthropic'
+        : geminiKey ? 'gemini'
+        : openaiCompatKey ? 'openai-compat'
+        : 'openai';
+      const rootConfig = specGenConfig as unknown as Record<string, string>;
+      const effectiveProvider = (specGenConfig.generation.provider ?? rootConfig['provider'] ?? envDetectedProvider) as 'anthropic' | 'openai' | 'openai-compat' | 'gemini';
+
+      // Resolve model with priority: CLI flag > config > provider default
+      const defaultModels: Record<string, string> = {
+        anthropic: 'claude-sonnet-4-20250514',
+        gemini: 'gemini-2.0-flash',
+        'openai-compat': 'mistral-large-latest',
+        openai: 'gpt-4o',
+      };
+      const effectiveModel = opts.model || specGenConfig.generation.model || defaultModels[effectiveProvider];
+
+      // Resolve openai-compat base URL with priority: env var > config (generation or root)
+      const effectiveBaseUrl = process.env.OPENAI_COMPAT_BASE_URL ?? specGenConfig.generation.openaiCompatBaseUrl ?? rootConfig['openaiCompatBaseUrl'];
+
+      // Apply SSL verification setting (CLI --insecure or config skipSslVerify)
+      if (globalOpts.insecure || specGenConfig.generation.skipSslVerify) {
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+        logger.warning('SSL verification disabled');
+      }
+
       // Estimate cost
-      const estimate = estimateCost(llmContext, opts.model);
-      logger.info('Model', opts.model);
+      const estimate = estimateCost(llmContext, effectiveModel);
+      logger.info('Model', effectiveModel);
       logger.info('Estimated tokens', estimate.tokens.toLocaleString());
       logger.inference(`Estimated cost: ~$${estimate.cost.toFixed(2)}`);
       logger.blank();
@@ -493,12 +526,12 @@ Each spec.md follows OpenSpec conventions:
       }
 
       // Create LLM service (CLI flags > env vars > config file)
-      const provider = anthropicKey ? 'anthropic' : 'openai';
       let llm: LLMService;
       try {
         llm = createLLMService({
-          provider,
-          model: opts.model,
+          provider: effectiveProvider,
+          model: effectiveModel,
+          openaiCompatBaseUrl: effectiveBaseUrl,
           apiBase: globalOpts.apiBase ?? specGenConfig.llm?.apiBase,
           sslVerify: globalOpts.insecure != null ? !globalOpts.insecure : specGenConfig.llm?.sslVerify ?? true,
           enableLogging: true,
@@ -629,6 +662,19 @@ Each spec.md follows OpenSpec conventions:
         logger.error(`Failed to write specs: ${(error as Error).message}`);
         process.exitCode = 1;
         return;
+      }
+
+      // Generate requirement→function mapping artifact if dep graph is available
+      if (depGraph) {
+        try {
+          const mapper = new MappingGenerator(rootPath, specGenConfig.openspecPath);
+          const mapping = await mapper.generate(pipelineResult, depGraph);
+          logger.success(
+            `Requirement mapping: ${mapping.stats.mappedRequirements}/${mapping.stats.totalRequirements} requirements mapped, ${mapping.stats.orphanCount} orphan functions → .spec-gen/analysis/mapping.json`
+          );
+        } catch (error) {
+          logger.warning(`Could not generate mapping artifact: ${(error as Error).message}`);
+        }
       }
 
       // ========================================================================

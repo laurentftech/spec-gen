@@ -50,6 +50,8 @@ export interface LLMProvider {
   maxOutputTokens: number;
 }
 
+export type ProviderName = 'anthropic' | 'openai' | 'openai-compat' | 'gemini';
+
 /**
  * Token usage tracking
  */
@@ -74,13 +76,15 @@ export interface CostTracking {
  */
 export interface LLMServiceOptions {
   /** Primary provider to use */
-  provider?: 'anthropic' | 'openai';
+  provider?: ProviderName;
   /** Model override */
   model?: string;
   /** Custom API base URL (e.g., for local/enterprise OpenAI-compatible servers) */
   apiBase?: string;
   /** Disable SSL verification (for internal/self-signed certificates) */
   sslVerify?: boolean;
+  /** Base URL for openai-compat provider (overrides OPENAI_COMPAT_BASE_URL env var) */
+  openaiCompatBaseUrl?: string;
   /** Maximum retry attempts */
   maxRetries?: number;
   /** Initial retry delay in ms */
@@ -165,6 +169,22 @@ const PRICING = {
     'gpt-4o-mini': { input: 0.15, output: 0.6 },
     'gpt-3.5-turbo': { input: 0.5, output: 1.5 },
     default: { input: 5.0, output: 15.0 },
+  },
+  'openai-compat': {
+    // Common OpenAI-compatible models — extend as needed
+    'mistral-large-latest': { input: 2.0, output: 6.0 },
+    'mistral-small-latest': { input: 0.1, output: 0.3 },
+    'codestral-latest': { input: 0.2, output: 0.6 },
+    'llama-3.3-70b-versatile': { input: 0.59, output: 0.79 }, // Groq
+    'llama-3.1-8b-instant': { input: 0.05, output: 0.08 },   // Groq
+    default: { input: 1.0, output: 3.0 },
+  },
+  gemini: {
+    'gemini-2.0-flash': { input: 0.1, output: 0.4 },
+    'gemini-2.0-flash-lite': { input: 0.075, output: 0.3 },
+    'gemini-1.5-pro': { input: 1.25, output: 5.0 },
+    'gemini-1.5-flash': { input: 0.075, output: 0.3 },
+    default: { input: 0.1, output: 0.4 },
   },
 };
 
@@ -359,6 +379,174 @@ export class OpenAIProvider implements LLMProvider {
 }
 
 // ============================================================================
+// OPENAI-COMPATIBLE PROVIDER
+// ============================================================================
+
+/**
+ * Generic OpenAI-compatible provider.
+ * Works with any API that implements the OpenAI chat completions format:
+ * Mistral AI, Groq, Together AI, Ollama, LM Studio, etc.
+ *
+ * Required env vars:
+ *   OPENAI_COMPAT_API_KEY   — API key (use "ollama" for local setups without auth)
+ *   OPENAI_COMPAT_BASE_URL  — Base URL, e.g. https://api.mistral.ai/v1
+ */
+export class OpenAICompatibleProvider implements LLMProvider {
+  name = 'openai-compat';
+  maxContextTokens = 128000;
+  maxOutputTokens = 4096;
+
+  private apiKey: string;
+  private model: string;
+  private baseUrl: string;
+
+  constructor(apiKey: string, baseUrl: string, model = 'mistral-large-latest') {
+    this.apiKey = apiKey;
+    this.baseUrl = baseUrl.replace(/\/$/, '');
+    this.model = model;
+  }
+
+  countTokens(text: string): number {
+    return estimateTokens(text);
+  }
+
+  async generateCompletion(request: CompletionRequest): Promise<CompletionResponse> {
+    const body: Record<string, unknown> = {
+      model: this.model,
+      messages: [
+        { role: 'system', content: request.systemPrompt },
+        { role: 'user', content: request.userPrompt },
+      ],
+      max_tokens: request.maxTokens ?? this.maxOutputTokens,
+      temperature: request.temperature ?? 0.3,
+      ...(request.stopSequences && { stop: request.stopSequences }),
+    };
+
+    if (request.responseFormat === 'json') {
+      body.response_format = { type: 'json_object' };
+    }
+
+    const response = await fetch(`${this.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      const err = new Error(error) as Error & { status?: number; retryable?: boolean };
+      err.status = response.status;
+      err.retryable = response.status === 429 || response.status >= 500;
+      throw err;
+    }
+
+    const data = await response.json() as {
+      choices: Array<{ message: { content: string }; finish_reason: string }>;
+      usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+      model: string;
+    };
+
+    return {
+      content: data.choices[0]?.message?.content ?? '',
+      usage: {
+        inputTokens: data.usage.prompt_tokens,
+        outputTokens: data.usage.completion_tokens,
+        totalTokens: data.usage.total_tokens,
+      },
+      model: data.model ?? this.model,
+      finishReason: data.choices[0]?.finish_reason === 'stop' ? 'stop' : data.choices[0]?.finish_reason === 'length' ? 'length' : 'error',
+    };
+  }
+}
+
+// ============================================================================
+// GEMINI PROVIDER
+// ============================================================================
+
+/**
+ * Google Gemini provider
+ */
+export class GeminiProvider implements LLMProvider {
+  name = 'gemini';
+  maxContextTokens = 1000000;
+  maxOutputTokens = 8192;
+
+  private apiKey: string;
+  private model: string;
+  private baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
+
+  constructor(apiKey: string, model = 'gemini-2.0-flash') {
+    this.apiKey = apiKey;
+    this.model = model;
+  }
+
+  countTokens(text: string): number {
+    return estimateTokens(text);
+  }
+
+  async generateCompletion(request: CompletionRequest): Promise<CompletionResponse> {
+    const body: Record<string, unknown> = {
+      contents: [
+        { role: 'user', parts: [{ text: request.userPrompt }] },
+      ],
+      systemInstruction: {
+        parts: [{ text: request.systemPrompt }],
+      },
+      generationConfig: {
+        temperature: request.temperature ?? 0.3,
+        maxOutputTokens: request.maxTokens ?? this.maxOutputTokens,
+        ...(request.responseFormat === 'json' && { responseMimeType: 'application/json' }),
+        ...(request.stopSequences && { stopSequences: request.stopSequences }),
+      },
+    };
+
+    const url = `${this.baseUrl}/${this.model}:generateContent?key=${this.apiKey}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      const err = new Error(error) as Error & { status?: number; retryable?: boolean };
+      err.status = response.status;
+      err.retryable = response.status === 429 || response.status >= 500;
+      throw err;
+    }
+
+    const data = await response.json() as {
+      candidates: Array<{
+        content: { parts: Array<{ text: string }>; role: string };
+        finishReason: string;
+      }>;
+      usageMetadata: {
+        promptTokenCount: number;
+        candidatesTokenCount: number;
+        totalTokenCount: number;
+      };
+    };
+
+    const content = data.candidates[0]?.content?.parts?.map(p => p.text).join('') ?? '';
+    const finishReason = data.candidates[0]?.finishReason;
+
+    return {
+      content,
+      usage: {
+        inputTokens: data.usageMetadata.promptTokenCount,
+        outputTokens: data.usageMetadata.candidatesTokenCount,
+        totalTokens: data.usageMetadata.totalTokenCount,
+      },
+      model: this.model,
+      finishReason: finishReason === 'STOP' ? 'stop' : finishReason === 'MAX_TOKENS' ? 'length' : 'error',
+    };
+  }
+}
+
+// ============================================================================
 // MOCK PROVIDER (for testing)
 // ============================================================================
 
@@ -455,6 +643,7 @@ export class LLMService {
       model: options.model ?? '',
       apiBase: options.apiBase ?? '',
       sslVerify: options.sslVerify ?? true,
+      openaiCompatBaseUrl: options.openaiCompatBaseUrl ?? '',
       maxRetries: options.maxRetries ?? 3,
       initialDelay: options.initialDelay ?? 1000,
       maxDelay: options.maxDelay ?? 30000,
@@ -628,6 +817,22 @@ export class LLMService {
       parsed = JSON.parse(correctedContent) as T;
     }
 
+    // Unwrap single-key object whose value is an array (e.g. {entities:[...]} → [...])
+    // LLM correction attempts sometimes wrap arrays in an object
+    if (
+      parsed !== null &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed)
+    ) {
+      const keys = Object.keys(parsed as object);
+      if (keys.length === 1) {
+        const val = (parsed as Record<string, unknown>)[keys[0]];
+        if (Array.isArray(val)) {
+          parsed = val as unknown as T;
+        }
+      }
+    }
+
     // Validate against schema if provided (after successful parsing)
     if (schema) {
       this.validateSchema(parsed, schema);
@@ -787,8 +992,24 @@ export function createLLMService(options: LLMServiceOptions = {}): LLMService {
     }
     const apiBase = options.apiBase ?? process.env.OPENAI_API_BASE ?? undefined;
     provider = new OpenAIProvider(apiKey, options.model ?? 'gpt-4o', apiBase, sslVerify);
+  } else if (providerName === 'openai-compat') {
+    const apiKey = process.env.OPENAI_COMPAT_API_KEY;
+    const baseUrl = options.openaiCompatBaseUrl ?? options.apiBase ?? process.env.OPENAI_COMPAT_BASE_URL;
+    if (!apiKey) {
+      throw new Error('OPENAI_COMPAT_API_KEY environment variable is not set');
+    }
+    if (!baseUrl) {
+      throw new Error('openaiCompatBaseUrl must be set in config or OPENAI_COMPAT_BASE_URL env var (e.g. https://api.mistral.ai/v1)');
+    }
+    provider = new OpenAICompatibleProvider(apiKey, baseUrl, options.model ?? 'mistral-large-latest');
+  } else if (providerName === 'gemini') {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error('GEMINI_API_KEY environment variable is not set');
+    }
+    provider = new GeminiProvider(apiKey, options.model ?? 'gemini-2.0-flash');
   } else {
-    throw new Error(`Unknown provider: ${providerName}`);
+    throw new Error(`Unknown provider: ${providerName}. Supported: anthropic, openai, openai-compat, gemini`);
   }
 
   if (!sslVerify) {

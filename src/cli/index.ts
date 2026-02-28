@@ -14,7 +14,7 @@ import { generateCommand } from './commands/generate.js';
 import { verifyCommand } from './commands/verify.js';
 import { driftCommand } from './commands/drift.js';
 import { runCommand } from './commands/run.js';
-import { configureLogger, logger } from '../utils/logger.js';
+import { configureLogger } from '../utils/logger.js';
 
 const program = new Command();
 
@@ -61,7 +61,6 @@ Quick start:
 
 Or run the full pipeline at once:
   $ spec-gen run
-  $ spec-gen .            (shorthand for spec-gen run)
 
 Output integrates with OpenSpec ecosystem:
   openspec/
@@ -85,41 +84,5 @@ program.addCommand(generateCommand);
 program.addCommand(verifyCommand);
 program.addCommand(driftCommand);
 program.addCommand(runCommand);
-
-// Default command: run full pipeline when path argument is given
-program
-  .argument('[path]', 'Path to project to analyze (runs full pipeline)', '.')
-  .option('--force', 'Reinitialize even if config exists', false)
-  .option('--reanalyze', 'Force fresh analysis', false)
-  .option('--model <name>', 'LLM model to use', 'claude-sonnet-4-20250514')
-  .option('--dry-run', 'Show what would be done', false)
-  .option('-y, --yes', 'Skip all prompts', false)
-  .option('--max-files <n>', 'Maximum files to analyze', '500')
-  .action(async (path: string, options) => {
-    // If path is "." or a directory, run the full pipeline
-    // This makes "spec-gen" and "spec-gen ." equivalent to "spec-gen run"
-
-    // Change to the specified path if needed
-    if (path && path !== '.') {
-      try {
-        process.chdir(path);
-      } catch {
-        logger.error(`Cannot access path: ${path}`);
-        process.exitCode = 1;
-        return;
-      }
-    }
-
-    // Simulate running the run command with collected options
-    const runArgs = ['node', 'spec-gen', 'run'];
-    if (options.force) runArgs.push('--force');
-    if (options.reanalyze) runArgs.push('--reanalyze');
-    if (options.model !== 'claude-sonnet-4-20250514') runArgs.push('--model', options.model);
-    if (options.dryRun) runArgs.push('--dry-run');
-    if (options.yes) runArgs.push('-y');
-    if (options.maxFiles !== '500') runArgs.push('--max-files', options.maxFiles);
-
-    await runCommand.parseAsync(runArgs, { from: 'user' });
-  });
 
 program.parse();

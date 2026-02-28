@@ -32,7 +32,10 @@ export interface AnalysisConfig {
 }
 
 export interface GenerationConfig {
-  model: string;
+  provider?: 'anthropic' | 'openai' | 'openai-compat' | 'gemini';
+  model?: string;
+  openaiCompatBaseUrl?: string;
+  skipSslVerify?: boolean;
   domains: string | string[];
 }
 
@@ -210,7 +213,9 @@ export type DriftIssueKind =
   | 'gap'            // Code changed, spec doesn't cover it
   | 'stale'          // Spec describes behavior that code no longer implements
   | 'uncovered'      // New file/function with no matching spec at all
-  | 'orphaned-spec'; // Spec references files that no longer exist
+  | 'orphaned-spec'  // Spec references files that no longer exist
+  | 'adr-gap'        // Code changed in domain referenced by an ADR
+  | 'adr-orphaned';  // ADR references domains that no longer exist in specs
 
 export interface DriftOptions extends GlobalOptions {
   base: string;
@@ -247,6 +252,8 @@ export interface DriftResult {
     stale: number;
     uncovered: number;
     orphanedSpecs: number;
+    adrGaps: number;
+    adrOrphaned: number;
     total: number;
   };
   hasDrift: boolean;

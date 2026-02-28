@@ -318,3 +318,124 @@ export function matchFileToDomains(filePath: string, specMap: SpecMap): string[]
 
   return [];
 }
+
+// ============================================================================
+// ADR MAPPING
+// ============================================================================
+
+export interface ADRMapping {
+  id: string;
+  title: string;
+  adrPath: string;
+  relatedDomains: string[];
+  relatedLayers: string[];
+  status: string;
+}
+
+export interface ADRMap {
+  byId: Map<string, ADRMapping>;
+  byDomain: Map<string, string[]>;
+}
+
+/**
+ * Parse the ## Related section from an ADR file to extract domains and layers.
+ */
+export function parseADRRelated(content: string): { domains: string[]; layers: string[] } {
+  const domains: string[] = [];
+  const layers: string[] = [];
+
+  const domainsMatch = content.match(/\*\*Domains\*\*:\s*(.+)/);
+  if (domainsMatch) {
+    domains.push(...domainsMatch[1].split(',').map(d => d.trim()).filter(Boolean));
+  }
+
+  const layersMatch = content.match(/\*\*Layers\*\*:\s*(.+)/);
+  if (layersMatch) {
+    layers.push(...layersMatch[1].split(',').map(l => l.trim()).filter(Boolean));
+  }
+
+  return { domains, layers };
+}
+
+/**
+ * Parse ADR title and status from content.
+ */
+function parseADRHeader(content: string): { id: string; title: string; status: string } {
+  let id = '';
+  let title = '';
+  let status = 'accepted';
+
+  // Parse title: # ADR-001: Some Title
+  const titleMatch = content.match(/^#\s+(ADR-\d+):\s*(.+)/m);
+  if (titleMatch) {
+    id = titleMatch[1];
+    title = titleMatch[2].trim();
+  }
+
+  // Parse status from ## Status section
+  const statusMatch = content.match(/## Status\s+(\w+)/);
+  if (statusMatch) {
+    status = statusMatch[1].toLowerCase();
+  }
+
+  return { id, title, status };
+}
+
+/**
+ * Build an ADR map by reading all ADR files from the decisions directory.
+ * Returns null if no decisions directory exists.
+ */
+export async function buildADRMap(options: SpecMapperOptions): Promise<ADRMap | null> {
+  const decisionsDir = join(options.openspecPath, 'decisions');
+  const byId = new Map<string, ADRMapping>();
+  const byDomain = new Map<string, string[]>();
+
+  let entries: string[];
+  try {
+    entries = await readdir(decisionsDir);
+  } catch {
+    return null;
+  }
+
+  const adrFiles = entries.filter(f => f.startsWith('adr-') && f.endsWith('.md'));
+  if (adrFiles.length === 0) return null;
+
+  for (const fileName of adrFiles) {
+    try {
+      const filePath = join(decisionsDir, fileName);
+      const content = await readFile(filePath, 'utf-8');
+      const { id, title, status } = parseADRHeader(content);
+
+      if (!id) continue;
+
+      // Skip superseded/deprecated ADRs
+      if (status === 'superseded' || status === 'deprecated') continue;
+
+      const { domains, layers } = parseADRRelated(content);
+      const adrPath = relative(options.rootPath, filePath);
+
+      const mapping: ADRMapping = {
+        id,
+        title,
+        adrPath,
+        relatedDomains: domains,
+        relatedLayers: layers,
+        status,
+      };
+
+      byId.set(id, mapping);
+
+      for (const domain of domains) {
+        const existing = byDomain.get(domain) ?? [];
+        existing.push(id);
+        byDomain.set(domain, existing);
+      }
+    } catch {
+      logger.debug(`Could not read ADR file: ${fileName}`);
+    }
+  }
+
+  if (byId.size === 0) return null;
+
+  return { byId, byDomain };
+}

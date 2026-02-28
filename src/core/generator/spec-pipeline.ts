@@ -56,6 +56,12 @@ export interface ProjectSurveyResult {
   domainSummary: string;
   suggestedDomains: string[];
   confidence: number;
+  /** Files containing data models, types, entities — for Stage 2 entity extraction */
+  schemaFiles: string[];
+  /** Files containing business logic, services, processors — for Stage 3 service analysis */
+  serviceFiles: string[];
+  /** Files exposing public interfaces, HTTP routes, CLI commands — for Stage 4 API extraction */
+  apiFiles: string[];
 }
 
 /**
@@ -110,6 +116,7 @@ export interface ServiceOperation {
   inputs?: string[];
   outputs?: string[];
   scenarios: Scenario[];
+  functionName?: string; // exact function/method name in source code, as reported by LLM
 }
 
 /**
@@ -240,6 +247,11 @@ Respond with a JSON object containing:
 - domainSummary: One sentence describing what this system does
 - suggestedDomains: Array of domain names for OpenSpec specs (e.g., ["user", "order", "auth", "api"])
 - confidence: 0-1 score of how confident you are
+- schemaFiles: Array of file paths (from the provided file list) that define data models, types, entities, or interfaces — these will be used for entity extraction. Include files regardless of their name, based on their content role.
+- serviceFiles: Array of file paths containing business logic, services, processors, analyzers, pipelines, or domain operations — used for service analysis. Do not filter by name conventions; look at what the file does.
+- apiFiles: Array of file paths that expose public interfaces: HTTP routes, CLI command handlers, GraphQL resolvers, message consumers, or external-facing APIs.
+
+For schemaFiles/serviceFiles/apiFiles: use the exact file paths from the provided analysis. Return [] if none apply.
 
 Respond ONLY with valid JSON.`,
 
@@ -252,24 +264,25 @@ For each entity you identify, extract in OpenSpec format:
 - relationships: Array of {targetEntity, type, description}
 - validations: Array of validation rules as strings (these become Requirements)
 - scenarios: Array of {name, given, when, then, and?} - observable behaviors in Given/When/Then format
-- location: File path where defined
 
 Focus on BUSINESS entities, not framework internals.
 Be precise - only include what you can verify from the code.
 
 Respond with a JSON array of entities. Respond ONLY with valid JSON.`,
 
-  stage3_services: (projectCategory: string, entities: string[]) => `You are analyzing the business logic layer of a ${projectCategory}.
+  stage3_services: (projectCategory: string, entities: string[], suggestedDomains: string[]) => `You are analyzing the logic and processing layer of a ${projectCategory}.
 
 Known entities: ${entities.join(', ')}
+Available domains: ${suggestedDomains.join(', ')}
 
 For each service/module, identify:
 - name: Service name
-- purpose: What business capability it provides
-- operations: Array of {name, description, inputs, outputs, scenarios} - key operations/methods that become Requirements with Scenarios
+- purpose: What capability or responsibility it encapsulates
+- operations: Array of {name, description, inputs, outputs, scenarios, functionName} - key operations/methods that become Requirements with Scenarios. Focus on the 3 most important operations per service, with 1 scenario each.
+  - operations[].functionName: The exact function or method name as written in the source code that implements this operation (e.g. "runStage2", "buildSpecMap"). Leave empty string if uncertain.
 - dependencies: Array of other services/repositories it uses
-- sideEffects: Array of external interactions (email, payments, etc.)
-- domain: Which domain this belongs to
+- sideEffects: Array of external interactions (file I/O, network calls, database, queues, etc.)
+- domain: Which domain OWNS this service (where it lives in the codebase, not who uses it) — use ONLY one of the available domains listed above
 
 Focus on WHAT the service does, not HOW it's implemented.
 Express operations as requirements (SHALL/MUST/SHOULD) with testable scenarios.
@@ -385,13 +398,17 @@ export class SpecGenerationPipeline {
     let survey: ProjectSurveyResult;
     if (this.shouldRunStage('survey')) {
       logger.analysis('Running Stage 1: Project Survey');
-      const result = await this.runStage1(repoStructure);
+      const result = await this.runStage1(repoStructure, llmContext);
       if (result.success && result.data) {
         survey = result.data;
         totalTokens += result.tokens;
         completedStages.push('survey');
       } else {
-        logger.warning('Survey stage failed, using defaults');
+        const errorMsg = result.error ?? 'Unknown error';
+        logger.warning(`Survey stage failed: ${errorMsg}`);
+        if (errorMsg.includes('Unauthorized') || errorMsg.includes('401') || errorMsg.includes('403')) {
+          throw new Error(`API authentication failed: ${errorMsg}. Check your API key (OPENAI_COMPAT_API_KEY, ANTHROPIC_API_KEY, etc.)`);
+        }
         survey = this.getDefaultSurvey(repoStructure);
         skippedStages.push('survey');
       }
@@ -404,7 +421,7 @@ export class SpecGenerationPipeline {
     let entities: ExtractedEntity[] = [];
     if (this.shouldRunStage('entities')) {
       logger.analysis('Running Stage 2: Entity Extraction');
-      const schemaFiles = this.getSchemaFiles(llmContext);
+      const schemaFiles = this.resolveFiles(llmContext, survey.schemaFiles ?? [], this.getSchemaFiles(llmContext));
       if (schemaFiles.length > 0) {
         const result = await this.runStage2(survey, schemaFiles);
         entities = result.data ?? [];
@@ -422,7 +439,7 @@ export class SpecGenerationPipeline {
     let services: ExtractedService[] = [];
     if (this.shouldRunStage('services')) {
       logger.analysis('Running Stage 3: Service Analysis');
-      const serviceFiles = this.getServiceFiles(llmContext);
+      const serviceFiles = this.resolveFiles(llmContext, survey.serviceFiles ?? [], this.getServiceFiles(llmContext));
       if (serviceFiles.length > 0) {
         const result = await this.runStage3(survey, entities, serviceFiles);
         services = result.data ?? [];
@@ -440,7 +457,7 @@ export class SpecGenerationPipeline {
     let endpoints: ExtractedEndpoint[] = [];
     if (this.shouldRunStage('api')) {
       logger.analysis('Running Stage 4: API Extraction');
-      const apiFiles = this.getApiFiles(llmContext);
+      const apiFiles = this.resolveFiles(llmContext, survey.apiFiles ?? [], this.getApiFiles(llmContext));
       if (apiFiles.length > 0) {
         const result = await this.runStage4(apiFiles);
         endpoints = result.data ?? [];
@@ -543,8 +560,10 @@ export class SpecGenerationPipeline {
   /**
    * Stage 1: Project Survey
    */
-  private async runStage1(repoStructure: RepoStructure): Promise<StageResult<ProjectSurveyResult>> {
+  private async runStage1(repoStructure: RepoStructure, llmContext: LLMContext): Promise<StageResult<ProjectSurveyResult>> {
     const startTime = Date.now();
+
+    const filePaths = llmContext.phase2_deep.files.map(f => f.path);
 
     const userPrompt = `Analyze this project structure:
 
@@ -564,14 +583,17 @@ Statistics:
 - Analyzed files: ${repoStructure.statistics.analyzedFiles}
 - Node count: ${repoStructure.statistics.nodeCount}
 - Edge count: ${repoStructure.statistics.edgeCount}
-- Clusters: ${repoStructure.statistics.clusterCount}`;
+- Clusters: ${repoStructure.statistics.clusterCount}
+
+Available file paths for analysis (use ONLY these exact strings for schemaFiles/serviceFiles/apiFiles):
+${filePaths.map(p => `- ${p}`).join('\n')}`;
 
     try {
       const result = await this.llm.completeJSON<ProjectSurveyResult>({
         systemPrompt: PROMPTS.stage1_survey,
         userPrompt,
         temperature: 0.3,
-        maxTokens: 500,
+        maxTokens: 1000,
       });
 
       const stageResult: StageResult<ProjectSurveyResult> = {
@@ -599,58 +621,96 @@ Statistics:
   }
 
   /**
-   * Stage 2: Entity Extraction
+   * Split file content into chunks, breaking only on blank lines (function/class boundaries).
+   * A chunk is emitted when its size exceeds maxChars and a blank line is encountered.
+   * overlapLines trailing lines from the previous chunk are prepended to the next one,
+   * preserving context (e.g. class declaration visible when processing its methods).
+   */
+  private chunkContent(content: string, maxChars: number, overlapLines = 10): string[] {
+    if (content.length <= maxChars) return [content];
+
+    const lines = content.split('\n');
+    const chunks: string[] = [];
+    let currentLines: string[] = [];
+    let currentSize = 0;
+
+    for (const line of lines) {
+      currentLines.push(line);
+      currentSize += line.length + 1;
+
+      // Break only at blank lines once the threshold is reached
+      if (currentSize >= maxChars && line.trim() === '') {
+        const chunk = currentLines.join('\n').trim();
+        if (chunk.length > 0) chunks.push(chunk);
+        // Carry over the last N lines as overlap for the next chunk
+        const overlap = currentLines.slice(-overlapLines);
+        currentLines = [...overlap];
+        currentSize = overlap.reduce((s, l) => s + l.length + 1, 0);
+      }
+    }
+
+    const remaining = currentLines.join('\n').trim();
+    if (remaining.length > 0) chunks.push(remaining);
+
+    return chunks;
+  }
+
+  /**
+   * Stage 2: Entity Extraction — one LLM call per file (chunked if large)
    */
   private async runStage2(
     survey: ProjectSurveyResult,
     schemaFiles: Array<{ path: string; content: string }>
   ): Promise<StageResult<ExtractedEntity[]>> {
     const startTime = Date.now();
+    const systemPrompt = PROMPTS.stage2_entities(survey.projectCategory, survey.frameworks);
+    const allEntities: ExtractedEntity[] = [];
+    const seenNames = new Set<string>();
 
-    const filesContent = schemaFiles
-      .slice(0, 10)
-      .map(f => `=== ${f.path} ===\n${f.content}`)
-      .join('\n\n');
-
-    const userPrompt = `Analyze these schema/model files and extract entities:
-
-${filesContent}`;
-
-    try {
-      const result = await this.llm.completeJSON<ExtractedEntity[]>({
-        systemPrompt: PROMPTS.stage2_entities(survey.projectCategory, survey.frameworks),
-        userPrompt,
-        temperature: 0.3,
-        maxTokens: 2000,
-      });
-
-      const stageResult: StageResult<ExtractedEntity[]> = {
-        stage: 'entities',
-        success: true,
-        data: Array.isArray(result) ? result : [],
-        tokens: this.llm.getTokenUsage().totalTokens,
-        duration: Date.now() - startTime,
-      };
-
-      if (this.options.saveIntermediate) {
-        await this.saveResult('stage2-entities', stageResult);
+    for (const file of schemaFiles.slice(0, 10)) {
+      const chunks = this.chunkContent(file.content, 8000);
+      for (let i = 0; i < chunks.length; i++) {
+        const chunkNote = chunks.length > 1 ? ` (part ${i + 1}/${chunks.length})` : '';
+        const userPrompt = `Analyze this schema/model file and extract entities:\n\n=== ${file.path}${chunkNote} ===\n${chunks[i]}`;
+        try {
+          const result = await this.llm.completeJSON<ExtractedEntity[]>({
+            systemPrompt,
+            userPrompt,
+            temperature: 0.3,
+            maxTokens: 2000,
+          });
+          if (Array.isArray(result)) {
+            for (const entity of result) {
+              if (!seenNames.has(entity.name)) {
+                seenNames.add(entity.name);
+                entity.location = file.path; // always use the actual file, not the LLM's guess
+                allEntities.push(entity);
+              }
+            }
+          }
+        } catch (error) {
+          logger.warning(`Stage 2: failed to analyze ${file.path}${chunkNote}: ${(error as Error).message}`);
+        }
       }
-
-      return stageResult;
-    } catch (error) {
-      return {
-        stage: 'entities',
-        success: false,
-        error: (error as Error).message,
-        data: [],
-        tokens: 0,
-        duration: Date.now() - startTime,
-      };
     }
+
+    const stageResult: StageResult<ExtractedEntity[]> = {
+      stage: 'entities',
+      success: true,
+      data: allEntities,
+      tokens: this.llm.getTokenUsage().totalTokens,
+      duration: Date.now() - startTime,
+    };
+
+    if (this.options.saveIntermediate) {
+      await this.saveResult('stage2-entities', stageResult);
+    }
+
+    return stageResult;
   }
 
   /**
-   * Stage 3: Service Analysis
+   * Stage 3: Service Analysis — one LLM call per file (chunked if large)
    */
   private async runStage3(
     survey: ProjectSurveyResult,
@@ -658,48 +718,50 @@ ${filesContent}`;
     serviceFiles: Array<{ path: string; content: string }>
   ): Promise<StageResult<ExtractedService[]>> {
     const startTime = Date.now();
-
     const entityNames = entities.map(e => e.name);
-    const filesContent = serviceFiles
-      .slice(0, 10)
-      .map(f => `=== ${f.path} ===\n${f.content}`)
-      .join('\n\n');
+    const systemPrompt = PROMPTS.stage3_services(survey.projectCategory, entityNames, survey.suggestedDomains ?? []);
+    const allServices: ExtractedService[] = [];
+    const seenNames = new Set<string>();
 
-    const userPrompt = `Analyze these service/business-logic files:
-
-${filesContent}`;
-
-    try {
-      const result = await this.llm.completeJSON<ExtractedService[]>({
-        systemPrompt: PROMPTS.stage3_services(survey.projectCategory, entityNames),
-        userPrompt,
-        temperature: 0.3,
-        maxTokens: 2000,
-      });
-
-      const stageResult: StageResult<ExtractedService[]> = {
-        stage: 'services',
-        success: true,
-        data: Array.isArray(result) ? result : [],
-        tokens: this.llm.getTokenUsage().totalTokens,
-        duration: Date.now() - startTime,
-      };
-
-      if (this.options.saveIntermediate) {
-        await this.saveResult('stage3-services', stageResult);
+    for (const file of serviceFiles.slice(0, 10)) {
+      const chunks = this.chunkContent(file.content, 8000);
+      for (let i = 0; i < chunks.length; i++) {
+        const chunkNote = chunks.length > 1 ? ` (part ${i + 1}/${chunks.length})` : '';
+        const userPrompt = `Analyze this file and extract services/modules:\n\n=== ${file.path}${chunkNote} ===\n${chunks[i]}`;
+        try {
+          const result = await this.llm.completeJSON<ExtractedService[]>({
+            systemPrompt,
+            userPrompt,
+            temperature: 0.3,
+            maxTokens: 2000,
+          });
+          if (Array.isArray(result)) {
+            for (const service of result) {
+              if (!seenNames.has(service.name)) {
+                seenNames.add(service.name);
+                allServices.push(service);
+              }
+            }
+          }
+        } catch (error) {
+          logger.warning(`Stage 3: failed to analyze ${file.path}${chunkNote}: ${(error as Error).message}`);
+        }
       }
-
-      return stageResult;
-    } catch (error) {
-      return {
-        stage: 'services',
-        success: false,
-        error: (error as Error).message,
-        data: [],
-        tokens: 0,
-        duration: Date.now() - startTime,
-      };
     }
+
+    const stageResult: StageResult<ExtractedService[]> = {
+      stage: 'services',
+      success: true,
+      data: allServices,
+      tokens: this.llm.getTokenUsage().totalTokens,
+      duration: Date.now() - startTime,
+    };
+
+    if (this.options.saveIntermediate) {
+      await this.saveResult('stage3-services', stageResult);
+    }
+
+    return stageResult;
   }
 
   /**
@@ -916,6 +978,27 @@ ${architecture.keyDecisions.map((d, i) => `${i + 1}. ${d}`).join('\n')}`;
   }
 
   /**
+   * Resolve file paths identified by Stage 1 LLM to actual file content.
+   * Falls back to the provided heuristic list if no LLM-identified paths match.
+   */
+  private resolveFiles(
+    context: LLMContext,
+    llmPaths: string[],
+    fallback: Array<{ path: string; content: string }>
+  ): Array<{ path: string; content: string }> {
+    if (llmPaths.length === 0) return fallback;
+
+    const allFiles = context.phase2_deep.files;
+    const resolved = llmPaths
+      .map(p => allFiles.find(f => f.path === p || f.path.endsWith('/' + p) || p.endsWith('/' + f.path)))
+      .filter((f): f is (typeof allFiles)[0] => f !== undefined)
+      .map(f => ({ path: f.path, content: f.content ?? '' }))
+      .filter(f => f.content.length > 0);
+
+    return resolved.length > 0 ? resolved : fallback;
+  }
+
+  /**
    * Get default survey when stage is skipped
    */
   private getDefaultSurvey(repoStructure: RepoStructure): ProjectSurveyResult {
@@ -927,6 +1010,9 @@ ${architecture.keyDecisions.map((d, i) => `${i + 1}. ${d}`).join('\n')}`;
       domainSummary: `A ${repoStructure.projectType} project`,
       suggestedDomains: repoStructure.domains.map(d => d.name),
       confidence: 0.5,
+      schemaFiles: [],
+      serviceFiles: [],
+      apiFiles: [],
     };
   }
 

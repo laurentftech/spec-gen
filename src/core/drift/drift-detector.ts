@@ -15,7 +15,7 @@ import type {
   DriftSeverity,
   SpecMap,
 } from '../../types/index.js';
-import { matchFileToDomains, getSpecContent } from './spec-mapper.js';
+import { matchFileToDomains, getSpecContent, type ADRMap } from './spec-mapper.js';
 import { getFileDiff } from './git-diff.js';
 import type { LLMService } from '../services/llm-service.js';
 import logger from '../../utils/logger.js';
@@ -37,6 +37,8 @@ export interface DriftDetectorOptions {
   baseRef?: string;
   /** Maximum number of LLM calls per run (default: 10). */
   maxLlmCalls?: number;
+  /** Optional ADR map for ADR drift detection. */
+  adrMap?: ADRMap;
 }
 
 // ============================================================================
@@ -60,7 +62,9 @@ export function isSpecRelevantChange(file: ChangedFile, openspecRelPath: string 
   if (file.isTest || file.isGenerated) return false;
 
   // Skip openspec directory changes (those are spec updates, not drift)
-  const specPrefix = openspecRelPath.replace(/\/$/, '') + '/';
+  // Normalize leading "./" from config paths to match git-reported paths
+  const normalizedSpecPath = openspecRelPath.replace(/^\.\//, '').replace(/\/$/, '');
+  const specPrefix = normalizedSpecPath + '/';
   if (file.path.startsWith(specPrefix) || file.path.startsWith('.spec-gen/')) return false;
 
   // Skip markdown files: docs, changelogs, readmes, contributing guides, etc.
@@ -152,8 +156,8 @@ export function computeSeverity(kind: DriftIssueKind, file: ChangedFile): DriftS
  */
 export function extractChangedSpecDomains(changedFiles: ChangedFile[], openspecRelPath: string = 'openspec'): Set<string> {
   const domains = new Set<string>();
-  // Normalize: strip trailing slash, escape for regex
-  const prefix = openspecRelPath.replace(/\/$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Normalize: strip leading "./" and trailing slash, escape for regex
+  const prefix = openspecRelPath.replace(/^\.\//, '').replace(/\/$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const pattern = new RegExp(`^${prefix}/specs/([^/]+)/`);
   for (const file of changedFiles) {
     const specMatch = file.path.match(pattern);
@@ -317,6 +321,100 @@ export async function detectOrphanedSpecs(specMap: SpecMap, rootPath: string): P
         });
       }
     }
+  }
+
+  return issues;
+}
+
+// ============================================================================
+// ADR DRIFT DETECTION
+// ============================================================================
+
+/**
+ * Extract ADR IDs that were changed in this changeset.
+ * Matches files like: openspec/decisions/adr-0001-foo.md
+ */
+export function extractChangedADRIds(changedFiles: ChangedFile[], openspecRelPath: string = 'openspec'): Set<string> {
+  const ids = new Set<string>();
+  const prefix = openspecRelPath.replace(/^\.\//, '').replace(/\/$/, '');
+  const pattern = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/decisions/adr-(\\d+)-`);
+  for (const file of changedFiles) {
+    const match = file.path.match(pattern);
+    if (match) {
+      ids.add(`ADR-${match[1].replace(/^0+/, '') || '0'}`);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Detect ADR gaps: code changed in a domain referenced by an ADR,
+ * but the ADR wasn't updated. Reports once per ADR, not per file.
+ * Severity is always 'info' — most code changes don't invalidate decisions.
+ */
+export function detectADRGaps(
+  changedFiles: ChangedFile[],
+  adrMap: ADRMap,
+  specMap: SpecMap,
+  changedADRIds: Set<string>,
+  openspecRelPath?: string,
+): DriftIssue[] {
+  const issues: DriftIssue[] = [];
+  const reportedADRs = new Set<string>();
+
+  // Collect all domains that have changed code
+  const changedDomains = new Set<string>();
+  for (const file of changedFiles) {
+    if (!isSpecRelevantChange(file, openspecRelPath)) continue;
+    if (file.status === 'deleted') continue;
+    const domains = matchFileToDomains(file.path, specMap);
+    for (const d of domains) changedDomains.add(d);
+  }
+
+  // For each ADR, check if any of its related domains had code changes
+  for (const [id, mapping] of adrMap.byId) {
+    if (changedADRIds.has(id)) continue;
+    if (reportedADRs.has(id)) continue;
+
+    const affectedDomains = mapping.relatedDomains.filter(d => changedDomains.has(d));
+    if (affectedDomains.length === 0) continue;
+
+    reportedADRs.add(id);
+    issues.push({
+      id: `adr-gap:${mapping.adrPath}:${id}`,
+      kind: 'adr-gap',
+      severity: 'info',
+      message: `Code changed in domain(s) ${affectedDomains.join(', ')} referenced by ${id}: "${mapping.title}"`,
+      filePath: mapping.adrPath,
+      domain: affectedDomains[0],
+      specPath: mapping.adrPath,
+      suggestion: `Review ${id} to ensure the decision still applies after changes to ${affectedDomains.join(', ')}`,
+    });
+  }
+
+  return issues;
+}
+
+/**
+ * Detect orphaned ADRs: ADR references domains that no longer exist in specs.
+ */
+export function detectADROrphaned(adrMap: ADRMap, specMap: SpecMap): DriftIssue[] {
+  const issues: DriftIssue[] = [];
+
+  for (const [id, mapping] of adrMap.byId) {
+    const orphanedDomains = mapping.relatedDomains.filter(d => !specMap.byDomain.has(d));
+    if (orphanedDomains.length === 0) continue;
+
+    issues.push({
+      id: `adr-orphaned:${mapping.adrPath}:${id}`,
+      kind: 'adr-orphaned',
+      severity: 'info',
+      message: `${id}: "${mapping.title}" references domain(s) ${orphanedDomains.join(', ')} which no longer exist in specs`,
+      filePath: mapping.adrPath,
+      domain: null,
+      specPath: mapping.adrPath,
+      suggestion: `Review ${id} — the referenced domain(s) ${orphanedDomains.join(', ')} may have been removed or renamed`,
+    });
   }
 
   return issues;
@@ -526,8 +624,17 @@ export async function detectDrift(options: DriftDetectorOptions): Promise<DriftR
   const uncovered = detectUncoveredFiles(changedFiles, specMap, openspecRelPath);
   const orphaned = await detectOrphanedSpecs(specMap, rootPath);
 
+  // ADR drift detection (when ADR map is provided)
+  let adrGaps: DriftIssue[] = [];
+  let adrOrphanedIssues: DriftIssue[] = [];
+  if (options.adrMap) {
+    const changedADRIds = extractChangedADRIds(changedFiles, openspecRelPath);
+    adrGaps = detectADRGaps(changedFiles, options.adrMap, specMap, changedADRIds, openspecRelPath);
+    adrOrphanedIssues = detectADROrphaned(options.adrMap, specMap);
+  }
+
   // Combine all issues
-  let allIssues = [...gaps, ...stale, ...uncovered, ...orphaned];
+  let allIssues = [...gaps, ...stale, ...uncovered, ...orphaned, ...adrGaps, ...adrOrphanedIssues];
 
   // Apply domain filter if provided — exclude null-domain issues too,
   // since the user only wants results for the specified domains
@@ -586,6 +693,8 @@ export async function detectDrift(options: DriftDetectorOptions): Promise<DriftR
       stale: dedupedIssues.filter(i => i.kind === 'stale').length,
       uncovered: dedupedIssues.filter(i => i.kind === 'uncovered').length,
       orphanedSpecs: dedupedIssues.filter(i => i.kind === 'orphaned-spec').length,
+      adrGaps: dedupedIssues.filter(i => i.kind === 'adr-gap').length,
+      adrOrphaned: dedupedIssues.filter(i => i.kind === 'adr-orphaned').length,
       total: dedupedIssues.length,
     },
     hasDrift,
