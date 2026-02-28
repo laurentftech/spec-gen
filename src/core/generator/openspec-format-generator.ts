@@ -188,12 +188,14 @@ export class OpenSpecFormatGenerator {
       domain.endpoints.push(endpoint);
     }
 
-    // Set descriptions based on content
+    // Set descriptions based on content — prefer service purpose (descriptive) over entity list
     for (const domain of domainMap.values()) {
-      if (domain.entities.length > 0) {
-        domain.description = `Manages ${domain.entities.map(e => e.name).join(', ')} entities`;
-      } else if (domain.services.length > 0) {
+      if (domain.services.length > 0) {
         domain.description = domain.services[0].purpose;
+      } else if (domain.entities.length > 0) {
+        const preview = domain.entities.slice(0, 3).map(e => e.name).join(', ');
+        const extra = domain.entities.length > 3 ? ` and ${domain.entities.length - 3} more` : '';
+        domain.description = `Defines core data models: ${preview}${extra}.`;
       } else if (domain.endpoints.length > 0) {
         const firstPurpose = domain.endpoints[0]?.purpose;
         domain.description = firstPurpose
@@ -432,7 +434,8 @@ export class OpenSpecFormatGenerator {
       for (const operation of (service.operations ?? [])) {
         lines.push(`### Requirement: ${this.formatRequirementName(operation.name)}`);
         lines.push('');
-        lines.push(`The system SHALL ${(operation.description ?? '').toLowerCase()}`);
+        const opDesc = (operation.description ?? '').replace(/^\s*(shall|must|should|may)\s+/i, '');
+        lines.push(`The system SHALL ${opDesc.toLowerCase()}`);
         lines.push('');
 
         // Operation scenarios
@@ -454,7 +457,8 @@ export class OpenSpecFormatGenerator {
           );
           lines.push(`### Requirement: ${reqName}`);
           lines.push('');
-          lines.push(`The system SHALL ${(endpoint.purpose ?? 'handle this endpoint').toLowerCase()}`);
+          const epPurpose = (endpoint.purpose ?? 'handle this endpoint').replace(/^\s*(shall|must|should|may)\s+/i, '');
+          lines.push(`The system SHALL ${epPurpose.toLowerCase()}`);
           lines.push('');
           lines.push(`#### Scenario: ${reqName}Success`);
           lines.push(`- **GIVEN** the system is operational`);
@@ -765,13 +769,13 @@ export class OpenSpecFormatGenerator {
    */
   private addScenario(lines: string[], scenario: Scenario): void {
     lines.push(`#### Scenario: ${this.formatRequirementName(scenario.name)}`);
-    lines.push(`- **GIVEN** ${scenario.given ?? 'the system is in a valid state'}`);
-    lines.push(`- **WHEN** ${scenario.when ?? 'the operation is invoked'}`);
-    lines.push(`- **THEN** ${scenario.then ?? 'the expected outcome occurs'}`);
+    lines.push(`- **GIVEN** ${this.wrapText(scenario.given ?? 'the system is in a valid state')}`);
+    lines.push(`- **WHEN** ${this.wrapText(scenario.when ?? 'the operation is invoked')}`);
+    lines.push(`- **THEN** ${this.wrapText(scenario.then ?? 'the expected outcome occurs')}`);
     if (scenario.and && scenario.and.length > 0) {
       const andClauses = Array.isArray(scenario.and) ? scenario.and : [scenario.and];
       for (const andClause of andClauses) {
-        lines.push(`- **AND** ${andClause}`);
+        lines.push(`- **AND** ${this.wrapText(andClause)}`);
       }
     }
     lines.push('');
