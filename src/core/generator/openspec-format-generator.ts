@@ -411,8 +411,18 @@ export class OpenSpecFormatGenerator {
         lines.push('');
 
         // Scenarios from entity
-        for (const scenario of (entity.scenarios ?? [])) {
-          this.addScenario(lines, scenario);
+        const entityScenarios = entity.scenarios ?? [];
+        if (entityScenarios.length > 0) {
+          for (const scenario of entityScenarios) {
+            this.addScenario(lines, scenario);
+          }
+        } else {
+          // Validator requires at least one scenario per requirement
+          lines.push(`#### Scenario: Valid${entity.name}Accepted`);
+          lines.push(`- **GIVEN** A valid ${entity.name} object with all required fields`);
+          lines.push(`- **WHEN** The object is validated`);
+          lines.push(`- **THEN** Validation passes with no errors`);
+          lines.push('');
         }
       }
     }
