@@ -7,7 +7,7 @@
 
 import { Command } from 'commander';
 import { access, stat, writeFile, mkdir } from 'node:fs/promises';
-import { join, basename } from 'node:path';
+import { join } from 'node:path';
 import { logger } from '../../utils/logger.js';
 import type { AnalyzeOptions } from '../../types/index.js';
 import { readSpecGenConfig } from '../../core/services/config-manager.js';
@@ -113,10 +113,6 @@ export async function runAnalysis(
   }
 ): Promise<AnalysisResult> {
   const startTime = Date.now();
-
-  // Load config
-  const config = await readSpecGenConfig(rootPath);
-  const projectType = config?.projectType ?? 'unknown';
 
   // Phase 1: Repository Mapping
   logger.analysis('Scanning directory structure...');
@@ -331,7 +327,7 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
       logger.blank();
       logger.section('Analysis Complete');
 
-      const { repoMap, depGraph, artifacts, duration } = result;
+      const { repoMap, depGraph, artifacts } = result;
 
       // Summary
       console.log('');

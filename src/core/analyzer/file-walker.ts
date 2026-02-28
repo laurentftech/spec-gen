@@ -497,7 +497,7 @@ export class FileWalker {
 
         await this.processFile(filePath, relativePath, entry.name, depth);
       }
-    } catch (error) {
+    } catch {
       // Permission denied or other read error, skip this directory
       this.recordSkip('error');
     }

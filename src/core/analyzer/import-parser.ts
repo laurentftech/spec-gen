@@ -7,7 +7,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { dirname, join, resolve, extname, basename } from 'node:path';
+import { dirname, join, resolve, extname } from 'node:path';
 
 // ============================================================================
 // TYPES
@@ -91,79 +91,6 @@ const NODE_BUILTINS = new Set([
   'fs/promises', 'node:fs/promises', 'stream/promises', 'node:stream/promises',
   'timers/promises', 'node:timers/promises', 'util/types', 'node:util/types',
 ]);
-
-// ============================================================================
-// JAVASCRIPT/TYPESCRIPT IMPORT PATTERNS
-// ============================================================================
-
-// ES Module imports
-const ES_IMPORT_PATTERNS = [
-  // import X from 'module'
-  /import\s+(\w+)\s+from\s+['"]([^'"]+)['"]/g,
-  // import { X, Y } from 'module' or import { X as Z } from 'module'
-  /import\s+\{([^}]+)\}\s+from\s+['"]([^'"]+)['"]/g,
-  // import * as X from 'module'
-  /import\s+\*\s+as\s+(\w+)\s+from\s+['"]([^'"]+)['"]/g,
-  // import 'module' (side effect)
-  /import\s+['"]([^'"]+)['"]/g,
-  // import type { X } from 'module'
-  /import\s+type\s+\{([^}]+)\}\s+from\s+['"]([^'"]+)['"]/g,
-  // import type X from 'module'
-  /import\s+type\s+(\w+)\s+from\s+['"]([^'"]+)['"]/g,
-];
-
-// CommonJS require
-const REQUIRE_PATTERN = /(?:const|let|var)\s+(?:(\w+)|(\{[^}]+\}))\s*=\s*require\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
-
-// Dynamic import
-const DYNAMIC_IMPORT_PATTERN = /(?:await\s+)?import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
-
-// ============================================================================
-// JAVASCRIPT/TYPESCRIPT EXPORT PATTERNS
-// ============================================================================
-
-// export default X
-const EXPORT_DEFAULT_PATTERN = /export\s+default\s+(?:(class|function)\s+(\w+)|(\w+))/g;
-
-// export { X, Y } or export { X as Y }
-const EXPORT_NAMED_PATTERN = /export\s+\{([^}]+)\}(?:\s+from\s+['"]([^'"]+)['"])?/g;
-
-// export const/let/var X
-const EXPORT_VARIABLE_PATTERN = /export\s+(?:const|let|var)\s+(\w+)/g;
-
-// export function X
-const EXPORT_FUNCTION_PATTERN = /export\s+function\s+(\w+)/g;
-
-// export class X
-const EXPORT_CLASS_PATTERN = /export\s+class\s+(\w+)/g;
-
-// export type X
-const EXPORT_TYPE_PATTERN = /export\s+type\s+(\w+)/g;
-
-// export interface X
-const EXPORT_INTERFACE_PATTERN = /export\s+interface\s+(\w+)/g;
-
-// export enum X
-const EXPORT_ENUM_PATTERN = /export\s+enum\s+(\w+)/g;
-
-// export * from 'module'
-const EXPORT_ALL_PATTERN = /export\s+\*\s+(?:as\s+\w+\s+)?from\s+['"]([^'"]+)['"]/g;
-
-// module.exports = X
-const CJS_MODULE_EXPORTS_PATTERN = /module\.exports\s*=\s*(\w+|{[^}]+})/g;
-
-// exports.X = Y
-const CJS_EXPORTS_PATTERN = /exports\.(\w+)\s*=/g;
-
-// ============================================================================
-// PYTHON IMPORT PATTERNS
-// ============================================================================
-
-// import X or import X, Y
-const PY_IMPORT_PATTERN = /^import\s+([\w,\s.]+)$/gm;
-
-// from X import Y or from X import Y, Z
-const PY_FROM_IMPORT_PATTERN = /^from\s+([\w.]+)\s+import\s+(.+)$/gm;
 
 // ============================================================================
 // HELPER FUNCTIONS

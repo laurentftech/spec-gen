@@ -276,12 +276,7 @@ export async function withShutdownState<T>(
   const manager = getShutdownManager();
   manager.setState(state);
 
-  try {
-    const result = await fn();
-    manager.clearState();
-    return result;
-  } catch (error) {
-    // State is preserved for potential resume
-    throw error;
-  }
+  const result = await fn();
+  manager.clearState();
+  return result;
 }

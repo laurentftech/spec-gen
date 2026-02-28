@@ -10,7 +10,6 @@ import { access, stat, readFile, mkdir, writeFile } from 'node:fs/promises';
 import { join, basename } from 'node:path';
 import { confirm } from '@inquirer/prompts';
 import { logger } from '../../utils/logger.js';
-import type { ProjectType } from '../../types/index.js';
 import {
   detectProjectType,
   getProjectTypeName,
@@ -22,7 +21,6 @@ import {
   specGenConfigExists,
   openspecDirExists,
   createOpenSpecStructure,
-  readOpenSpecConfig,
 } from '../../core/services/config-manager.js';
 import {
   gitignoreExists,
@@ -45,6 +43,7 @@ import {
   OpenSpecWriter,
   type GenerationReport,
 } from '../../core/generator/openspec-writer.js';
+import { ADRGenerator } from '../../core/generator/adr-generator.js';
 import type { RepoStructure, LLMContext } from '../../core/analyzer/artifact-generator.js';
 import type { DependencyGraphResult } from '../../core/analyzer/dependency-graph.js';
 
@@ -59,6 +58,7 @@ interface RunOptions {
   dryRun: boolean;
   yes: boolean;
   maxFiles: number;
+  adr: boolean;
 }
 
 interface RunMetadata {
@@ -287,6 +287,11 @@ export const runCommand = new Command('run')
     'Maximum files to analyze',
     '500'
   )
+  .option(
+    '--adr',
+    'Also generate Architecture Decision Records',
+    false
+  )
   .addHelpText(
     'after',
     `
@@ -324,6 +329,7 @@ The pipeline saves run metadata to .spec-gen/runs/ for tracking.
       maxFiles: typeof options.maxFiles === 'string'
         ? parseInt(options.maxFiles, 10)
         : options.maxFiles ?? 500,
+      adr: options.adr ?? false,
     };
 
     const metadata: RunMetadata = {
@@ -578,6 +584,7 @@ The pipeline saves run metadata to .spec-gen/runs/ for tracking.
       const pipeline = new SpecGenerationPipeline(llm, {
         outputDir: join(rootPath, '.spec-gen', 'generation'),
         saveIntermediate: true,
+        generateADRs: opts.adr,
       });
 
       let pipelineResult: PipelineResult;
@@ -596,7 +603,13 @@ The pipeline saves run metadata to .spec-gen/runs/ for tracking.
       console.log('   ├─ Entity Extraction ✓');
       console.log('   ├─ Service Analysis ✓');
       console.log('   ├─ API Extraction ✓');
-      console.log('   └─ Architecture Synthesis ✓');
+      console.log(`   ${opts.adr ? '├' : '└'}─ Architecture Synthesis ✓`);
+      if (opts.adr) {
+        const adrStatus = pipelineResult.adrs && pipelineResult.adrs.length > 0
+          ? `✓ (${pipelineResult.adrs.length} decisions)`
+          : '○ (no decisions found)';
+        console.log(`   └─ ADR Enrichment ${adrStatus}`);
+      }
       console.log('');
 
       // Format and write specs
@@ -609,6 +622,16 @@ The pipeline saves run metadata to .spec-gen/runs/ for tracking.
       });
 
       const generatedSpecs = formatGenerator.generateSpecs(pipelineResult);
+
+      // Generate ADRs if requested
+      if (opts.adr && pipelineResult.adrs && pipelineResult.adrs.length > 0) {
+        const adrGenerator = new ADRGenerator({
+          version: specGenConfig?.version ?? '1.0.0',
+          includeMermaid: true,
+        });
+        const adrSpecs = adrGenerator.generateADRs(pipelineResult);
+        generatedSpecs.push(...adrSpecs);
+      }
 
       const writer = new OpenSpecWriter({
         rootPath,

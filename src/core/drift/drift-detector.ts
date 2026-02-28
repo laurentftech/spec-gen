@@ -6,7 +6,7 @@
  */
 
 import { access } from 'node:fs/promises';
-import { join, extname, basename } from 'node:path';
+import { join, basename } from 'node:path';
 import type {
   ChangedFile,
   DriftIssue,

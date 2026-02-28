@@ -480,7 +480,7 @@ describe('detectUncoveredFiles', () => {
     ];
 
     // src/auth/mfa.ts maps to auth via byFile or directory inference
-    const issues = detectUncoveredFiles(changedFiles, specMap);
+    detectUncoveredFiles(changedFiles, specMap);
 
     // It should still be flagged because it's not explicitly in the spec byFile map
     // BUT matchFileToDomains uses directory inference — so it may or may not be flagged

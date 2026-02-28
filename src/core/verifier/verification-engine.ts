@@ -6,12 +6,11 @@
  */
 
 import { readFile, writeFile, mkdir, access, readdir } from 'node:fs/promises';
-import { join, dirname, basename, relative } from 'node:path';
+import { join, basename, relative } from 'node:path';
 import logger from '../../utils/logger.js';
 import type { LLMService } from '../services/llm-service.js';
 import type { DependencyGraphResult, DependencyNode } from '../analyzer/dependency-graph.js';
-import type { ScoredFile } from '../../types/index.js';
-import { ImportExportParser, type FileAnalysis, type ExportInfo } from '../analyzer/import-parser.js';
+import { ImportExportParser } from '../analyzer/import-parser.js';
 
 // ============================================================================
 // TYPES
@@ -564,7 +563,7 @@ Respond in JSON:
    */
   private normalizeImport(importPath: string): string {
     // Remove extensions
-    let normalized = importPath
+    const normalized = importPath
       .replace(/\.(js|ts|jsx|tsx|mjs|cjs)$/, '')
       .replace(/^\.\//, '')
       .replace(/^\.\.\//, '');

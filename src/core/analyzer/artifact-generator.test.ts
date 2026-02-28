@@ -7,11 +7,8 @@ import { mkdir, writeFile, rm, readFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  AnalysisArtifactGenerator,
   generateArtifacts,
   generateAndSaveArtifacts,
-  type RepoStructure,
-  type AnalysisArtifacts,
 } from './artifact-generator.js';
 import type { RepositoryMap, DetectedFramework, LanguageBreakdown, DirectoryStats } from './repository-mapper.js';
 import type { DependencyGraphResult, DependencyNode, DependencyEdge, FileCluster } from './dependency-graph.js';

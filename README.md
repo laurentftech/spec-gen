@@ -278,7 +278,7 @@ spec-gen drift --domains auth,user
 | `spec-gen` / `spec-gen run` | Full pipeline: init → analyze → generate | Yes |
 | `spec-gen init` | Initialize configuration | No |
 | `spec-gen analyze` | Run static analysis only | No |
-| `spec-gen generate` | Generate specs from analysis | Yes |
+| `spec-gen generate` | Generate specs from analysis (add `--adr` for ADRs) | Yes |
 | `spec-gen verify` | Verify spec accuracy | Yes |
 | `spec-gen drift` | Detect spec drift (static) | No |
 | `spec-gen drift --use-llm` | Detect spec drift (LLM-enhanced) | Yes |
@@ -332,6 +332,7 @@ spec-gen run [options]
   --dry-run        # Show what would be done
   -y, --yes        # Skip confirmation prompts
   --max-files <n>  # Maximum files to analyze (default: 500)
+  --adr            # Also generate Architecture Decision Records
 ```
 
 **Analyze:**
@@ -351,6 +352,8 @@ spec-gen generate [options]
   --domains <list>   # Only generate specific domains
   --merge            # Merge with existing specs
   --no-overwrite     # Skip existing files
+  --adr              # Also generate Architecture Decision Records
+  --adr-only         # Generate only ADRs (skip specs)
 ```
 
 **Verify:**
@@ -382,6 +385,7 @@ Using the analysis as context, spec-gen queries an LLM to extract specifications
 - **Stage 3**: Service Analysis — Business logic
 - **Stage 4**: API Extraction — HTTP endpoints
 - **Stage 5**: Architecture Synthesis — Overall structure
+- **Stage 6**: ADR Enrichment — Architecture Decision Records (with `--adr` flag)
 
 ### 3. Verification
 
@@ -408,13 +412,17 @@ spec-gen writes directly to OpenSpec's structure:
 ```
 openspec/
 ├── config.yaml              # Project context and metadata
-└── specs/
-    ├── overview/spec.md     # System overview
-    ├── user/spec.md         # Domain: User management
-    ├── order/spec.md        # Domain: Order processing
-    ├── auth/spec.md         # Domain: Authentication
-    ├── architecture/spec.md # System architecture
-    └── api/spec.md          # API specification
+├── specs/
+│   ├── overview/spec.md     # System overview
+│   ├── user/spec.md         # Domain: User management
+│   ├── order/spec.md        # Domain: Order processing
+│   ├── auth/spec.md         # Domain: Authentication
+│   ├── architecture/spec.md # System architecture
+│   └── api/spec.md          # API specification
+└── decisions/               # Architecture Decision Records (with --adr)
+    ├── index.md             # Table of all ADRs with links
+    ├── adr-0001-*.md        # Individual ADR files
+    └── ...
 ```
 
 Each spec follows OpenSpec conventions:
@@ -547,13 +555,13 @@ The tool works best with TypeScript projects due to richer type information.
 npm install          # Install dependencies
 npm run dev          # Development mode (watch)
 npm run build        # Build
-npm run test:run     # Run tests (864 unit tests)
+npm run test:run     # Run tests (891 unit tests)
 npm run typecheck    # Type check
 ```
 
 ### Test Suite
 
-- **864 unit tests** covering all modules including drift detection, spec mapping, LLM enhancement, and static analysis
+- **891 unit tests** covering all modules including drift detection, spec mapping, LLM enhancement, static analysis, and ADR generation
 - **27 end-to-end tests** for drift detection (gap detection, stale specs, uncovered files, orphaned specs, JSON output, pre-commit hooks, domain filtering, LLM flag handling)
 
 ## Links

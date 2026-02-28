@@ -5,7 +5,7 @@
  * Handles initialization, merging with existing specs, and output tracking.
  */
 
-import { readFile, writeFile, mkdir, access, readdir, copyFile, stat } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, access, copyFile } from 'node:fs/promises';
 import { join, dirname, relative } from 'node:path';
 import logger from '../../utils/logger.js';
 import {
@@ -108,6 +108,7 @@ export class OpenSpecWriter {
   async initialize(): Promise<void> {
     // Create openspec directory structure
     await mkdir(join(this.openspecRoot, 'specs'), { recursive: true });
+    await mkdir(join(this.openspecRoot, 'decisions'), { recursive: true });
     await mkdir(join(this.openspecRoot, 'changes', 'archive'), { recursive: true });
 
     // Create .spec-gen directory structure

@@ -109,6 +109,8 @@ export interface GenerateOptions extends GlobalOptions {
   model: string;
   dryRun: boolean;
   domains: string[];
+  adr: boolean;
+  adrOnly: boolean;
 }
 
 export interface VerifyOptions extends GlobalOptions {

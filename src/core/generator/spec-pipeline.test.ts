@@ -3,18 +3,12 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdir, rm, readdir, readFile } from 'node:fs/promises';
+import { mkdir, rm, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   SpecGenerationPipeline,
   runSpecGenerationPipeline,
-  type PipelineResult,
-  type ProjectSurveyResult,
-  type ExtractedEntity,
-  type ExtractedService,
-  type ExtractedEndpoint,
-  type ArchitectureSynthesis,
 } from './spec-pipeline.js';
 import { createMockLLMService } from '../services/llm-service.js';
 import type { RepoStructure, LLMContext } from '../analyzer/artifact-generator.js';
@@ -196,6 +190,30 @@ const MOCK_RESPONSES = {
     securityModel: 'JWT-based authentication',
     keyDecisions: ['Use TypeORM for database access', 'Express for HTTP routing'],
   }),
+  adrs: JSON.stringify([
+    {
+      id: 'ADR-001',
+      title: 'Use TypeORM for database access',
+      status: 'accepted',
+      context: 'The project needs a typed ORM for database interactions.',
+      decision: 'Use TypeORM as the primary ORM.',
+      consequences: ['Type-safe queries', 'Migration complexity'],
+      alternatives: ['Prisma', 'Raw SQL'],
+      relatedLayers: ['Data', 'Service'],
+      relatedDomains: ['user'],
+    },
+    {
+      id: 'ADR-002',
+      title: 'Express for HTTP routing',
+      status: 'accepted',
+      context: 'Need a lightweight HTTP framework.',
+      decision: 'Use Express for all HTTP routing.',
+      consequences: ['Large ecosystem', 'Middleware support'],
+      alternatives: ['Fastify', 'Koa'],
+      relatedLayers: ['API'],
+      relatedDomains: ['api'],
+    },
+  ]),
 };
 
 // ============================================================================
@@ -492,6 +510,118 @@ describe('SpecGenerationPipeline', () => {
       );
 
       expect(result.architecture.dataFlow).toContain('->');
+    });
+  });
+
+  describe('Stage 6: ADR Enrichment', () => {
+    it('should enrich ADRs when generateADRs is true', async () => {
+      const { service, provider } = createMockLLMService();
+      provider.setResponse('categorize', MOCK_RESPONSES.survey);
+      provider.setResponse('Synthesize', MOCK_RESPONSES.architecture);
+      provider.setResponse('Decision Records', MOCK_RESPONSES.adrs);
+      provider.setDefaultResponse(MOCK_RESPONSES.survey);
+
+      const pipeline = new SpecGenerationPipeline(service, {
+        outputDir: tempDir,
+        skipStages: ['entities', 'services', 'api'],
+        generateADRs: true,
+      });
+
+      const result = await pipeline.run(
+        createMockRepoStructure(),
+        createMockLLMContext(),
+        createMockDepGraph()
+      );
+
+      expect(result.adrs).toBeDefined();
+      expect(result.adrs!.length).toBe(2);
+      expect(result.adrs![0].id).toBe('ADR-001');
+      expect(result.adrs![0].title).toBe('Use TypeORM for database access');
+      expect(result.adrs![1].id).toBe('ADR-002');
+      expect(result.metadata.completedStages).toContain('adr');
+    });
+
+    it('should skip ADRs when generateADRs is false', async () => {
+      const { service, provider } = createMockLLMService();
+      provider.setResponse('categorize', MOCK_RESPONSES.survey);
+      provider.setResponse('Synthesize', MOCK_RESPONSES.architecture);
+      provider.setDefaultResponse(MOCK_RESPONSES.survey);
+
+      const pipeline = new SpecGenerationPipeline(service, {
+        outputDir: tempDir,
+        skipStages: ['entities', 'services', 'api'],
+        generateADRs: false,
+      });
+
+      const result = await pipeline.run(
+        createMockRepoStructure(),
+        createMockLLMContext(),
+        createMockDepGraph()
+      );
+
+      expect(result.adrs).toBeUndefined();
+      expect(result.metadata.completedStages).not.toContain('adr');
+    });
+
+    it('should skip ADRs when no keyDecisions exist', async () => {
+      const { service, provider } = createMockLLMService();
+      provider.setResponse('categorize', MOCK_RESPONSES.survey);
+      // Architecture with empty keyDecisions
+      const archNoDecisions = JSON.stringify({
+        systemPurpose: 'A simple API',
+        architectureStyle: 'Layered',
+        layerMap: [{ name: 'API', purpose: 'HTTP', components: ['routes/'] }],
+        dataFlow: 'Request -> Response',
+        integrations: [],
+        securityModel: 'None',
+        keyDecisions: [],
+      });
+      provider.setResponse('Synthesize', archNoDecisions);
+      provider.setDefaultResponse(MOCK_RESPONSES.survey);
+
+      const pipeline = new SpecGenerationPipeline(service, {
+        outputDir: tempDir,
+        skipStages: ['entities', 'services', 'api'],
+        generateADRs: true,
+      });
+
+      const result = await pipeline.run(
+        createMockRepoStructure(),
+        createMockLLMContext(),
+        createMockDepGraph()
+      );
+
+      expect(result.adrs).toBeUndefined();
+      expect(result.metadata.skippedStages).toContain('adr');
+    });
+
+    it('should include ADR enrichment results with proper structure', async () => {
+      const { service, provider } = createMockLLMService();
+      provider.setResponse('categorize', MOCK_RESPONSES.survey);
+      provider.setResponse('Synthesize', MOCK_RESPONSES.architecture);
+      provider.setResponse('Decision Records', MOCK_RESPONSES.adrs);
+      provider.setDefaultResponse(MOCK_RESPONSES.survey);
+
+      const pipeline = new SpecGenerationPipeline(service, {
+        outputDir: tempDir,
+        skipStages: ['entities', 'services', 'api'],
+        generateADRs: true,
+      });
+
+      const result = await pipeline.run(
+        createMockRepoStructure(),
+        createMockLLMContext(),
+        createMockDepGraph()
+      );
+
+      const adr = result.adrs![0];
+      expect(adr.status).toBe('accepted');
+      expect(adr.context).toBeDefined();
+      expect(adr.decision).toBeDefined();
+      expect(adr.consequences.length).toBeGreaterThan(0);
+      expect(adr.alternatives.length).toBeGreaterThan(0);
+      expect(adr.relatedLayers.length).toBeGreaterThan(0);
+      expect(adr.relatedDomains.length).toBeGreaterThan(0);
     });
   });
 

@@ -66,10 +66,13 @@ Or run the full pipeline at once:
 Output integrates with OpenSpec ecosystem:
   openspec/
   ├── config.yaml
-  └── specs/
-      ├── overview/spec.md
-      ├── architecture/spec.md
-      └── {domain}/spec.md
+  ├── specs/
+  │   ├── overview/spec.md
+  │   ├── architecture/spec.md
+  │   └── {domain}/spec.md
+  └── decisions/              (with --adr flag)
+      ├── index.md
+      └── adr-NNNN-*.md
 
 Learn more: https://github.com/Fission-AI/OpenSpec
 `
@@ -100,7 +103,7 @@ program
     if (path && path !== '.') {
       try {
         process.chdir(path);
-      } catch (error) {
+      } catch {
         logger.error(`Cannot access path: ${path}`);
         process.exitCode = 1;
         return;

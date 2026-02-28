@@ -7,7 +7,6 @@ import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  DependencyGraphBuilder,
   buildDependencyGraph,
   toD3Format,
   toMermaidFormat,
@@ -394,8 +393,6 @@ describe('DependencyGraphBuilder', () => {
       const result = await buildDependencyGraph(files, { rootDir: tempDir });
 
       const nodeB = result.nodes.find(n => n.file.name === 'b.ts')!;
-      const nodeA = result.nodes.find(n => n.file.name === 'a.ts')!;
-      const nodeC = result.nodes.find(n => n.file.name === 'c.ts')!;
 
       // B is the bridge between A and C
       expect(nodeB.metrics.betweenness).toBeGreaterThanOrEqual(0);

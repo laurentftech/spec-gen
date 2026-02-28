@@ -24,13 +24,13 @@ import {
 } from '../../core/generator/spec-pipeline.js';
 import {
   OpenSpecFormatGenerator,
-  type GeneratedSpec,
 } from '../../core/generator/openspec-format-generator.js';
 import {
   OpenSpecWriter,
   type GenerationReport,
   type WriteMode,
 } from '../../core/generator/openspec-writer.js';
+import { ADRGenerator } from '../../core/generator/adr-generator.js';
 import type { RepoStructure, LLMContext } from '../../core/analyzer/artifact-generator.js';
 import type { DependencyGraphResult } from '../../core/analyzer/dependency-graph.js';
 
@@ -204,7 +204,7 @@ async function promptConfirmation(message: string, autoYes: boolean): Promise<bo
 /**
  * Verify LLM API connectivity
  */
-async function verifyApiConnectivity(llm: LLMService): Promise<boolean> {
+async function verifyApiConnectivity(_llm: LLMService): Promise<boolean> {
   try {
     // Simple ping to verify API is reachable
     logger.debug('Verifying LLM API connectivity...');
@@ -265,6 +265,16 @@ export const generateCommand = new Command('generate')
     '--output-dir <path>',
     'Override openspec output location'
   )
+  .option(
+    '--adr',
+    'Generate Architecture Decision Records alongside specs',
+    false
+  )
+  .option(
+    '--adr-only',
+    'Only generate ADRs (skip spec generation)',
+    false
+  )
   .addHelpText(
     'after',
     `
@@ -279,16 +289,21 @@ Examples:
                                      Use analysis from custom path
   $ spec-gen generate --merge        Merge with existing specs
   $ spec-gen generate --no-overwrite Skip existing spec files
+  $ spec-gen generate --adr          Also generate ADRs
+  $ spec-gen generate --adr-only     Only generate ADRs
   $ spec-gen generate -y             Skip confirmation prompts
 
 Output structure (OpenSpec format):
   openspec/
   ├── config.yaml              Project configuration (updated)
-  └── specs/
-      ├── overview/spec.md     System overview
-      ├── architecture/spec.md System architecture
-      ├── {domain}/spec.md     Domain specifications
-      └── api/spec.md          API specification (if applicable)
+  ├── specs/
+  │   ├── overview/spec.md     System overview
+  │   ├── architecture/spec.md System architecture
+  │   ├── {domain}/spec.md     Domain specifications
+  │   └── api/spec.md          API specification (if applicable)
+  └── decisions/               Architecture Decision Records (with --adr)
+      ├── index.md             ADR index
+      └── adr-NNNN-*.md        Individual decisions
 
 Each spec.md follows OpenSpec conventions:
   - RFC 2119 keywords (SHALL, MUST, SHOULD, MAY)
@@ -308,6 +323,8 @@ Each spec.md follows OpenSpec conventions:
       model: options.model ?? 'claude-sonnet-4-20250514',
       dryRun: options.dryRun ?? false,
       domains: options.domains ?? [],
+      adr: options.adr ?? false,
+      adrOnly: options.adrOnly ?? false,
       reanalyze: options.reanalyze ?? false,
       merge: options.merge ?? false,
       noOverwrite: options.noOverwrite ?? false,
@@ -353,7 +370,7 @@ Each spec.md follows OpenSpec conventions:
       logger.section('Loading Analysis');
 
       const analysisPath = join(rootPath, opts.analysis);
-      let analysisData = await loadAnalysis(analysisPath);
+      const analysisData = await loadAnalysis(analysisPath);
 
       if (!analysisData || opts.reanalyze) {
         if (opts.reanalyze) {
@@ -373,7 +390,7 @@ Each spec.md follows OpenSpec conventions:
         }
       }
 
-      const { repoStructure, llmContext, depGraph, age, timestamp } = analysisData;
+      const { repoStructure, llmContext, depGraph, age } = analysisData;
 
       logger.discovery(`Using analysis from ${formatAge(age)}`);
       logger.info('Files analyzed', repoStructure.statistics.analyzedFiles);
@@ -504,6 +521,7 @@ Each spec.md follows OpenSpec conventions:
       const pipeline = new SpecGenerationPipeline(llm, {
         outputDir: join(rootPath, '.spec-gen', 'generation'),
         saveIntermediate: true,
+        generateADRs: opts.adr || opts.adrOnly,
       });
 
       logger.analysis('Running LLM generation pipeline...');
@@ -552,10 +570,10 @@ Each spec.md follows OpenSpec conventions:
         includeTechnicalNotes: true,
       });
 
-      let generatedSpecs = formatGenerator.generateSpecs(pipelineResult);
+      let generatedSpecs = opts.adrOnly ? [] : formatGenerator.generateSpecs(pipelineResult);
 
       // Filter by domains if specified
-      if (opts.domains.length > 0) {
+      if (!opts.adrOnly && opts.domains.length > 0) {
         const domainSet = new Set(opts.domains.map(d => d.toLowerCase()));
         generatedSpecs = generatedSpecs.filter(spec => {
           // Always include overview and architecture
@@ -568,7 +586,22 @@ Each spec.md follows OpenSpec conventions:
         logger.info('Filtered to domains', opts.domains.join(', '));
       }
 
-      logger.info('Specs generated', generatedSpecs.length);
+      // Generate ADRs if requested
+      if (opts.adr || opts.adrOnly) {
+        const adrGenerator = new ADRGenerator({
+          version: specGenConfig.version,
+          includeMermaid: true,
+        });
+        const adrSpecs = adrGenerator.generateADRs(pipelineResult);
+        if (adrSpecs.length > 0) {
+          logger.info('ADRs generated', adrSpecs.length);
+          generatedSpecs = [...generatedSpecs, ...adrSpecs];
+        } else {
+          logger.warning('No architectural decisions found for ADR generation');
+        }
+      }
+
+      logger.info('Total files to write', generatedSpecs.length);
       logger.blank();
 
       // Determine write mode

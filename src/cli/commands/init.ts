@@ -12,7 +12,6 @@ import { logger } from '../../utils/logger.js';
 import {
   detectProjectType,
   getProjectTypeName,
-  detectGitRepository,
 } from '../../core/services/project-detector.js';
 import {
   getDefaultConfig,

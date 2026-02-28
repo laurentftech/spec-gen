@@ -2,7 +2,7 @@
  * Tests for spec-gen analyze command
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { analyzeCommand, runAnalysis } from './analyze.js';
 
 describe('analyze command', () => {

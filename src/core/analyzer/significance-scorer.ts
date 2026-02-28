@@ -12,7 +12,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { basename, dirname } from 'node:path';
+import { basename } from 'node:path';
 import type { FileMetadata, ScoredFile } from '../../types/index.js';
 
 /**

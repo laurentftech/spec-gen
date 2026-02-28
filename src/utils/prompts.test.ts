@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { isInteractive, setInteractiveMode } from './prompts.js';
 
 // Note: We don't test the actual prompt functions as they require interactive input

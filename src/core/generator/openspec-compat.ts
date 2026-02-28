@@ -6,7 +6,7 @@
  */
 
 import { readFile, writeFile, mkdir, access, readdir } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import logger from '../../utils/logger.js';
 import type { ProjectSurveyResult } from './spec-pipeline.js';
@@ -47,6 +47,7 @@ export interface SpecGenMetadata {
   generatedAt: string;
   domains: string[];
   confidence: number;
+  adrCount?: number;
 }
 
 /**

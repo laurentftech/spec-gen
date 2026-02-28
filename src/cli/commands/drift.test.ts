@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
-import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 
 // Mock dependencies
 vi.mock('../../utils/logger.js', () => ({

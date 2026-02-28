@@ -5,7 +5,7 @@
  */
 
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import YAML from 'yaml';
 import type { ProjectType, SpecGenConfig } from '../../types/index.js';
 

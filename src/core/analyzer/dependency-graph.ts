@@ -729,7 +729,7 @@ export function toMermaidFormat(result: DependencyGraphResult, maxNodes = 50): s
     .forEach((n, idx) => {
       const label = `N${idx}`;
       nodeLabels.set(n.id, label);
-      const name = n.file.name.replace(/["\[\]]/g, '');
+      const name = n.file.name.replace(/["[\]]/g, '');
       lines.push(`    ${label}["${name}"]`);
     });
 

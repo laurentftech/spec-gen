@@ -5,8 +5,6 @@
  * specification files.
  */
 
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import type {
   PipelineResult,
   ProjectSurveyResult,
@@ -28,7 +26,7 @@ export interface GeneratedSpec {
   path: string;
   content: string;
   domain: string;
-  type: 'overview' | 'domain' | 'architecture' | 'api';
+  type: 'overview' | 'domain' | 'architecture' | 'api' | 'adr';
 }
 
 /**
@@ -329,7 +327,7 @@ export class OpenSpecFormatGenerator {
   /**
    * Generate a domain spec
    */
-  private generateDomainSpec(domain: DomainGroup, survey: ProjectSurveyResult): GeneratedSpec {
+  private generateDomainSpec(domain: DomainGroup, _survey: ProjectSurveyResult): GeneratedSpec {
     const lines: string[] = [];
     const date = new Date().toISOString().split('T')[0];
 
@@ -457,8 +455,8 @@ export class OpenSpecFormatGenerator {
    */
   private generateArchitectureSpec(
     architecture: ArchitectureSynthesis,
-    survey: ProjectSurveyResult,
-    domains: DomainGroup[]
+    _survey: ProjectSurveyResult,
+    _domains: DomainGroup[]
   ): GeneratedSpec {
     const lines: string[] = [];
     const date = new Date().toISOString().split('T')[0];
@@ -585,7 +583,7 @@ export class OpenSpecFormatGenerator {
   /**
    * Generate the API spec
    */
-  private generateApiSpec(endpoints: ExtractedEndpoint[], survey: ProjectSurveyResult): GeneratedSpec {
+  private generateApiSpec(endpoints: ExtractedEndpoint[], _survey: ProjectSurveyResult): GeneratedSpec {
     const lines: string[] = [];
     const date = new Date().toISOString().split('T')[0];
 

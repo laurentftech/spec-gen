@@ -6,9 +6,9 @@
  */
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { join, basename } from 'node:path';
+import { join } from 'node:path';
 import logger from '../../utils/logger.js';
-import type { LLMService, CompletionResponse } from '../services/llm-service.js';
+import type { LLMService } from '../services/llm-service.js';
 import type { RepoStructure, LLMContext } from '../analyzer/artifact-generator.js';
 import type { DependencyGraphResult } from '../analyzer/dependency-graph.js';
 
@@ -161,6 +161,21 @@ export interface ArchitectureSynthesis {
 }
 
 /**
+ * Stage 6 output: Enriched Architecture Decision Record
+ */
+export interface EnrichedADR {
+  id: string;
+  title: string;
+  status: 'accepted' | 'proposed' | 'deprecated' | 'superseded';
+  context: string;
+  decision: string;
+  consequences: string[];
+  alternatives: string[];
+  relatedLayers: string[];
+  relatedDomains: string[];
+}
+
+/**
  * Complete pipeline result
  */
 export interface PipelineResult {
@@ -169,6 +184,7 @@ export interface PipelineResult {
   services: ExtractedService[];
   endpoints: ExtractedEndpoint[];
   architecture: ArchitectureSynthesis;
+  adrs?: EnrichedADR[];
   metadata: {
     totalTokens: number;
     estimatedCost: number;
@@ -204,6 +220,8 @@ export interface PipelineOptions {
   maxRetries?: number;
   /** Save intermediate results */
   saveIntermediate?: boolean;
+  /** Generate Architecture Decision Records (triggers Stage 6) */
+  generateADRs?: boolean;
 }
 
 // ============================================================================
@@ -292,6 +310,33 @@ Base all conclusions on the code evidence provided.
 Where uncertain, say so explicitly.
 
 Respond with a JSON object. Respond ONLY with valid JSON.`,
+
+  stage6_adr: (architecture: ArchitectureSynthesis) => `You are a senior software architect creating Architecture Decision Records (ADRs).
+
+For each key decision listed below, produce a complete ADR with:
+- id: Sequential like "ADR-001", "ADR-002", etc.
+- title: The decision as a clear statement (e.g., "Use TypeORM for database access")
+- status: "accepted" (these are observed decisions already implemented in the code)
+- context: 2-3 sentences on why this decision was needed
+- decision: 1-2 sentences clearly stating what was decided
+- consequences: Array of 2-4 consequences (include both positive and negative)
+- alternatives: Array of 1-3 alternatives that could have been chosen instead
+- relatedLayers: Array of architecture layer names affected (from: ${architecture.layerMap.map(l => l.name).join(', ')})
+- relatedDomains: Array of domain names affected
+
+Architecture context:
+- System purpose: ${architecture.systemPurpose}
+- Architecture style: ${architecture.architectureStyle}
+- Layers: ${architecture.layerMap.map(l => `${l.name} (${l.purpose})`).join(', ')}
+- Data flow: ${architecture.dataFlow}
+- Security model: ${architecture.securityModel}
+- External integrations: ${architecture.integrations.join(', ') || 'None'}
+
+Key decisions to expand into full ADRs:
+${architecture.keyDecisions.map((d, i) => `${i + 1}. ${d}`).join('\n')}
+
+Base all conclusions on the code evidence provided. Where uncertain, say so explicitly.
+Respond with a JSON array of ADR objects. Respond ONLY with valid JSON.`,
 };
 
 // ============================================================================
@@ -314,6 +359,7 @@ export class SpecGenerationPipeline {
       resumeFrom: options.resumeFrom ?? '',
       maxRetries: options.maxRetries ?? 2,
       saveIntermediate: options.saveIntermediate ?? true,
+      generateADRs: options.generateADRs ?? false,
     };
   }
 
@@ -427,6 +473,26 @@ export class SpecGenerationPipeline {
       architecture = this.getDefaultArchitecture(survey);
     }
 
+    // Stage 6: ADR Enrichment (optional)
+    let adrs: EnrichedADR[] = [];
+    if (this.options.generateADRs && this.shouldRunStage('adr')) {
+      if (architecture.keyDecisions.length > 0) {
+        logger.analysis('Running Stage 6: ADR Enrichment');
+        const result = await this.runStage6(architecture);
+        adrs = result.data ?? [];
+        totalTokens += result.tokens;
+        if (result.success) {
+          completedStages.push('adr');
+        } else {
+          logger.warning('ADR enrichment failed');
+          skippedStages.push('adr');
+        }
+      } else {
+        logger.warning('No key decisions found, skipping ADR enrichment');
+        skippedStages.push('adr');
+      }
+    }
+
     const duration = Date.now() - startTime;
     const costTracking = this.llm.getCostTracking();
 
@@ -436,6 +502,7 @@ export class SpecGenerationPipeline {
       services,
       endpoints,
       architecture,
+      adrs: adrs.length > 0 ? adrs : undefined,
       metadata: {
         totalTokens,
         estimatedCost: costTracking.estimatedCost,
@@ -464,7 +531,7 @@ export class SpecGenerationPipeline {
     }
 
     if (this.options.resumeFrom) {
-      const stages = ['survey', 'entities', 'services', 'api', 'architecture'];
+      const stages = ['survey', 'entities', 'services', 'api', 'architecture', 'adr'];
       const resumeIndex = stages.indexOf(this.options.resumeFrom);
       const currentIndex = stages.indexOf(stage);
       return currentIndex >= resumeIndex;
@@ -738,6 +805,50 @@ ${depGraph ? `Dependency Graph:
     } catch (error) {
       return {
         stage: 'architecture',
+        success: false,
+        error: (error as Error).message,
+        tokens: 0,
+        duration: Date.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Stage 6: ADR Enrichment
+   */
+  private async runStage6(
+    architecture: ArchitectureSynthesis
+  ): Promise<StageResult<EnrichedADR[]>> {
+    const startTime = Date.now();
+
+    const userPrompt = `Expand these ${architecture.keyDecisions.length} architectural decisions into full ADRs:
+
+${architecture.keyDecisions.map((d, i) => `${i + 1}. ${d}`).join('\n')}`;
+
+    try {
+      const result = await this.llm.completeJSON<EnrichedADR[]>({
+        systemPrompt: PROMPTS.stage6_adr(architecture),
+        userPrompt,
+        temperature: 0.3,
+        maxTokens: 3000,
+      });
+
+      const stageResult: StageResult<EnrichedADR[]> = {
+        stage: 'adr',
+        success: true,
+        data: result,
+        tokens: this.llm.getTokenUsage().totalTokens,
+        duration: Date.now() - startTime,
+      };
+
+      if (this.options.saveIntermediate) {
+        await this.saveResult('stage6-adr-enrichment', stageResult);
+      }
+
+      return stageResult;
+    } catch (error) {
+      return {
+        stage: 'adr',
         success: false,
         error: (error as Error).message,
         tokens: 0,

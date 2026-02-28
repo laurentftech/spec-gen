@@ -2,7 +2,7 @@
  * LLM Service Tests
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdir, rm, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -14,7 +14,6 @@ import {
   createMockLLMService,
   estimateTokens,
   type CompletionRequest,
-  type CompletionResponse,
 } from './llm-service.js';
 
 // ============================================================================
@@ -317,8 +316,7 @@ describe('LLMService', () => {
     it('should retry with correction on invalid JSON', async () => {
       // First call returns invalid JSON, second returns valid
       let callCount = 0;
-      const originalGenerate = provider.generateCompletion.bind(provider);
-      provider.generateCompletion = async (request) => {
+      provider.generateCompletion = async (_request) => {
         callCount++;
         if (callCount === 1) {
           return {
@@ -391,7 +389,7 @@ describe('LLMService', () => {
     it('should redact secrets in logs', async () => {
       const logDir = join(tempDir, 'logs');
 
-      const { service, provider } = createMockLLMService({
+      const { service } = createMockLLMService({
         logDir,
         enableLogging: true,
       });
@@ -431,7 +429,7 @@ describe('LLMService', () => {
 
   describe('Cost Tracking', () => {
     it('should track costs across multiple requests', async () => {
-      const { service, provider } = createMockLLMService();
+      const { service } = createMockLLMService();
 
       // Make multiple requests
       await service.complete({ systemPrompt: 'A', userPrompt: 'B' });
@@ -449,7 +447,7 @@ describe('LLMService', () => {
 
   describe('Edge Cases', () => {
     it('should handle empty prompts', async () => {
-      const { service, provider } = createMockLLMService();
+      const { service } = createMockLLMService();
 
       const response = await service.complete({
         systemPrompt: '',

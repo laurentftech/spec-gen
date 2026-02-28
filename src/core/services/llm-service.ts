@@ -179,7 +179,7 @@ const PRICING = {
 export function estimateTokens(text: string): number {
   // More accurate estimation considering code
   // Code tends to have more tokens per character due to special chars
-  const codePatterns = /[{}()\[\];:,.<>\/\\|`~!@#$%^&*=+]/g;
+  const codePatterns = /[{}()[\];:,.<>/\\|`~!@#$%^&*=+]/g;
   const codeCharCount = (text.match(codePatterns) || []).length;
   const regularCharCount = text.length - codeCharCount;
 

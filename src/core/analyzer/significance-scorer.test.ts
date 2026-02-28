@@ -13,7 +13,6 @@ import {
   getFilesByTag,
   getFilesAboveThreshold,
   groupFilesByTag,
-  buildFileRelationships,
 } from './significance-scorer.js';
 import type { FileMetadata, ScoredFile } from '../../types/index.js';
 

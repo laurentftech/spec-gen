@@ -10,8 +10,6 @@ import {
   OpenSpecWriter,
   writeOpenSpecs,
   initializeOpenSpec,
-  type WriteMode,
-  type GenerationReport,
 } from './openspec-writer.js';
 import type { GeneratedSpec } from './openspec-format-generator.js';
 import type { ProjectSurveyResult } from './spec-pipeline.js';
@@ -590,7 +588,7 @@ describe('Edge Cases', () => {
       updateConfig: false,
     });
 
-    const report = await writer.writeSpecs(specs, createMockSurvey());
+    await writer.writeSpecs(specs, createMockSurvey());
 
     expect(await fileExists(join(tempDir, 'openspec/specs/domain/subdomain/spec.md'))).toBe(true);
   });

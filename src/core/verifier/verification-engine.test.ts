@@ -118,7 +118,7 @@ export function createUserService(): UserService {
 
   // Helper to create mock dependency graph
   function createMockDepGraph(files: Array<{ path: string; lines: number }>): DependencyGraphResult {
-    const nodes: DependencyNode[] = files.map((f, i) => ({
+    const nodes: DependencyNode[] = files.map((f, _i) => ({
       id: f.path,
       file: {
         path: f.path,

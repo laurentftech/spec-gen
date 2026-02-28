@@ -2,7 +2,7 @@
  * Tests for spec-gen run command (full pipeline)
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { runCommand } from './run.js';
 
 describe('run command', () => {
@@ -248,7 +248,6 @@ describe('run command', () => {
   describe('API key detection', () => {
     it('should prefer Anthropic key when both available', () => {
       const anthropicKey = 'sk-ant-xxx';
-      const openaiKey = 'sk-xxx';
 
       const provider = anthropicKey ? 'anthropic' : 'openai';
       expect(provider).toBe('anthropic');
@@ -256,7 +255,6 @@ describe('run command', () => {
 
     it('should use OpenAI when only OpenAI key available', () => {
       const anthropicKey = '';
-      const openaiKey = 'sk-xxx';
 
       const provider = anthropicKey ? 'anthropic' : 'openai';
       expect(provider).toBe('openai');

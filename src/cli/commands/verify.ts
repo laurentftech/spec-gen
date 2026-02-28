@@ -125,8 +125,6 @@ function displayResult(
   verbose: boolean
 ): void {
   const status = getStatusEmoji(result.overallScore, threshold);
-  const scorePercent = (result.overallScore * 100).toFixed(0);
-
   console.log('');
   console.log(`   [${index}/${total}] ${result.filePath}`);
 
@@ -165,7 +163,7 @@ function displayResult(
 /**
  * Display verification summary
  */
-function displaySummary(report: VerificationReport, threshold: number): void {
+function displaySummary(report: VerificationReport, _threshold: number): void {
   console.log('');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('');

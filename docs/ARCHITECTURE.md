@@ -4,7 +4,7 @@ This document describes the internal architecture of spec-gen.
 
 ## Overview
 
-spec-gen is a CLI tool that reverse-engineers OpenSpec specifications from existing codebases. It follows a pipeline architecture with five main phases:
+spec-gen is a CLI tool that reverse-engineers OpenSpec specifications from existing codebases. It follows a pipeline architecture with five main phases (plus an optional ADR enrichment stage):
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
@@ -83,7 +83,8 @@ generator/
 ├── spec-pipeline.ts            # Multi-stage LLM orchestration
 ├── openspec-format-generator.ts # OpenSpec markdown formatting
 ├── openspec-compat.ts          # OpenSpec validation
-└── openspec-writer.ts          # File writing with backups
+├── openspec-writer.ts          # File writing with backups
+└── adr-generator.ts            # ADR markdown formatting and index
 ```
 
 **Pipeline Stages:**
@@ -92,6 +93,7 @@ generator/
 3. **Service Analysis** - Business logic (~800 tokens)
 4. **API Extraction** - HTTP endpoints (~800 tokens)
 5. **Architecture Synthesis** - Overall structure (~1200 tokens)
+6. **ADR Enrichment** - Architecture Decision Records (~800 tokens, optional with `--adr`)
 
 #### Verifier (`src/core/verifier/`)
 
@@ -283,7 +285,7 @@ User runs: spec-gen
   │         │                                     │              │
   │         ▼                                     ▼              │
   │    LLM Service                          openspec/            │
-  │    (Claude/GPT)                         specs/               │
+  │    (Claude/GPT)                         specs/ + decisions/  │
   └─────────────────────────────────────────────────────────────┘
                                 │
                                 ▼

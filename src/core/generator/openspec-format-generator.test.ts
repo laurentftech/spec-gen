@@ -7,7 +7,6 @@ import {
   OpenSpecFormatGenerator,
   validateSpec,
   generateOpenSpecs,
-  type GeneratedSpec,
 } from './openspec-format-generator.js';
 import type {
   PipelineResult,

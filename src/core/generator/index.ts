@@ -17,3 +17,4 @@ export {
   type DetectedContext,
 } from './openspec-compat.js';
 export * from './openspec-writer.js';
+export * from './adr-generator.js';

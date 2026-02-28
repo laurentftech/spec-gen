@@ -6,10 +6,10 @@
  */
 
 import { writeFile, mkdir, readFile } from 'node:fs/promises';
-import { join, dirname, basename, relative } from 'node:path';
+import { join, basename } from 'node:path';
 import type { ScoredFile, ProjectType } from '../../types/index.js';
-import type { RepositoryMap, DetectedFramework, DirectoryStats } from './repository-mapper.js';
-import type { DependencyGraphResult, FileCluster } from './dependency-graph.js';
+import type { RepositoryMap } from './repository-mapper.js';
+import type { DependencyGraphResult } from './dependency-graph.js';
 import { toMermaidFormat } from './dependency-graph.js';
 
 // ============================================================================
@@ -296,7 +296,7 @@ export class AnalysisArtifactGenerator {
    */
   private detectArchitecturePattern(
     repoMap: RepositoryMap,
-    depGraph: DependencyGraphResult
+    _depGraph: DependencyGraphResult
   ): 'layered' | 'modular' | 'microservices' | 'monolith' | 'unknown' {
     const dirs = repoMap.summary.directories;
     const dirNames = dirs.map(d => basename(d.path).toLowerCase());

@@ -11,9 +11,6 @@ import {
   parseFile,
   parseFiles,
   resolveImport,
-  type ImportInfo,
-  type ExportInfo,
-  type FileAnalysis,
 } from './import-parser.js';
 
 // ============================================================================

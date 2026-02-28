@@ -6,7 +6,7 @@
  */
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { join, basename, dirname } from 'node:path';
+import { join, basename } from 'node:path';
 import type { ProjectType, ScoredFile, FileMetadata } from '../../types/index.js';
 import { FileWalker, type FileWalkerOptions } from './file-walker.js';
 import { SignificanceScorer, type ScoringConfig } from './significance-scorer.js';
