@@ -33,6 +33,7 @@ import {
 } from '../../core/generator/openspec-writer.js';
 import type { RepoStructure, LLMContext } from '../../core/analyzer/artifact-generator.js';
 import type { DependencyGraphResult } from '../../core/analyzer/dependency-graph.js';
+import { MappingGenerator } from '../../core/generator/mapping-generator.js';
 
 // ============================================================================
 // TYPES
@@ -623,6 +624,19 @@ Each spec.md follows OpenSpec conventions:
         logger.error(`Failed to write specs: ${(error as Error).message}`);
         process.exitCode = 1;
         return;
+      }
+
+      // Generate requirement→function mapping artifact if dep graph is available
+      if (depGraph) {
+        try {
+          const mapper = new MappingGenerator(rootPath, specGenConfig.openspecPath);
+          const mapping = await mapper.generate(pipelineResult, depGraph);
+          logger.success(
+            `Requirement mapping: ${mapping.stats.mappedRequirements}/${mapping.stats.totalRequirements} requirements mapped, ${mapping.stats.orphanCount} orphan functions → .spec-gen/analysis/mapping.json`
+          );
+        } catch (error) {
+          logger.warning(`Could not generate mapping artifact: ${(error as Error).message}`);
+        }
       }
 
       // ========================================================================

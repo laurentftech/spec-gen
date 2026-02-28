@@ -116,6 +116,7 @@ export interface ServiceOperation {
   inputs?: string[];
   outputs?: string[];
   scenarios: Scenario[];
+  functionName?: string; // exact function/method name in source code, as reported by LLM
 }
 
 /**
@@ -245,7 +246,6 @@ For each entity you identify, extract in OpenSpec format:
 - relationships: Array of {targetEntity, type, description}
 - validations: Array of validation rules as strings (these become Requirements)
 - scenarios: Array of {name, given, when, then, and?} - observable behaviors in Given/When/Then format
-- location: File path where defined
 
 Focus on BUSINESS entities, not framework internals.
 Be precise - only include what you can verify from the code.
@@ -260,7 +260,8 @@ Available domains: ${suggestedDomains.join(', ')}
 For each service/module, identify:
 - name: Service name
 - purpose: What capability or responsibility it encapsulates
-- operations: Array of {name, description, inputs, outputs, scenarios} - key operations/methods that become Requirements with Scenarios. Focus on the 3 most important operations per service, with 1 scenario each.
+- operations: Array of {name, description, inputs, outputs, scenarios, functionName} - key operations/methods that become Requirements with Scenarios. Focus on the 3 most important operations per service, with 1 scenario each.
+  - operations[].functionName: The exact function or method name as written in the source code that implements this operation (e.g. "runStage2", "buildSpecMap"). Leave empty string if uncertain.
 - dependencies: Array of other services/repositories it uses
 - sideEffects: Array of external interactions (file I/O, network calls, database, queues, etc.)
 - domain: Which domain OWNS this service (where it lives in the codebase, not who uses it) — use ONLY one of the available domains listed above
@@ -615,6 +616,7 @@ ${filePaths.map(p => `- ${p}`).join('\n')}`;
             for (const entity of result) {
               if (!seenNames.has(entity.name)) {
                 seenNames.add(entity.name);
+                entity.location = file.path; // always use the actual file, not the LLM's guess
                 allEntities.push(entity);
               }
             }
