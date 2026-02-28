@@ -240,7 +240,8 @@ export class OpenSpecFormatGenerator {
     architecture: ArchitectureSynthesis
   ): GeneratedSpec {
     const lines: string[] = [];
-    const date = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const now = new Date();
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
     // Header
     lines.push('# System Overview');
@@ -345,7 +346,8 @@ export class OpenSpecFormatGenerator {
    */
   private generateDomainSpec(domain: DomainGroup, survey: ProjectSurveyResult): GeneratedSpec {
     const lines: string[] = [];
-    const date = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const now = new Date();
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
     // Header
     lines.push(`# ${this.capitalize(domain.name)} Specification`);
@@ -509,7 +511,8 @@ export class OpenSpecFormatGenerator {
     domains: DomainGroup[]
   ): GeneratedSpec {
     const lines: string[] = [];
-    const date = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const now = new Date();
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
     // Header
     lines.push('# Architecture Specification');
@@ -650,7 +653,8 @@ export class OpenSpecFormatGenerator {
    */
   private generateApiSpec(endpoints: ExtractedEndpoint[], survey: ProjectSurveyResult): GeneratedSpec {
     const lines: string[] = [];
-    const date = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const now = new Date();
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
     // Header
     lines.push('# API Specification');
