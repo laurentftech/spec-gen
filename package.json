@@ -3,7 +3,17 @@
   "version": "1.0.0",
   "description": "Reverse-engineer OpenSpec specifications from existing codebases",
   "type": "module",
-  "main": "dist/cli/index.js",
+  "main": "dist/api/index.js",
+  "types": "dist/api/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/api/index.js",
+      "types": "./dist/api/index.d.ts"
+    },
+    "./cli": {
+      "import": "./dist/cli/index.js"
+    }
+  },
   "bin": {
     "spec-gen": "dist/cli/index.js"
   },

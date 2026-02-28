@@ -46,6 +46,31 @@ src/cli/
 - Three-tier config priority: CLI flags > environment variables > config file
 - User-friendly error messages and progress indicators
 
+### API Layer (`src/api/`)
+
+The API layer provides a programmatic interface for external consumers (like OpenSpec CLI). Each CLI command has a corresponding API function that returns typed results without side effects.
+
+```
+src/api/
+├── index.ts           # Barrel export — public API surface
+├── types.ts           # Option and result type definitions
+├── init.ts            # specGenInit() — project detection, config creation
+├── analyze.ts         # specGenAnalyze() — static analysis pipeline
+├── generate.ts        # specGenGenerate() — LLM spec generation
+├── verify.ts          # specGenVerify() — spec accuracy testing
+├── drift.ts           # specGenDrift() — spec-to-code drift detection
+└── run.ts             # specGenRun() — full pipeline orchestration
+```
+
+**Design Principles:**
+- No `process.exit`, `console.log`, or `process.chdir` — pure library code
+- Progress callbacks (`onProgress`) instead of terminal output
+- Errors are thrown, not swallowed into exit codes
+- All functions return typed result objects
+- Optional dependencies on LLM providers (only imported when needed)
+
+**Package exports:** `import { specGenAnalyze } from 'spec-gen'` imports the API; the CLI is available at `spec-gen/cli`.
+
 ### Core Layer (`src/core/`)
 
 The core layer contains all business logic, organized by function:

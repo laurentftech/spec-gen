@@ -60,6 +60,87 @@ Compares git changes against spec file mappings to find divergence:
 - **ADR gap**: Code changed in a domain referenced by an ADR
 - **ADR orphaned**: ADR references domains that no longer exist in specs
 
+## Architecture
+
+```mermaid
+graph TD
+    subgraph CLI["CLI Layer"]
+        CMD[spec-gen commands]
+    end
+
+    subgraph API["Programmatic API"]
+        API_INIT[specGenInit]
+        API_ANALYZE[specGenAnalyze]
+        API_GENERATE[specGenGenerate]
+        API_VERIFY[specGenVerify]
+        API_DRIFT[specGenDrift]
+        API_RUN[specGenRun]
+    end
+
+    subgraph Core["Core Layer"]
+        direction TB
+
+        subgraph Init["Init"]
+            PD[Project Detector]
+            CM[Config Manager]
+        end
+
+        subgraph Analyze["Analyze -- no API key"]
+            FW[File Walker] --> SS[Significance Scorer]
+            SS --> IP[Import Parser]
+            IP --> DG[Dependency Graph]
+            DG --> RM[Repository Mapper]
+            RM --> AG[Artifact Generator]
+        end
+
+        subgraph Generate["Generate -- API key required"]
+            SP[Spec Pipeline] --> FF[OpenSpec Formatter]
+            FF --> OW[OpenSpec Writer]
+            SP --> ADR[ADR Generator]
+        end
+
+        subgraph Verify["Verify -- API key required"]
+            VE[Verification Engine]
+        end
+
+        subgraph Drift["Drift -- no API key"]
+            GA[Git Analyzer] --> SM[Spec Mapper]
+            SM --> DD[Drift Detector]
+            DD -.->|optional| LE[LLM Enhancer]
+        end
+
+        LLM[LLM Service -- Anthropic / OpenAI / Compatible]
+    end
+
+    CMD --> API_INIT & API_ANALYZE & API_GENERATE & API_VERIFY & API_DRIFT
+    API_RUN --> API_INIT & API_ANALYZE & API_GENERATE
+
+    API_INIT --> Init
+    API_ANALYZE --> Analyze
+    API_GENERATE --> Generate
+    API_VERIFY --> Verify
+    API_DRIFT --> Drift
+
+    Generate --> LLM
+    Verify --> LLM
+    LE -.-> LLM
+
+    AG -->|analysis artifacts| SP
+    AG -->|analysis artifacts| VE
+
+    subgraph Output["Output"]
+        SPECS[openspec/specs/*.md]
+        ADRS[openspec/decisions/*.md]
+        ANALYSIS[.spec-gen/analysis/]
+        REPORT[Drift Report]
+    end
+
+    OW --> SPECS
+    ADR --> ADRS
+    AG --> ANALYSIS
+    DD --> REPORT
+```
+
 ## Drift Detection
 
 Drift detection is the core of ongoing spec maintenance. It runs in milliseconds, needs no API key, and works entirely from git diffs and spec file mappings.
@@ -380,6 +461,59 @@ spec-gen init && spec-gen analyze && spec-gen generate && spec-gen drift --insta
 
 **Direct LLM Prompting**: Use `AGENTS.md` as a system prompt for any LLM.
 
+**Programmatic API**: Import spec-gen as a library in your own tools.
+
+## Programmatic API
+
+spec-gen exposes a typed Node.js API for integration into other tools (like [OpenSpec CLI](https://github.com/Fission-AI/OpenSpec)). Every CLI command has a corresponding API function that returns structured results instead of printing to the console.
+
+```bash
+npm install spec-gen
+```
+
+```typescript
+import { specGenAnalyze, specGenDrift, specGenRun } from 'spec-gen';
+
+// Run the full pipeline
+const result = await specGenRun({
+  rootPath: '/path/to/project',
+  adr: true,
+  onProgress: (event) => console.log(`[${event.phase}] ${event.step}`),
+});
+console.log(`Generated ${result.generation.report.filesWritten.length} specs`);
+
+// Check for drift
+const drift = await specGenDrift({
+  rootPath: '/path/to/project',
+  failOn: 'warning',
+});
+if (drift.hasDrift) {
+  console.warn(`${drift.summary.total} drift issues found`);
+}
+
+// Static analysis only (no API key needed)
+const analysis = await specGenAnalyze({
+  rootPath: '/path/to/project',
+  maxFiles: 1000,
+});
+console.log(`Analyzed ${analysis.repoMap.summary.analyzedFiles} files`);
+```
+
+### API Functions
+
+| Function | Description | API Key |
+|----------|-------------|---------|
+| `specGenInit(options?)` | Initialize config and openspec directory | No |
+| `specGenAnalyze(options?)` | Run static analysis | No |
+| `specGenGenerate(options?)` | Generate specs from analysis | Yes |
+| `specGenVerify(options?)` | Verify spec accuracy | Yes |
+| `specGenDrift(options?)` | Detect spec-to-code drift | No* |
+| `specGenRun(options?)` | Full pipeline: init + analyze + generate | Yes |
+
+\* `specGenDrift` requires an API key only when `llmEnhanced: true`.
+
+All functions accept an optional `onProgress` callback for status updates and throw errors instead of calling `process.exit`. See [src/api/types.ts](src/api/types.ts) for full option and result type definitions.
+
 ## Examples
 
 | Example | Description |
@@ -394,11 +528,11 @@ spec-gen init && spec-gen analyze && spec-gen generate && spec-gen drift --insta
 npm install          # Install dependencies
 npm run dev          # Development mode (watch)
 npm run build        # Build
-npm run test:run     # Run tests (919 unit tests)
+npm run test:run     # Run tests (935 unit tests)
 npm run typecheck    # Type check
 ```
 
-919 unit tests covering static analysis, spec mapping, drift detection, LLM enhancement, ADR generation, and the full CLI.
+935 unit tests covering static analysis, spec mapping, drift detection, LLM enhancement, ADR generation, the programmatic API, and the full CLI.
 
 ## Links
 
