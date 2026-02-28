@@ -56,6 +56,12 @@ export interface ProjectSurveyResult {
   domainSummary: string;
   suggestedDomains: string[];
   confidence: number;
+  /** Files containing data models, types, entities — for Stage 2 entity extraction */
+  schemaFiles: string[];
+  /** Files containing business logic, services, processors — for Stage 3 service analysis */
+  serviceFiles: string[];
+  /** Files exposing public interfaces, HTTP routes, CLI commands — for Stage 4 API extraction */
+  apiFiles: string[];
 }
 
 /**
@@ -222,6 +228,11 @@ Respond with a JSON object containing:
 - domainSummary: One sentence describing what this system does
 - suggestedDomains: Array of domain names for OpenSpec specs (e.g., ["user", "order", "auth", "api"])
 - confidence: 0-1 score of how confident you are
+- schemaFiles: Array of file paths (from the provided file list) that define data models, types, entities, or interfaces — these will be used for entity extraction. Include files regardless of their name, based on their content role.
+- serviceFiles: Array of file paths containing business logic, services, processors, analyzers, pipelines, or domain operations — used for service analysis. Do not filter by name conventions; look at what the file does.
+- apiFiles: Array of file paths that expose public interfaces: HTTP routes, CLI command handlers, GraphQL resolvers, message consumers, or external-facing APIs.
+
+For schemaFiles/serviceFiles/apiFiles: use the exact file paths from the provided analysis. Return [] if none apply.
 
 Respond ONLY with valid JSON.`,
 
@@ -362,7 +373,7 @@ export class SpecGenerationPipeline {
     let entities: ExtractedEntity[] = [];
     if (this.shouldRunStage('entities')) {
       logger.analysis('Running Stage 2: Entity Extraction');
-      const schemaFiles = this.getSchemaFiles(llmContext);
+      const schemaFiles = this.resolveFiles(llmContext, survey.schemaFiles ?? [], this.getSchemaFiles(llmContext));
       if (schemaFiles.length > 0) {
         const result = await this.runStage2(survey, schemaFiles);
         entities = result.data ?? [];
@@ -380,7 +391,7 @@ export class SpecGenerationPipeline {
     let services: ExtractedService[] = [];
     if (this.shouldRunStage('services')) {
       logger.analysis('Running Stage 3: Service Analysis');
-      const serviceFiles = this.getServiceFiles(llmContext);
+      const serviceFiles = this.resolveFiles(llmContext, survey.serviceFiles ?? [], this.getServiceFiles(llmContext));
       if (serviceFiles.length > 0) {
         const result = await this.runStage3(survey, entities, serviceFiles);
         services = result.data ?? [];
@@ -398,7 +409,7 @@ export class SpecGenerationPipeline {
     let endpoints: ExtractedEndpoint[] = [];
     if (this.shouldRunStage('api')) {
       logger.analysis('Running Stage 4: API Extraction');
-      const apiFiles = this.getApiFiles(llmContext);
+      const apiFiles = this.resolveFiles(llmContext, survey.apiFiles ?? [], this.getApiFiles(llmContext));
       if (apiFiles.length > 0) {
         const result = await this.runStage4(apiFiles);
         endpoints = result.data ?? [];
@@ -809,6 +820,27 @@ ${depGraph ? `Dependency Graph:
   }
 
   /**
+   * Resolve file paths identified by Stage 1 LLM to actual file content.
+   * Falls back to the provided heuristic list if no LLM-identified paths match.
+   */
+  private resolveFiles(
+    context: LLMContext,
+    llmPaths: string[],
+    fallback: Array<{ path: string; content: string }>
+  ): Array<{ path: string; content: string }> {
+    if (llmPaths.length === 0) return fallback;
+
+    const allFiles = context.phase2_deep.files;
+    const resolved = llmPaths
+      .map(p => allFiles.find(f => f.path === p || f.path.endsWith('/' + p) || p.endsWith('/' + f.path)))
+      .filter((f): f is (typeof allFiles)[0] => f !== undefined)
+      .map(f => ({ path: f.path, content: f.content ?? '' }))
+      .filter(f => f.content.length > 0);
+
+    return resolved.length > 0 ? resolved : fallback;
+  }
+
+  /**
    * Get default survey when stage is skipped
    */
   private getDefaultSurvey(repoStructure: RepoStructure): ProjectSurveyResult {
@@ -820,6 +852,9 @@ ${depGraph ? `Dependency Graph:
       domainSummary: `A ${repoStructure.projectType} project`,
       suggestedDomains: repoStructure.domains.map(d => d.name),
       confidence: 0.5,
+      schemaFiles: [],
+      serviceFiles: [],
+      apiFiles: [],
     };
   }
 
