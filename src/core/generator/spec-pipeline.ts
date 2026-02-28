@@ -350,7 +350,7 @@ export class SpecGenerationPipeline {
     let survey: ProjectSurveyResult;
     if (this.shouldRunStage('survey')) {
       logger.analysis('Running Stage 1: Project Survey');
-      const result = await this.runStage1(repoStructure);
+      const result = await this.runStage1(repoStructure, llmContext);
       if (result.success && result.data) {
         survey = result.data;
         totalTokens += result.tokens;
@@ -491,8 +491,10 @@ export class SpecGenerationPipeline {
   /**
    * Stage 1: Project Survey
    */
-  private async runStage1(repoStructure: RepoStructure): Promise<StageResult<ProjectSurveyResult>> {
+  private async runStage1(repoStructure: RepoStructure, llmContext: LLMContext): Promise<StageResult<ProjectSurveyResult>> {
     const startTime = Date.now();
+
+    const filePaths = llmContext.phase2_deep.files.map(f => f.path);
 
     const userPrompt = `Analyze this project structure:
 
@@ -512,14 +514,17 @@ Statistics:
 - Analyzed files: ${repoStructure.statistics.analyzedFiles}
 - Node count: ${repoStructure.statistics.nodeCount}
 - Edge count: ${repoStructure.statistics.edgeCount}
-- Clusters: ${repoStructure.statistics.clusterCount}`;
+- Clusters: ${repoStructure.statistics.clusterCount}
+
+Available file paths for analysis (use ONLY these exact strings for schemaFiles/serviceFiles/apiFiles):
+${filePaths.map(p => `- ${p}`).join('\n')}`;
 
     try {
       const result = await this.llm.completeJSON<ProjectSurveyResult>({
         systemPrompt: PROMPTS.stage1_survey,
         userPrompt,
         temperature: 0.3,
-        maxTokens: 500,
+        maxTokens: 1000,
       });
 
       const stageResult: StageResult<ProjectSurveyResult> = {
