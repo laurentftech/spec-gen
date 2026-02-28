@@ -376,12 +376,12 @@ export class OpenSpecFormatGenerator {
         lines.push('');
 
         // Properties table
-        if (entity.properties.length > 0) {
+        if ((entity.properties ?? []).length > 0) {
           lines.push('**Properties:**');
           lines.push('');
           lines.push('| Name | Type | Description |');
           lines.push('|------|------|-------------|');
-          for (const prop of entity.properties) {
+          for (const prop of (entity.properties ?? [])) {
             const desc = prop.description || (prop.required ? 'Required' : 'Optional');
             lines.push(`| ${prop.name} | ${prop.type} | ${desc} |`);
           }
@@ -389,10 +389,10 @@ export class OpenSpecFormatGenerator {
         }
 
         // Relationships
-        if (entity.relationships.length > 0) {
+        if ((entity.relationships ?? []).length > 0) {
           lines.push('**Relationships:**');
           lines.push('');
-          for (const rel of entity.relationships) {
+          for (const rel of (entity.relationships ?? [])) {
             lines.push(`- ${this.formatRelationship(rel)}`);
           }
           lines.push('');
@@ -406,17 +406,17 @@ export class OpenSpecFormatGenerator {
 
     // Entity validation requirements
     for (const entity of domain.entities) {
-      if (entity.validations.length > 0) {
+      if ((entity.validations ?? []).length > 0) {
         lines.push(`### Requirement: ${entity.name}Validation`);
         lines.push('');
         lines.push(`The system SHALL validate ${entity.name} according to these rules:`);
-        for (const rule of entity.validations) {
+        for (const rule of (entity.validations ?? [])) {
           lines.push(`- ${rule}`);
         }
         lines.push('');
 
         // Scenarios from entity
-        for (const scenario of entity.scenarios) {
+        for (const scenario of (entity.scenarios ?? [])) {
           this.addScenario(lines, scenario);
         }
       }
@@ -424,14 +424,14 @@ export class OpenSpecFormatGenerator {
 
     // Service operation requirements
     for (const service of domain.services) {
-      for (const operation of service.operations) {
+      for (const operation of (service.operations ?? [])) {
         lines.push(`### Requirement: ${this.formatRequirementName(operation.name)}`);
         lines.push('');
         lines.push(`The system SHALL ${(operation.description ?? '').toLowerCase()}`);
         lines.push('');
 
         // Operation scenarios
-        for (const scenario of operation.scenarios) {
+        for (const scenario of (operation.scenarios ?? [])) {
           this.addScenario(lines, scenario);
         }
       }
@@ -439,8 +439,8 @@ export class OpenSpecFormatGenerator {
 
     // Fallback: if no requirements were generated, add a placeholder
     const hasRequirements =
-      domain.entities.some(e => e.validations.length > 0) ||
-      domain.services.some(s => s.operations.length > 0);
+      domain.entities.some(e => (e.validations ?? []).length > 0) ||
+      domain.services.some(s => (s.operations ?? []).length > 0);
     if (!hasRequirements) {
       if (domain.endpoints.length > 0) {
         for (const endpoint of domain.endpoints) {
@@ -480,7 +480,7 @@ export class OpenSpecFormatGenerator {
       const allDeps = new Set<string>();
 
       for (const service of domain.services) {
-        for (const dep of service.dependencies) {
+        for (const dep of (service.dependencies ?? [])) {
           allDeps.add(dep);
         }
       }
@@ -732,12 +732,12 @@ export class OpenSpecFormatGenerator {
         }
 
         // Scenarios
-        for (const scenario of endpoint.scenarios) {
+        for (const scenario of (endpoint.scenarios ?? [])) {
           this.addScenario(lines, scenario);
         }
 
         // Default success scenario if none provided
-        if (endpoint.scenarios.length === 0) {
+        if ((endpoint.scenarios ?? []).length === 0) {
           lines.push(`#### Scenario: ${reqName}Success`);
           lines.push('- **GIVEN** an authenticated user');
           lines.push(`- **WHEN** \`${endpoint.method} ${endpoint.path}\` is called with valid data`);
