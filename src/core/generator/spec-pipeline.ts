@@ -263,7 +263,7 @@ For each service/module, identify:
 - operations: Array of {name, description, inputs, outputs, scenarios} - key operations/methods that become Requirements with Scenarios. Focus on the 3 most important operations per service, with 1 scenario each.
 - dependencies: Array of other services/repositories it uses
 - sideEffects: Array of external interactions (file I/O, network calls, database, queues, etc.)
-- domain: Which domain this belongs to — use ONLY one of the available domains listed above
+- domain: Which domain OWNS this service (where it lives in the codebase, not who uses it) — use ONLY one of the available domains listed above
 
 Focus on WHAT the service does, not HOW it's implemented.
 Express operations as requirements (SHALL/MUST/SHOULD) with testable scenarios.

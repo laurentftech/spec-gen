@@ -191,7 +191,10 @@ export class OpenSpecFormatGenerator {
     // Set descriptions based on content — prefer service purpose (descriptive) over entity list
     for (const domain of domainMap.values()) {
       if (domain.services.length > 0) {
-        domain.description = domain.services[0].purpose;
+        const representative = domain.services.find(s =>
+          s.name.toLowerCase().includes(domain.name.toLowerCase())
+        ) ?? domain.services[0];
+        domain.description = representative.purpose;
       } else if (domain.entities.length > 0) {
         const preview = domain.entities.slice(0, 3).map(e => e.name).join(', ');
         const extra = domain.entities.length > 3 ? ` and ${domain.entities.length - 3} more` : '';

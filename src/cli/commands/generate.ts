@@ -408,7 +408,8 @@ Each spec.md follows OpenSpec conventions:
         : geminiKey ? 'gemini'
         : openaiCompatKey ? 'openai-compat'
         : 'openai';
-      const effectiveProvider = (specGenConfig.generation.provider ?? envDetectedProvider) as 'anthropic' | 'openai' | 'openai-compat' | 'gemini';
+      const rootConfig = specGenConfig as unknown as Record<string, string>;
+      const effectiveProvider = (specGenConfig.generation.provider ?? rootConfig['provider'] ?? envDetectedProvider) as 'anthropic' | 'openai' | 'openai-compat' | 'gemini';
 
       // Resolve model with priority: CLI flag > config > provider default
       const defaultModels: Record<string, string> = {
@@ -419,8 +420,8 @@ Each spec.md follows OpenSpec conventions:
       };
       const effectiveModel = opts.model || specGenConfig.generation.model || defaultModels[effectiveProvider];
 
-      // Resolve openai-compat base URL with priority: env var > config
-      const effectiveBaseUrl = process.env.OPENAI_COMPAT_BASE_URL ?? specGenConfig.generation.openaiCompatBaseUrl;
+      // Resolve openai-compat base URL with priority: env var > config (generation or root)
+      const effectiveBaseUrl = process.env.OPENAI_COMPAT_BASE_URL ?? specGenConfig.generation.openaiCompatBaseUrl ?? rootConfig['openaiCompatBaseUrl'];
 
       // Apply SSL verification setting
       if (specGenConfig.generation.skipSslVerify) {
