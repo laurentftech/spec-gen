@@ -211,9 +211,9 @@ export class OpenSpecFormatGenerator {
   /**
    * Infer domain from name and location
    */
-  private inferDomain(name: string, location: string, suggestedDomains: string[]): string {
-    const nameLower = name.toLowerCase();
-    const locationLower = location.toLowerCase();
+  private inferDomain(name: string | undefined, location: string | undefined, suggestedDomains: string[]): string {
+    const nameLower = (name ?? '').toLowerCase();
+    const locationLower = (location ?? '').toLowerCase();
 
     // Check suggested domains first
     for (const domain of suggestedDomains) {
@@ -222,13 +222,8 @@ export class OpenSpecFormatGenerator {
       }
     }
 
-    // Extract from name (e.g., UserService -> user)
-    const match = name.match(/^([A-Z][a-z]+)/);
-    if (match) {
-      return match[1].toLowerCase();
-    }
-
-    return 'core';
+    // Fall back to first suggested domain rather than inventing one from the name prefix
+    return suggestedDomains[0] ?? 'core';
   }
 
   /**

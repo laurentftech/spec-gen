@@ -252,17 +252,18 @@ Be precise - only include what you can verify from the code.
 
 Respond with a JSON array of entities. Respond ONLY with valid JSON.`,
 
-  stage3_services: (projectCategory: string, entities: string[]) => `You are analyzing the business logic layer of a ${projectCategory}.
+  stage3_services: (projectCategory: string, entities: string[], suggestedDomains: string[]) => `You are analyzing the logic and processing layer of a ${projectCategory}.
 
 Known entities: ${entities.join(', ')}
+Available domains: ${suggestedDomains.join(', ')}
 
 For each service/module, identify:
 - name: Service name
-- purpose: What business capability it provides
-- operations: Array of {name, description, inputs, outputs, scenarios} - key operations/methods that become Requirements with Scenarios
+- purpose: What capability or responsibility it encapsulates
+- operations: Array of {name, description, inputs, outputs, scenarios} - key operations/methods that become Requirements with Scenarios. Focus on the 3 most important operations per service, with 1 scenario each.
 - dependencies: Array of other services/repositories it uses
-- sideEffects: Array of external interactions (email, payments, etc.)
-- domain: Which domain this belongs to
+- sideEffects: Array of external interactions (file I/O, network calls, database, queues, etc.)
+- domain: Which domain this belongs to — use ONLY one of the available domains listed above
 
 Focus on WHAT the service does, not HOW it's implemented.
 Express operations as requirements (SHALL/MUST/SHOULD) with testable scenarios.
@@ -552,58 +553,95 @@ ${filePaths.map(p => `- ${p}`).join('\n')}`;
   }
 
   /**
-   * Stage 2: Entity Extraction
+   * Split file content into chunks, breaking only on blank lines (function/class boundaries).
+   * A chunk is emitted when its size exceeds maxChars and a blank line is encountered.
+   * overlapLines trailing lines from the previous chunk are prepended to the next one,
+   * preserving context (e.g. class declaration visible when processing its methods).
+   */
+  private chunkContent(content: string, maxChars: number, overlapLines = 10): string[] {
+    if (content.length <= maxChars) return [content];
+
+    const lines = content.split('\n');
+    const chunks: string[] = [];
+    let currentLines: string[] = [];
+    let currentSize = 0;
+
+    for (const line of lines) {
+      currentLines.push(line);
+      currentSize += line.length + 1;
+
+      // Break only at blank lines once the threshold is reached
+      if (currentSize >= maxChars && line.trim() === '') {
+        const chunk = currentLines.join('\n').trim();
+        if (chunk.length > 0) chunks.push(chunk);
+        // Carry over the last N lines as overlap for the next chunk
+        const overlap = currentLines.slice(-overlapLines);
+        currentLines = [...overlap];
+        currentSize = overlap.reduce((s, l) => s + l.length + 1, 0);
+      }
+    }
+
+    const remaining = currentLines.join('\n').trim();
+    if (remaining.length > 0) chunks.push(remaining);
+
+    return chunks;
+  }
+
+  /**
+   * Stage 2: Entity Extraction — one LLM call per file (chunked if large)
    */
   private async runStage2(
     survey: ProjectSurveyResult,
     schemaFiles: Array<{ path: string; content: string }>
   ): Promise<StageResult<ExtractedEntity[]>> {
     const startTime = Date.now();
+    const systemPrompt = PROMPTS.stage2_entities(survey.projectCategory, survey.frameworks);
+    const allEntities: ExtractedEntity[] = [];
+    const seenNames = new Set<string>();
 
-    const filesContent = schemaFiles
-      .slice(0, 10)
-      .map(f => `=== ${f.path} ===\n${f.content}`)
-      .join('\n\n');
-
-    const userPrompt = `Analyze these schema/model files and extract entities:
-
-${filesContent}`;
-
-    try {
-      const result = await this.llm.completeJSON<ExtractedEntity[]>({
-        systemPrompt: PROMPTS.stage2_entities(survey.projectCategory, survey.frameworks),
-        userPrompt,
-        temperature: 0.3,
-        maxTokens: 2000,
-      });
-
-      const stageResult: StageResult<ExtractedEntity[]> = {
-        stage: 'entities',
-        success: true,
-        data: Array.isArray(result) ? result : [],
-        tokens: this.llm.getTokenUsage().totalTokens,
-        duration: Date.now() - startTime,
-      };
-
-      if (this.options.saveIntermediate) {
-        await this.saveResult('stage2-entities', stageResult);
+    for (const file of schemaFiles.slice(0, 10)) {
+      const chunks = this.chunkContent(file.content, 8000);
+      for (let i = 0; i < chunks.length; i++) {
+        const chunkNote = chunks.length > 1 ? ` (part ${i + 1}/${chunks.length})` : '';
+        const userPrompt = `Analyze this schema/model file and extract entities:\n\n=== ${file.path}${chunkNote} ===\n${chunks[i]}`;
+        try {
+          const result = await this.llm.completeJSON<ExtractedEntity[]>({
+            systemPrompt,
+            userPrompt,
+            temperature: 0.3,
+            maxTokens: 2000,
+          });
+          if (Array.isArray(result)) {
+            for (const entity of result) {
+              if (!seenNames.has(entity.name)) {
+                seenNames.add(entity.name);
+                allEntities.push(entity);
+              }
+            }
+          }
+        } catch (error) {
+          logger.warning(`Stage 2: failed to analyze ${file.path}${chunkNote}: ${(error as Error).message}`);
+        }
       }
-
-      return stageResult;
-    } catch (error) {
-      return {
-        stage: 'entities',
-        success: false,
-        error: (error as Error).message,
-        data: [],
-        tokens: 0,
-        duration: Date.now() - startTime,
-      };
     }
+
+    const stageResult: StageResult<ExtractedEntity[]> = {
+      stage: 'entities',
+      success: true,
+      data: allEntities,
+      tokens: this.llm.getTokenUsage().totalTokens,
+      duration: Date.now() - startTime,
+    };
+
+    if (this.options.saveIntermediate) {
+      await this.saveResult('stage2-entities', stageResult);
+    }
+
+    return stageResult;
   }
 
   /**
-   * Stage 3: Service Analysis
+   * Stage 3: Service Analysis — one LLM call per file (chunked if large)
    */
   private async runStage3(
     survey: ProjectSurveyResult,
@@ -611,48 +649,50 @@ ${filesContent}`;
     serviceFiles: Array<{ path: string; content: string }>
   ): Promise<StageResult<ExtractedService[]>> {
     const startTime = Date.now();
-
     const entityNames = entities.map(e => e.name);
-    const filesContent = serviceFiles
-      .slice(0, 10)
-      .map(f => `=== ${f.path} ===\n${f.content}`)
-      .join('\n\n');
+    const systemPrompt = PROMPTS.stage3_services(survey.projectCategory, entityNames, survey.suggestedDomains ?? []);
+    const allServices: ExtractedService[] = [];
+    const seenNames = new Set<string>();
 
-    const userPrompt = `Analyze these service/business-logic files:
-
-${filesContent}`;
-
-    try {
-      const result = await this.llm.completeJSON<ExtractedService[]>({
-        systemPrompt: PROMPTS.stage3_services(survey.projectCategory, entityNames),
-        userPrompt,
-        temperature: 0.3,
-        maxTokens: 2000,
-      });
-
-      const stageResult: StageResult<ExtractedService[]> = {
-        stage: 'services',
-        success: true,
-        data: Array.isArray(result) ? result : [],
-        tokens: this.llm.getTokenUsage().totalTokens,
-        duration: Date.now() - startTime,
-      };
-
-      if (this.options.saveIntermediate) {
-        await this.saveResult('stage3-services', stageResult);
+    for (const file of serviceFiles.slice(0, 10)) {
+      const chunks = this.chunkContent(file.content, 8000);
+      for (let i = 0; i < chunks.length; i++) {
+        const chunkNote = chunks.length > 1 ? ` (part ${i + 1}/${chunks.length})` : '';
+        const userPrompt = `Analyze this file and extract services/modules:\n\n=== ${file.path}${chunkNote} ===\n${chunks[i]}`;
+        try {
+          const result = await this.llm.completeJSON<ExtractedService[]>({
+            systemPrompt,
+            userPrompt,
+            temperature: 0.3,
+            maxTokens: 2000,
+          });
+          if (Array.isArray(result)) {
+            for (const service of result) {
+              if (!seenNames.has(service.name)) {
+                seenNames.add(service.name);
+                allServices.push(service);
+              }
+            }
+          }
+        } catch (error) {
+          logger.warning(`Stage 3: failed to analyze ${file.path}${chunkNote}: ${(error as Error).message}`);
+        }
       }
-
-      return stageResult;
-    } catch (error) {
-      return {
-        stage: 'services',
-        success: false,
-        error: (error as Error).message,
-        data: [],
-        tokens: 0,
-        duration: Date.now() - startTime,
-      };
     }
+
+    const stageResult: StageResult<ExtractedService[]> = {
+      stage: 'services',
+      success: true,
+      data: allServices,
+      tokens: this.llm.getTokenUsage().totalTokens,
+      duration: Date.now() - startTime,
+    };
+
+    if (this.options.saveIntermediate) {
+      await this.saveResult('stage3-services', stageResult);
+    }
+
+    return stageResult;
   }
 
   /**
