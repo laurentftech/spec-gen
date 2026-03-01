@@ -12,6 +12,31 @@ import type { RepositoryMap } from './repository-mapper.js';
 import type { DependencyGraphResult } from './dependency-graph.js';
 import { toMermaidFormat } from './dependency-graph.js';
 
+/**
+ * Heuristic to detect test/spec files across languages.
+ * Excludes them from call graph analysis — test helpers inflate fanIn,
+ * and test functions are never "unreachable" by definition.
+ *
+ * Patterns covered:
+ *   TypeScript/JS: *.test.ts, *.spec.ts, *.test.tsx, __tests__/*, test_*.ts
+ *   Python:        test_*.py, *_test.py, tests/*.py
+ *   Go:            *_test.go
+ *   Rust:          files with #[cfg(test)] (not detectable here — excluded by directory pattern)
+ *   Java/Kotlin:   *Test.java, *Spec.kt
+ */
+function isTestFile(filePath: string): boolean {
+  const name = filePath.replace(/\\/g, '/');
+  return (
+    /\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$/.test(name) ||   // JS/TS: foo.test.ts
+    /(^|\/)__tests__\//.test(name) ||                          // JS/TS: __tests__/
+    /(^|\/)test_[^/]+\.(ts|js|py)$/.test(name) ||             // Python/TS: test_foo.py
+    /[^/]+_test\.(py|go)$/.test(name) ||                      // Python/Go: foo_test.py, foo_test.go
+    /(^|\/)tests?\/[^/]+\.(py|ts|js|rb|php)$/.test(name) ||  // tests/ directory
+    /[A-Z][a-zA-Z0-9]*Test\.(java|kt|scala)$/.test(name) ||  // Java: FooTest.java
+    /[A-Z][a-zA-Z0-9]*Spec\.(kt|scala|rb)$/.test(name)       // Kotlin/Ruby: FooSpec.kt
+  );
+}
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -885,9 +910,10 @@ export class AnalysisArtifactGenerator {
         if (map.entries.length > 0) {
           signatures.push(map);
         }
-        // Call graph (Python + TypeScript/JavaScript only)
+        // Call graph (Python + TypeScript/JavaScript only, exclude test files)
         const lang = detectLanguage(file.path);
         if (lang === 'Python' || lang === 'TypeScript' || lang === 'JavaScript') {
+          if (isTestFile(file.path)) continue;
           callGraphFiles.push({ path: file.path, content, language: lang });
         }
       } catch {

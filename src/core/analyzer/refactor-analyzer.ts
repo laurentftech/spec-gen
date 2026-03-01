@@ -30,6 +30,26 @@ const HIGH_FAN_IN = 8;
 const HIGH_FAN_OUT = 8;
 const SRP_MAX_REQUIREMENTS = 2;
 
+/**
+ * File path patterns for cross-cutting utility/logging modules.
+ * Functions in these files that are pure sinks (fanOut === 0) are designed to be
+ * called from everywhere — flagging them as hub overloads is noise, not signal.
+ */
+const UTILITY_PATH_PATTERNS = [
+  /\/logger\.[^/]+$/i,
+  /\/logging\.[^/]+$/i,
+  /\/log\.[^/]+$/i,
+  /\/utils\//i,
+  /\/helpers\//i,
+  /\/common\//i,
+  /\/shared\//i,
+];
+
+/** Returns true if a high-fanIn node is a cross-cutting utility sink by design. */
+function isCrossCuttingHub(node: FunctionNode): boolean {
+  return node.fanOut === 0 && UTILITY_PATH_PATTERNS.some(p => p.test(node.filePath));
+}
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -293,7 +313,7 @@ export function analyzeForRefactoring(
     if (depth === -1 && requirements.length === 0) {
       issues.push('unreachable');
     }
-    if (node.fanIn >= HIGH_FAN_IN) {
+    if (node.fanIn >= HIGH_FAN_IN && !isCrossCuttingHub(node)) {
       issues.push('high_fan_in');
     }
     if (node.fanOut >= HIGH_FAN_OUT) {
