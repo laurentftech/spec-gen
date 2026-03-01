@@ -267,23 +267,21 @@ async function extractTSGraph(
     const name = nameCapture.node.text;
     const fnNode = nodeCapture.node;
 
-    // Find enclosing class (walk up)
+    // Find enclosing class (walk up — skip class_body, its children are methods not the name)
     let className: string | undefined;
     let cursor = fnNode.parent;
     while (cursor) {
-      if (cursor.type === 'class_declaration' || cursor.type === 'class_body') {
+      if (cursor.type === 'class_declaration') {
         const classNameNode = cursor.children.find(c => c.type === 'type_identifier' || c.type === 'identifier');
-        if (classNameNode) {
-          className = classNameNode.text;
-        }
+        if (classNameNode) className = classNameNode.text;
         break;
       }
       cursor = cursor.parent;
     }
 
-    // Detect async
-    const isAsync = fnNode.text.startsWith('async ') ||
-      fnNode.children.some(c => c.type === 'async');
+    // Detect async (method_definition has 'async' as first named child keyword)
+    const isAsync = fnNode.children.some(c => c.type === 'async') ||
+      fnNode.text.startsWith('async ');
 
     const id = className
       ? `${filePath}::${className}.${name}`
@@ -612,7 +610,10 @@ async function extractRustGraph(
       cursor = cursor.parent;
     }
 
-    const isAsync = fnNode.children.some(c => c.type === 'async');
+    // Rust: async keyword lives inside a function_modifiers child
+    const isAsync = fnNode.children.some(
+      c => c.type === 'function_modifiers' && c.text.includes('async')
+    );
     const id = className ? `${filePath}::${className}.${name}` : `${filePath}::${name}`;
     nodes.push({
       id, name, filePath, className,
@@ -654,9 +655,18 @@ const RUBY_FN_QUERY = `
     name: (identifier) @fn.name) @fn.node
 `;
 
-const RUBY_DIRECT_CALL_QUERY = `
+// Explicit calls: fetch(), obj.method()
+const RUBY_CALL_QUERY = `
   (call
     method: (identifier) @call.name) @call.node
+`;
+
+// Bareword calls: Ruby allows calling methods without parentheses.
+// An identifier at statement level inside a body_statement is almost always
+// a method call (variable usage appears in assignments/expressions, not alone).
+const RUBY_BAREWORD_QUERY = `
+  (body_statement
+    (identifier) @call.name)
 `;
 
 async function extractRubyGraph(
@@ -667,7 +677,8 @@ async function extractRubyGraph(
   const tree = (parser as Parser).parse(content);
 
   const fnQuery = new Parser.Query(lang as unknown as Parser.Language, RUBY_FN_QUERY);
-  const callQuery = new Parser.Query(lang as unknown as Parser.Language, RUBY_DIRECT_CALL_QUERY);
+  const callQuery = new Parser.Query(lang as unknown as Parser.Language, RUBY_CALL_QUERY);
+  const barewordQuery = new Parser.Query(lang as unknown as Parser.Language, RUBY_BAREWORD_QUERY);
 
   const nodes: FunctionNode[] = [];
   for (const match of fnQuery.matches(tree.rootNode)) {
@@ -702,6 +713,8 @@ async function extractRubyGraph(
   }
 
   const rawEdges: Array<{ callerId: string; calleeName: string; line: number }> = [];
+
+  // Explicit calls: fetch(), obj.method()
   for (const match of callQuery.matches(tree.rootNode)) {
     const nameCapture = match.captures.find(c => c.name === 'call.name');
     const nodeCapture = match.captures.find(c => c.name === 'call.node');
@@ -714,6 +727,20 @@ async function extractRubyGraph(
     if (!caller) continue;
 
     rawEdges.push({ callerId: caller.id, calleeName, line: nodeCapture.node.startPosition.row + 1 });
+  }
+
+  // Bareword calls: fetch (no parens) — identifier at statement level
+  for (const match of barewordQuery.matches(tree.rootNode)) {
+    const nameCapture = match.captures.find(c => c.name === 'call.name');
+    if (!nameCapture) continue;
+
+    const calleeName = nameCapture.node.text;
+    if (IGNORED_CALLEES.has(calleeName)) continue;
+
+    const caller = findEnclosingFunction(nodes, nameCapture.node.startIndex);
+    if (!caller) continue;
+
+    rawEdges.push({ callerId: caller.id, calleeName, line: nameCapture.node.startPosition.row + 1 });
   }
 
   return { nodes, rawEdges };
