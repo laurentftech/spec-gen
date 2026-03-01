@@ -281,7 +281,6 @@ function extractGo(content: string): ExtractedSignature[] {
     if (match) {
       const name = match[1];
       if (name === 'init' || name.startsWith('test') || name.startsWith('Test')) continue;
-      const params = compactParams(match[2]);
       // Grab comment above
       const comment = lines[i - 1]?.trim().startsWith('//') ? lines[i - 1].trim().slice(2).trim() : undefined;
       entries.push({ kind: 'function', name, signature: line.trim().replace(/\s*\{.*$/, ''), docstring: comment });
