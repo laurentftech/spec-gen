@@ -42,6 +42,15 @@ import { formatSignatureMaps } from '../../core/analyzer/signature-extractor.js'
 import type { LLMContext } from '../../core/analyzer/artifact-generator.js';
 import type { SerializedCallGraph, FunctionNode } from '../../core/analyzer/call-graph.js';
 import type { MappingArtifact } from '../../core/generator/mapping-generator.js';
+import {
+  isGitRepository,
+  getChangedFiles,
+  buildSpecMap,
+  buildADRMap,
+  detectDrift,
+} from '../../core/drift/index.js';
+import { readSpecGenConfig } from '../../core/services/config-manager.js';
+import type { DriftResult } from '../../types/index.js';
 
 // ============================================================================
 // TOOL DEFINITIONS
@@ -187,6 +196,49 @@ const TOOL_DEFINITIONS = [
         orphansOnly: {
           type: 'boolean',
           description: 'Return only orphan functions (not covered by any requirement)',
+        },
+      },
+      required: ['directory'],
+    },
+  },
+  // ── Spec drift ──────────────────────────────────────────────────────────────
+  {
+    name: 'check_spec_drift',
+    description:
+      'Detect spec drift: identify code changes that are not reflected in the ' +
+      'project\'s OpenSpec specifications. Compares git-changed files against ' +
+      'spec coverage maps. Returns issues categorised as gap, stale, uncovered, ' +
+      'or orphaned-spec. Requires spec-gen generate to have been run at least once. ' +
+      'Runs in static mode (no LLM required).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: {
+          type: 'string',
+          description: 'Absolute path to the project directory (must be a git repository)',
+        },
+        base: {
+          type: 'string',
+          description: 'Git ref to compare against (default: auto-detect main/master)',
+        },
+        files: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Specific files to check (default: all changed files)',
+        },
+        domains: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Only check these spec domains (default: all domains)',
+        },
+        failOn: {
+          type: 'string',
+          enum: ['error', 'warning', 'info'],
+          description: 'Minimum severity to report (default: "warning")',
+        },
+        maxFiles: {
+          type: 'number',
+          description: 'Maximum number of changed files to analyze (default: 100)',
         },
       },
       required: ['directory'],
@@ -1195,6 +1247,108 @@ export async function handleGetSubgraph(
 }
 
 // ============================================================================
+// SPEC DRIFT HANDLER
+// ============================================================================
+
+/**
+ * Run spec-drift detection on `directory` in static mode (no LLM).
+ *
+ * Compares git-changed files against the project's OpenSpec coverage maps and
+ * returns a structured `DriftResult`. Returns `{ error }` when preconditions
+ * are not met (not a git repo, no config, no specs).
+ */
+export async function handleCheckSpecDrift(
+  directory: string,
+  base = 'auto',
+  files: string[] = [],
+  domains: string[] = [],
+  failOn: 'error' | 'warning' | 'info' = 'warning',
+  maxFiles = 100
+): Promise<DriftResult | { error: string }> {
+  const absDir = await validateDirectory(directory);
+
+  if (!(await isGitRepository(absDir))) {
+    return { error: 'Not a git repository. Drift detection requires git.' };
+  }
+
+  const specGenConfig = await readSpecGenConfig(absDir);
+  if (!specGenConfig) {
+    return { error: 'No spec-gen configuration found. Run "spec-gen init" first.' };
+  }
+
+  const openspecPath = join(absDir, specGenConfig.openspecPath ?? 'openspec');
+  const specsPath = join(openspecPath, 'specs');
+  try {
+    await stat(specsPath);
+  } catch {
+    return { error: 'No specs found. Run "spec-gen generate" first.' };
+  }
+
+  const startTime = Date.now();
+
+  const gitResult = await getChangedFiles({
+    rootPath: absDir,
+    baseRef: base,
+    pathFilter: files.length > 0 ? files : undefined,
+    includeUnstaged: true,
+  });
+
+  if (gitResult.files.length === 0) {
+    return {
+      timestamp: new Date().toISOString(),
+      baseRef: gitResult.resolvedBase,
+      totalChangedFiles: 0,
+      specRelevantFiles: 0,
+      issues: [],
+      summary: { gaps: 0, stale: 0, uncovered: 0, orphanedSpecs: 0, adrGaps: 0, adrOrphaned: 0, total: 0 },
+      hasDrift: false,
+      duration: Date.now() - startTime,
+      mode: 'static',
+    };
+  }
+
+  const actualChangedFiles = gitResult.files.length;
+  if (gitResult.files.length > maxFiles) {
+    gitResult.files = gitResult.files.slice(0, maxFiles);
+  }
+
+  const repoStructurePath = join(absDir, '.spec-gen', 'analysis', 'repo-structure.json');
+  let hasRepoStructure = false;
+  try {
+    await stat(repoStructurePath);
+    hasRepoStructure = true;
+  } catch { /* no prior analysis — use spec headers only */ }
+
+  const specMap = await buildSpecMap({
+    rootPath: absDir,
+    openspecPath,
+    repoStructurePath: hasRepoStructure ? repoStructurePath : undefined,
+  });
+
+  const adrMap = await buildADRMap({
+    rootPath: absDir,
+    openspecPath,
+    repoStructurePath: hasRepoStructure ? repoStructurePath : undefined,
+  });
+
+  const result = await detectDrift({
+    rootPath: absDir,
+    specMap,
+    changedFiles: gitResult.files,
+    failOn,
+    domainFilter: domains.length > 0 ? domains : undefined,
+    openspecRelPath: specGenConfig.openspecPath ?? 'openspec',
+    baseRef: gitResult.resolvedBase,
+    adrMap: adrMap ?? undefined,
+  });
+
+  result.baseRef = gitResult.resolvedBase;
+  result.totalChangedFiles = actualChangedFiles;
+
+  return result;
+}
+
+// ============================================================================
 // MCP SERVER
 // ============================================================================
 
@@ -1249,6 +1403,10 @@ async function startMcpServer(): Promise<void> {
         const { directory, limit = 10, minFanIn = 3 } =
           args as { directory: string; limit?: number; minFanIn?: number };
         result = await handleGetCriticalHubs(directory, limit, minFanIn);
+      } else if (name === 'check_spec_drift') {
+        const { directory, base = 'auto', files = [], domains = [], failOn = 'warning', maxFiles = 100 } =
+          args as { directory: string; base?: string; files?: string[]; domains?: string[]; failOn?: 'error' | 'warning' | 'info'; maxFiles?: number };
+        result = await handleCheckSpecDrift(directory, base, files, domains, failOn, maxFiles);
       } else {
         return {
           content: [{ type: 'text', text: `Unknown tool: ${name}` }],

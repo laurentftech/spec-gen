@@ -4,14 +4,31 @@
  *   - Tool handlers: handleGetRefactorReport, handleGetCallGraph,
  *     handleGetSignatures, handleGetMapping, handleGetSubgraph,
  *     handleAnalyzeImpact, handleGetLowRiskRefactorCandidates,
- *     handleGetLeafFunctions, handleGetCriticalHubs
+ *     handleGetLeafFunctions, handleGetCriticalHubs, handleCheckSpecDrift
  *
  * Strategy: write fixture files (llm-context.json, mapping.json) to a
  * temporary directory, then call the real exported handlers directly.
  * This gives genuine line coverage of mcp.ts without spawning an MCP server.
+ *
+ * handleCheckSpecDrift uses vi.mock for the drift and config-manager modules
+ * because those require a live git repository and LLM configuration.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// vi.mock is hoisted — must appear before any imports that transitively
+// load these modules.
+vi.mock('../../core/drift/index.js', () => ({
+  isGitRepository: vi.fn(),
+  getChangedFiles: vi.fn(),
+  buildSpecMap: vi.fn(),
+  buildADRMap: vi.fn(),
+  detectDrift: vi.fn(),
+}));
+
+vi.mock('../../core/services/config-manager.js', () => ({
+  readSpecGenConfig: vi.fn(),
+}));
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -27,10 +44,20 @@ import {
   handleGetLowRiskRefactorCandidates,
   handleGetLeafFunctions,
   handleGetCriticalHubs,
+  handleCheckSpecDrift,
 } from './mcp.js';
 import type { SerializedCallGraph, FunctionNode } from '../../core/analyzer/call-graph.js';
 import type { MappingArtifact } from '../../core/generator/mapping-generator.js';
 import type { FileSignatureMap } from '../../core/analyzer/signature-extractor.js';
+import type { DriftResult } from '../../types/index.js';
+import {
+  isGitRepository,
+  getChangedFiles,
+  buildSpecMap,
+  buildADRMap,
+  detectDrift,
+} from '../../core/drift/index.js';
+import { readSpecGenConfig } from '../../core/services/config-manager.js';
 
 // ============================================================================
 // Fixture helpers
@@ -948,5 +975,191 @@ describe('handleGetCriticalHubs', () => {
       expect(h.stabilityScore).toBeGreaterThanOrEqual(0);
       expect(h.stabilityScore).toBeLessThanOrEqual(100);
     }
+  });
+});
+
+// ============================================================================
+// handleCheckSpecDrift
+// ============================================================================
+
+function makeDriftResult(overrides: Partial<DriftResult> = {}): DriftResult {
+  return {
+    timestamp: '2026-01-01T00:00:00Z',
+    baseRef: 'main',
+    totalChangedFiles: 1,
+    specRelevantFiles: 1,
+    issues: [],
+    summary: { gaps: 0, stale: 0, uncovered: 0, orphanedSpecs: 0, adrGaps: 0, adrOrphaned: 0, total: 0 },
+    hasDrift: false,
+    duration: 42,
+    mode: 'static',
+    ...overrides,
+  };
+}
+
+describe('handleCheckSpecDrift', () => {
+  let driftDir: string;
+
+  beforeEach(async () => {
+    driftDir = join(tmpdir(), `mcp-drift-${Date.now()}`);
+    await mkdir(driftDir, { recursive: true });
+    vi.mocked(isGitRepository).mockReset();
+    vi.mocked(readSpecGenConfig).mockReset();
+    vi.mocked(getChangedFiles).mockReset();
+    vi.mocked(buildSpecMap).mockReset();
+    vi.mocked(buildADRMap).mockReset();
+    vi.mocked(detectDrift).mockReset();
+  });
+
+  afterEach(async () => {
+    await rm(driftDir, { recursive: true, force: true });
+    vi.clearAllMocks();
+  });
+
+  it('throws when directory does not exist', async () => {
+    await expect(handleCheckSpecDrift('/nonexistent/mcp-drift-test-00000'))
+      .rejects.toThrow('not found');
+  });
+
+  it('returns error when not a git repository', async () => {
+    vi.mocked(isGitRepository).mockResolvedValue(false);
+    const result = await handleCheckSpecDrift(driftDir);
+    expect(result).toMatchObject({ error: expect.stringContaining('git') });
+  });
+
+  it('returns error when no spec-gen config found', async () => {
+    vi.mocked(isGitRepository).mockResolvedValue(true);
+    vi.mocked(readSpecGenConfig).mockResolvedValue(null);
+    const result = await handleCheckSpecDrift(driftDir);
+    expect(result).toMatchObject({ error: expect.stringContaining('spec-gen init') });
+  });
+
+  it('returns error when no specs directory exists', async () => {
+    vi.mocked(isGitRepository).mockResolvedValue(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(readSpecGenConfig).mockResolvedValue({ openspecPath: 'openspec' } as any);
+    // openspec/specs does NOT exist in driftDir → stat throws
+    const result = await handleCheckSpecDrift(driftDir);
+    expect(result).toMatchObject({ error: expect.stringContaining('spec-gen generate') });
+  });
+
+  it('returns empty DriftResult when no files changed', async () => {
+    await mkdir(join(driftDir, 'openspec', 'specs'), { recursive: true });
+    vi.mocked(isGitRepository).mockResolvedValue(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(readSpecGenConfig).mockResolvedValue({ openspecPath: 'openspec' } as any);
+    vi.mocked(getChangedFiles).mockResolvedValue(
+      { files: [], resolvedBase: 'main', currentBranch: 'feature' } as any // eslint-disable-line @typescript-eslint/no-explicit-any
+    );
+    const result = await handleCheckSpecDrift(driftDir) as DriftResult;
+    expect(result.hasDrift).toBe(false);
+    expect(result.totalChangedFiles).toBe(0);
+    expect(result.mode).toBe('static');
+    expect(result.issues).toHaveLength(0);
+  });
+
+  it('returns DriftResult with no issues when no drift', async () => {
+    await mkdir(join(driftDir, 'openspec', 'specs'), { recursive: true });
+    vi.mocked(isGitRepository).mockResolvedValue(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(readSpecGenConfig).mockResolvedValue({ openspecPath: 'openspec' } as any);
+    vi.mocked(getChangedFiles).mockResolvedValue(
+      { files: [{ path: 'src/auth.ts', status: 'modified', additions: 5, deletions: 1, isTest: false }], resolvedBase: 'main', currentBranch: 'feature' } as any // eslint-disable-line @typescript-eslint/no-explicit-any
+    );
+    vi.mocked(buildSpecMap).mockResolvedValue({ domainCount: 1, totalMappedFiles: 3 } as any); // eslint-disable-line @typescript-eslint/no-explicit-any
+    vi.mocked(buildADRMap).mockResolvedValue(null);
+    vi.mocked(detectDrift).mockResolvedValue(makeDriftResult());
+    const result = await handleCheckSpecDrift(driftDir) as DriftResult;
+    expect(result.hasDrift).toBe(false);
+    expect(result.issues).toHaveLength(0);
+  });
+
+  it('returns DriftResult with issues when drift detected', async () => {
+    await mkdir(join(driftDir, 'openspec', 'specs'), { recursive: true });
+    vi.mocked(isGitRepository).mockResolvedValue(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(readSpecGenConfig).mockResolvedValue({ openspecPath: 'openspec' } as any);
+    vi.mocked(getChangedFiles).mockResolvedValue(
+      { files: [{ path: 'src/auth.ts', status: 'modified', additions: 20, deletions: 5, isTest: false }], resolvedBase: 'main', currentBranch: 'feature' } as any // eslint-disable-line @typescript-eslint/no-explicit-any
+    );
+    vi.mocked(buildSpecMap).mockResolvedValue({ domainCount: 1, totalMappedFiles: 3 } as any); // eslint-disable-line @typescript-eslint/no-explicit-any
+    vi.mocked(buildADRMap).mockResolvedValue(null);
+    vi.mocked(detectDrift).mockResolvedValue(makeDriftResult({
+      hasDrift: true,
+      issues: [{
+        id: 'gap-1', kind: 'gap', severity: 'warning',
+        message: 'auth.ts changed but auth spec not updated',
+        filePath: 'src/auth.ts', domain: 'auth', specPath: 'openspec/specs/auth/spec.md',
+        changedLines: { added: 20, removed: 5 },
+        suggestion: 'Update the auth spec to reflect these changes',
+      }],
+      summary: { gaps: 1, stale: 0, uncovered: 0, orphanedSpecs: 0, adrGaps: 0, adrOrphaned: 0, total: 1 },
+      totalChangedFiles: 1,
+    }));
+    const result = await handleCheckSpecDrift(driftDir) as DriftResult;
+    expect(result.hasDrift).toBe(true);
+    expect(result.issues).toHaveLength(1);
+    expect(result.issues[0].kind).toBe('gap');
+    expect(result.summary.gaps).toBe(1);
+    expect(result.summary.total).toBe(1);
+  });
+
+  it('passes base, domains, failOn to detectDrift', async () => {
+    await mkdir(join(driftDir, 'openspec', 'specs'), { recursive: true });
+    vi.mocked(isGitRepository).mockResolvedValue(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(readSpecGenConfig).mockResolvedValue({ openspecPath: 'openspec' } as any);
+    vi.mocked(getChangedFiles).mockResolvedValue(
+      { files: [{ path: 'src/orders.ts', status: 'modified', additions: 1, deletions: 0, isTest: false }], resolvedBase: 'develop', currentBranch: 'feature' } as any // eslint-disable-line @typescript-eslint/no-explicit-any
+    );
+    vi.mocked(buildSpecMap).mockResolvedValue({ domainCount: 1, totalMappedFiles: 2 } as any); // eslint-disable-line @typescript-eslint/no-explicit-any
+    vi.mocked(buildADRMap).mockResolvedValue(null);
+    vi.mocked(detectDrift).mockResolvedValue(makeDriftResult());
+    await handleCheckSpecDrift(driftDir, 'develop', [], ['orders'], 'error');
+    expect(vi.mocked(getChangedFiles)).toHaveBeenCalledWith(
+      expect.objectContaining({ baseRef: 'develop' })
+    );
+    expect(vi.mocked(detectDrift)).toHaveBeenCalledWith(
+      expect.objectContaining({ failOn: 'error', domainFilter: ['orders'] })
+    );
+  });
+
+  it('truncates files list when exceeding maxFiles', async () => {
+    await mkdir(join(driftDir, 'openspec', 'specs'), { recursive: true });
+    vi.mocked(isGitRepository).mockResolvedValue(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(readSpecGenConfig).mockResolvedValue({ openspecPath: 'openspec' } as any);
+    const manyFiles = Array.from({ length: 10 }, (_, i) => ({
+      path: `src/file${i}.ts`, status: 'modified', additions: 1, deletions: 0, isTest: false,
+    }));
+    vi.mocked(getChangedFiles).mockResolvedValue(
+      { files: manyFiles, resolvedBase: 'main', currentBranch: 'feat' } as any // eslint-disable-line @typescript-eslint/no-explicit-any
+    );
+    vi.mocked(buildSpecMap).mockResolvedValue({ domainCount: 1, totalMappedFiles: 5 } as any); // eslint-disable-line @typescript-eslint/no-explicit-any
+    vi.mocked(buildADRMap).mockResolvedValue(null);
+    vi.mocked(detectDrift).mockResolvedValue(makeDriftResult({ totalChangedFiles: 10 }));
+    // maxFiles = 3 → detectDrift receives only 3 files
+    await handleCheckSpecDrift(driftDir, 'auto', [], [], 'warning', 3);
+    const callArg = vi.mocked(detectDrift).mock.calls[0][0];
+    expect(callArg.changedFiles).toHaveLength(3);
+  });
+
+  it('sets totalChangedFiles to actual count (before truncation)', async () => {
+    await mkdir(join(driftDir, 'openspec', 'specs'), { recursive: true });
+    vi.mocked(isGitRepository).mockResolvedValue(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.mocked(readSpecGenConfig).mockResolvedValue({ openspecPath: 'openspec' } as any);
+    const manyFiles = Array.from({ length: 5 }, (_, i) => ({
+      path: `src/file${i}.ts`, status: 'modified', additions: 1, deletions: 0, isTest: false,
+    }));
+    vi.mocked(getChangedFiles).mockResolvedValue(
+      { files: manyFiles, resolvedBase: 'main', currentBranch: 'feat' } as any // eslint-disable-line @typescript-eslint/no-explicit-any
+    );
+    vi.mocked(buildSpecMap).mockResolvedValue({ domainCount: 1, totalMappedFiles: 5 } as any); // eslint-disable-line @typescript-eslint/no-explicit-any
+    vi.mocked(buildADRMap).mockResolvedValue(null);
+    vi.mocked(detectDrift).mockResolvedValue(makeDriftResult());
+    const result = await handleCheckSpecDrift(driftDir, 'auto', [], [], 'warning', 2) as DriftResult;
+    // totalChangedFiles should reflect the original 5, not the truncated 2
+    expect(result.totalChangedFiles).toBe(5);
   });
 });
