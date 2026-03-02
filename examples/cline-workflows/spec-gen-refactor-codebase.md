@@ -107,3 +107,50 @@ Re-analyse to confirm the priority score dropped for the refactored function.
 
 Confirm that `withIssues` decreased and the function is no longer in the top list.
 If not, investigate why and iterate.
+
+## Step 10 (optional — requires spec-gen generate to have been run)
+
+**Important**: this step proposes irreversible changes (deletions, renames).
+Do not apply anything without explicit user confirmation at each sub-step.
+
+### 10a. Dead code: orphan functions
+
+Check for functions not covered by any spec requirement.
+
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>get_mapping</tool_name>
+  <arguments>{"directory": "$DIRECTORY", "orphansOnly": true}</arguments>
+</use_mcp_tool>
+
+Present the orphan list (kind `function` or `class` only). For each one, check:
+- Is it exported and potentially consumed by external code?
+- Is it re-exported from an index file?
+- Was it simply missed by the LLM in Stage 3?
+
+Only after the user has reviewed and confirmed each entry, propose deletion or
+a documentation comment marking it as intentionally uncovered.
+
+**Do not delete anything without the user explicitly approving each function.**
+
+### 10b. Naming alignment: spec vocabulary vs actual names
+
+Find functions whose names diverge from the business vocabulary in the spec.
+
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>get_mapping</tool_name>
+  <arguments>{"directory": "$DIRECTORY"}</arguments>
+</use_mcp_tool>
+
+Build a table of mismatches (requirement name vs function name) and present it
+to the user for review before touching any code:
+
+| Current name | Proposed name | File | Confidence |
+|---|---|---|---|
+
+Only renames with `confidence: "llm"` should be proposed automatically.
+Flag `confidence: "heuristic"` entries for manual verification first.
+
+**Wait for explicit user approval of the full rename table before applying
+any change. Apply renames one file at a time and run tests after each.**
