@@ -2,7 +2,7 @@
  * Tests for spec-gen analyze command
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { analyzeCommand, runAnalysis } from './analyze.js';
 
 // ============================================================================
@@ -18,7 +18,14 @@ vi.mock('../../utils/logger.js', () => ({
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
-  return { ...actual, writeFile: vi.fn().mockResolvedValue(undefined) };
+  return {
+    ...actual,
+    access:    vi.fn().mockResolvedValue(undefined),
+    stat:      vi.fn().mockResolvedValue({ mtime: new Date() }),
+    mkdir:     vi.fn().mockResolvedValue(undefined),
+    readFile:  vi.fn().mockResolvedValue('{}'),
+    writeFile: vi.fn().mockResolvedValue(undefined),
+  };
 });
 
 vi.mock('../../core/analyzer/repository-mapper.js', () => {
@@ -355,6 +362,150 @@ describe('analyze command', () => {
 
       const patterns = getMapperIncludePatterns();
       expect(patterns.filter(p => p === '*.graphql')).toHaveLength(1);
+    });
+  });
+
+  // ============================================================================
+  // ACTION HANDLER TESTS
+  // ============================================================================
+
+  describe('analyzeCommand — action handler', () => {
+    // Shared references to mocked fs functions, resolved in beforeEach
+    // so they are guaranteed to be the same instances vitest hoisted.
+    let mockAccess:   ReturnType<typeof vi.fn>;
+    let mockStat:     ReturnType<typeof vi.fn>;
+    let mockMkdir:    ReturnType<typeof vi.fn>;
+    let mockReadFile: ReturnType<typeof vi.fn>;
+    let mockReadSpecGenConfig: ReturnType<typeof vi.fn>;
+
+    let consoleSpy: ReturnType<typeof vi.spyOn>;
+    let cwdSpy:     ReturnType<typeof vi.spyOn>;
+
+    const FAKE_CONFIG = {
+      version: '1.0.0',
+      projectType: 'nodejs' as const,
+      openspecPath: './openspec',
+      analysis: { maxFiles: 500, includePatterns: [], excludePatterns: [] },
+      generation: { provider: 'openai' as const, model: 'gpt-4', domains: 'auto' as const },
+      createdAt: new Date().toISOString(),
+      lastRun: null,
+    };
+
+    // Minimal repo-structure.json content returned by readFile in the cache-hit branch
+    const CACHED_STRUCTURE = JSON.stringify({
+      statistics: { analyzedFiles: 42 },
+      domains: [{ name: 'api', files: [] }],
+      architecture: { pattern: 'layered' },
+    });
+
+    beforeEach(async () => {
+      const fsMod  = await import('node:fs/promises');
+      const cfgMod = await import('../../core/services/config-manager.js');
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mockAccess   = vi.mocked(fsMod.access as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mockStat     = vi.mocked(fsMod.stat as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mockMkdir    = vi.mocked(fsMod.mkdir as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mockReadFile = vi.mocked(fsMod.readFile as any);
+      mockReadSpecGenConfig = vi.mocked(cfgMod.readSpecGenConfig);
+
+      // Safe defaults: file exists, stale (2 h), mkdir ok, readFile gives empty JSON
+      mockAccess.mockReset().mockResolvedValue(undefined);
+      mockStat.mockReset().mockResolvedValue({ mtime: new Date(Date.now() - 2 * 3_600_000) });
+      mockMkdir.mockReset().mockResolvedValue(undefined);
+      mockReadFile.mockReset().mockResolvedValue('{}');
+      mockReadSpecGenConfig.mockReset();
+
+      cwdSpy     = vi.spyOn(process, 'cwd').mockReturnValue('/fake/root');
+      consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      process.exitCode = undefined;
+    });
+
+    afterEach(() => {
+      cwdSpy.mockRestore();
+      consoleSpy.mockRestore();
+      process.exitCode = undefined;
+    });
+
+    it('exits with code 1 when no config found', async () => {
+      mockReadSpecGenConfig.mockResolvedValue(null);
+
+      await analyzeCommand.parseAsync([], { from: 'user' });
+
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('skips analysis when recent cache exists (< 1 hour) without --force', async () => {
+      mockReadSpecGenConfig.mockResolvedValue(FAKE_CONFIG);
+      // mtime 30 minutes ago → recent
+      mockStat.mockResolvedValue({ mtime: new Date(Date.now() - 30 * 60_000) });
+      mockReadFile.mockResolvedValue(CACHED_STRUCTURE);
+
+      const mapperMod = await import('../../core/analyzer/repository-mapper.js');
+      vi.mocked(mapperMod.RepositoryMapper).mockClear();
+
+      await analyzeCommand.parseAsync([], { from: 'user' });
+
+      // RepositoryMapper must NOT have been instantiated (analysis was skipped)
+      expect(vi.mocked(mapperMod.RepositoryMapper)).not.toHaveBeenCalled();
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    it('runs analysis even with recent cache when --force is passed', async () => {
+      mockReadSpecGenConfig.mockResolvedValue(FAKE_CONFIG);
+      mockStat.mockResolvedValue({ mtime: new Date(Date.now() - 30 * 60_000) });
+
+      const mapperMod = await import('../../core/analyzer/repository-mapper.js');
+      vi.mocked(mapperMod.RepositoryMapper).mockClear();
+
+      await analyzeCommand.parseAsync(['--force'], { from: 'user' });
+
+      expect(vi.mocked(mapperMod.RepositoryMapper)).toHaveBeenCalled();
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    it('runs fresh analysis when no previous analysis exists', async () => {
+      mockReadSpecGenConfig.mockResolvedValue(FAKE_CONFIG);
+      // access rejects → fileExists returns false → getAnalysisAge returns null
+      mockAccess.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+
+      const mapperMod = await import('../../core/analyzer/repository-mapper.js');
+      vi.mocked(mapperMod.RepositoryMapper).mockClear();
+
+      await analyzeCommand.parseAsync([], { from: 'user' });
+
+      expect(vi.mocked(mapperMod.RepositoryMapper)).toHaveBeenCalled();
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    it('re-runs stale analysis automatically (> 1 hour, no --force needed)', async () => {
+      mockReadSpecGenConfig.mockResolvedValue(FAKE_CONFIG);
+      // Default beforeEach stat: 2 hours old → stale
+
+      const mapperMod = await import('../../core/analyzer/repository-mapper.js');
+      vi.mocked(mapperMod.RepositoryMapper).mockClear();
+
+      await analyzeCommand.parseAsync([], { from: 'user' });
+
+      expect(vi.mocked(mapperMod.RepositoryMapper)).toHaveBeenCalled();
+      expect(process.exitCode).toBeUndefined();
+    });
+
+    it('sets exitCode=1 and logs error message when analysis pipeline throws', async () => {
+      mockReadSpecGenConfig.mockResolvedValue(FAKE_CONFIG);
+      mockAccess.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+      mockMkdir.mockRejectedValue(new Error('Permission denied'));
+
+      const loggerMod = await import('../../utils/logger.js');
+      const errorSpy = vi.mocked(loggerMod.logger.error);
+
+      await analyzeCommand.parseAsync([], { from: 'user' });
+
+      expect(process.exitCode).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Permission denied'));
     });
   });
 });
