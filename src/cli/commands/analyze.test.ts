@@ -34,9 +34,6 @@ vi.mock('../../core/analyzer/repository-mapper.js', () => {
     highValueFiles: [],
     summary: { totalFiles: 0, analyzedFiles: 0, skippedFiles: 0, languages: [] },
   });
-  function MockRepositoryMapper(this: unknown, _root: string, _opts: unknown) {
-    Object.assign(this as object, { map: mockMap });
-  }
   return { RepositoryMapper: vi.fn().mockImplementation(function(this: unknown, root: string, opts: unknown) {
     Object.assign(this as object, { map: mockMap });
     void root; void opts;
@@ -248,10 +245,6 @@ describe('analyze command', () => {
 
     function getMapperExcludePatterns(): string[] {
       return getMapperOptions().excludePatterns ?? [];
-    }
-
-    function getMapperIncludePatterns(): string[] {
-      return getMapperOptions().includePatterns ?? [];
     }
 
     it('passes config excludePatterns to RepositoryMapper when caller passes none', async () => {

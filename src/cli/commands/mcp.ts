@@ -27,7 +27,6 @@
 import { Command } from 'commander';
 // We use the low-level `Server` class rather than the high-level `McpServer`
 // because our tool definitions use raw JSON Schema. `McpServer` requires Zod.
-// eslint-disable-next-line deprecation/deprecation
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
