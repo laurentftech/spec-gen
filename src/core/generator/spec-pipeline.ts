@@ -405,7 +405,15 @@ export class SpecGenerationPipeline {
       logger.analysis('Running Stage 1: Project Survey');
       const result = await this.runStage1(repoStructure, llmContext);
       if (result.success && result.data) {
-        survey = result.data;
+        // Normalize: LLM may omit array fields, which causes undefined.join/length crashes downstream
+        survey = {
+          ...result.data,
+          frameworks: result.data.frameworks ?? [],
+          suggestedDomains: result.data.suggestedDomains ?? [],
+          schemaFiles: result.data.schemaFiles ?? [],
+          serviceFiles: result.data.serviceFiles ?? [],
+          apiFiles: result.data.apiFiles ?? [],
+        };
         totalTokens += result.tokens;
         completedStages.push('survey');
       } else {
@@ -482,7 +490,13 @@ export class SpecGenerationPipeline {
       logger.analysis('Running Stage 5: Architecture Synthesis');
       const result = await this.runStage5(survey, entities, services, endpoints, depGraph, llmContext.callGraph);
       if (result.success && result.data) {
-        architecture = result.data;
+        // Normalize: LLM may omit array fields, which causes undefined.length crashes downstream
+        architecture = {
+          ...result.data,
+          layerMap: result.data.layerMap ?? [],
+          integrations: result.data.integrations ?? [],
+          keyDecisions: result.data.keyDecisions ?? [],
+        };
         totalTokens += result.tokens;
         completedStages.push('architecture');
       } else {
@@ -666,6 +680,8 @@ ${fileListingSection}`;
       ...best,
       data: {
         ...best.data!,
+        frameworks:      best.data!.frameworks      ?? [],
+        suggestedDomains: best.data!.suggestedDomains ?? [],
         schemaFiles:  [...new Set(successful.flatMap(r => r.data!.schemaFiles  ?? []))],
         serviceFiles: [...new Set(successful.flatMap(r => r.data!.serviceFiles ?? []))],
         apiFiles:     [...new Set(successful.flatMap(r => r.data!.apiFiles     ?? []))],
