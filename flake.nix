@@ -40,17 +40,15 @@
               # Copy node_modules for runtime dependencies
               cp -r node_modules $out/lib/node_modules/spec-gen/
 
-              # Create bin wrapper
+              # Create bin wrapper (ESM — must use import(), not require())
               mkdir -p $out/bin
-              cat > $out/bin/spec-gen << 'EOF'
-              #!/usr/bin/env node
-              require('../lib/node_modules/spec-gen/dist/cli/index.js');
+              cat > $out/bin/spec-gen <<EOF
+              #!${pkgs.nodejs}/bin/node
+              import('../lib/node_modules/spec-gen/dist/cli/index.js');
               EOF
+              # Remove leading whitespace from heredoc (including the shebang line)
+              sed -i 's/^[[:space:]]*//' $out/bin/spec-gen
               chmod +x $out/bin/spec-gen
-
-              # Make it a proper Node.js script
-              substituteInPlace $out/bin/spec-gen \
-                --replace '#!/usr/bin/env node' '#!${pkgs.nodejs}/bin/node'
 
               runHook postInstall
             '';
