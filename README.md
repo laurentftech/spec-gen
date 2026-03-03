@@ -478,7 +478,22 @@ The repo ships a `.mcp.json` — edit the path and you are done:
 }
 ```
 
-The MCP tools (`analyze_codebase`, `check_spec_drift`, `get_refactor_report`, …) are then available directly in any Claude Code conversation — just ask naturally: *"analyse my codebase"*, *"check spec drift"*, *"help me refactor X"*.
+The tools are available directly in any Claude Code conversation. Just ask naturally — Claude calls the right tools automatically:
+
+```
+You:    Analyse my codebase and tell me what needs refactoring most urgently
+Claude: [analyze_codebase → get_refactor_report → analyze_impact on top result]
+        → Project summary, top issues ranked by priority, risk score and recommended
+          strategy for the highest-impact function
+
+You:    Are there any duplicate functions I should consolidate?
+Claude: [get_duplicate_report]
+        → Clone groups sorted by impact (exact / structural / near), file paths, line ranges
+
+You:    Show me everything that calls parseConfig and draw a diagram
+Claude: [get_subgraph with direction: "upstream", format: "mermaid"]
+        → Mermaid flowchart of the upstream call chain
+```
 
 #### Cline / Roo Code / Kilocode
 
@@ -521,14 +536,39 @@ All three commands ask which directory to use, call the MCP tools directly, and 
 
 ### Tools
 
+All tools run on **pure static analysis** — no LLM quota consumed.
+
+**Analysis**
+
 | Tool | Description | Requires prior analysis |
-|------|-------------|------------------------|
-| `analyze_codebase` | Run full static analysis; returns project metadata, call graph stats, and top-10 refactor priorities. Results cached for 1 hour (bypass with `force: true`). | No |
-| `get_refactor_report` | Prioritized list of functions to refactor: unreachable code, hub overload (high fan-in), god functions (high fan-out), SRP violations, cyclic deps. | Yes |
-| `get_call_graph` | Hub functions, entry points, and architectural layer violations for the project. | Yes |
-| `get_signatures` | Compact function/class signatures per file. Filter by path substring with `filePattern`. | Yes |
-| `get_subgraph` | Depth-limited subgraph centred on a function name. Direction: `downstream` (what it calls), `upstream` (who calls it), or `both`. Output as JSON or Mermaid diagram. | Yes |
-| `get_mapping` | Requirement→function mapping from `spec-gen generate`. Shows which functions implement which spec requirements, confidence level, and orphan functions with no spec coverage. | Yes (generate) |
+|------|-------------|:---:|
+| `analyze_codebase` | Run full static analysis: repo structure, dependency graph, call graph (hub functions, entry points, layer violations), and top refactoring priorities. Results cached for 1 hour (`force: true` to bypass). | No |
+| `get_call_graph` | Hub functions (high fan-in), entry points (no internal callers), and architectural layer violations. Supports TypeScript, JavaScript, Python, Go, Rust, Ruby, Java. | Yes |
+| `get_signatures` | Compact function/class signatures per file. Filter by path substring with `filePattern`. Useful for understanding a module's public API without reading full source. | Yes |
+| `get_duplicate_report` | Detect duplicate code: Type 1 (exact clones), Type 2 (structural — renamed variables), Type 3 (near-clones with Jaccard similarity ≥ 0.7). Groups sorted by impact. | Yes |
+
+**Refactoring**
+
+| Tool | Description | Requires prior analysis |
+|------|-------------|:---:|
+| `get_refactor_report` | Prioritized list of functions with structural issues: unreachable code, hub overload (high fan-in), god functions (high fan-out), SRP violations, cyclic dependencies. | Yes |
+| `analyze_impact` | Deep impact analysis for a specific function: fan-in/fan-out, upstream call chain, downstream critical path, risk score (0–100), blast radius, and recommended strategy. | Yes |
+| `get_low_risk_refactor_candidates` | Safest functions to refactor first: low fan-in, low fan-out, not a hub, no cyclic involvement. Best starting point for incremental, low-risk sessions. | Yes |
+| `get_leaf_functions` | Functions that make no internal calls (leaves of the call graph). Zero downstream blast radius. Sorted by fan-in by default — most-called leaves have the best unit-test ROI. | Yes |
+| `get_critical_hubs` | Highest-impact hub functions ranked by criticality. Each hub gets a stability score (0–100) and a recommended approach: extract, split, facade, or delegate. | Yes |
+
+**Navigation**
+
+| Tool | Description | Requires prior analysis |
+|------|-------------|:---:|
+| `get_subgraph` | Depth-limited subgraph centred on a function. Direction: `downstream` (what it calls), `upstream` (who calls it), or `both`. Output as JSON or Mermaid diagram. | Yes |
+
+**Specs**
+
+| Tool | Description | Requires prior analysis |
+|------|-------------|:---:|
+| `get_mapping` | Requirement→function mapping produced by `spec-gen generate`. Shows which functions implement which spec requirements, confidence level, and orphan functions with no spec coverage. | Yes (generate) |
+| `check_spec_drift` | Detect code changes not reflected in OpenSpec specs. Compares git-changed files against spec coverage maps. Issues: gap / stale / uncovered / orphaned-spec / adr-gap. | Yes (generate) |
 
 ### Parameters
 
@@ -565,13 +605,74 @@ domain       string    Optional domain filter (e.g. "auth", "crawler")
 orphansOnly  boolean   Return only orphan functions (default: false)
 ```
 
+**`get_duplicate_report`**
+```
+directory  string   Absolute path to the project directory
+```
+
+**`check_spec_drift`**
+```
+directory  string    Absolute path to the project directory
+base       string    Git ref to compare against (default: auto-detect main/master)
+files      string[]  Specific files to check (default: all changed files)
+domains    string[]  Only check these spec domains (default: all)
+failOn     string    Minimum severity to report: "error" | "warning" | "info" (default: "warning")
+maxFiles   number    Max changed files to analyze (default: 100)
+```
+
+**`analyze_impact`**
+```
+directory  string   Absolute path to the project directory
+symbol     string   Function or method name (exact or partial match)
+depth      number   Traversal depth for upstream/downstream chains (default: 2)
+```
+
+**`get_low_risk_refactor_candidates`**
+```
+directory    string   Absolute path to the project directory
+limit        number   Max candidates to return (default: 5)
+filePattern  string   Optional path substring filter (e.g. "services", ".py")
+```
+
+**`get_leaf_functions`**
+```
+directory    string   Absolute path to the project directory
+limit        number   Max results to return (default: 20)
+filePattern  string   Optional path substring filter
+sortBy       string   "fanIn" (default) | "name" | "file"
+```
+
+**`get_critical_hubs`**
+```
+directory  string   Absolute path to the project directory
+limit      number   Max hubs to return (default: 10)
+minFanIn   number   Minimum fan-in threshold to be considered a hub (default: 3)
+```
+
 ### Typical workflow
 
+**Scenario A — Initial exploration**
 ```
-1. analyze_codebase({ directory: "/path/to/project" })
-2. get_refactor_report({ directory: "/path/to/project" })
-3. get_subgraph({ directory: "...", functionName: "run", direction: "downstream", format: "mermaid" })
-4. get_mapping({ directory: "...", orphansOnly: true })   # dead code candidates
+1. analyze_codebase({ directory })                    # repo structure + call graph + top issues
+2. get_call_graph({ directory })                      # hub functions + layer violations
+3. get_duplicate_report({ directory })                # clone groups to consolidate
+4. get_refactor_report({ directory })                 # prioritized refactoring candidates
+```
+
+**Scenario B — Targeted refactoring**
+```
+1. analyze_impact({ directory, symbol: "myFunction" })       # risk score + blast radius + strategy
+2. get_subgraph({ directory, functionName: "myFunction",     # Mermaid call neighbourhood
+                  direction: "both", format: "mermaid" })
+3. get_low_risk_refactor_candidates({ directory,             # safe entry points to extract first
+                                      filePattern: "myFile" })
+4. get_leaf_functions({ directory, filePattern: "myFile" })  # zero-risk extraction targets
+```
+
+**Scenario C — Spec maintenance**
+```
+1. check_spec_drift({ directory })                    # code changes not reflected in specs
+2. get_mapping({ directory, orphansOnly: true })      # functions with no spec coverage
 ```
 
 ## Output
