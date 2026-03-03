@@ -76,6 +76,12 @@ export class ADRGenerator {
     const slug = titleToSlug(adr.title);
     const adrNum = adr.id.replace(/[^0-9]/g, '').padStart(4, '0');
 
+    // Defensive defaults for arrays that the LLM may omit from its response
+    const consequences = adr.consequences ?? [];
+    const alternatives = adr.alternatives ?? [];
+    const relatedLayers = adr.relatedLayers ?? [];
+    const relatedDomains = adr.relatedDomains ?? [];
+
     // Header
     lines.push(`# ${adr.id}: ${adr.title}`);
     lines.push('');
@@ -103,8 +109,8 @@ export class ADRGenerator {
     // Consequences
     lines.push('## Consequences');
     lines.push('');
-    if (adr.consequences.length > 0) {
-      for (const consequence of adr.consequences) {
+    if (consequences.length > 0) {
+      for (const consequence of consequences) {
         lines.push(`- ${consequence}`);
       }
     } else {
@@ -113,17 +119,17 @@ export class ADRGenerator {
     lines.push('');
 
     // Alternatives Considered
-    if (adr.alternatives.length > 0) {
+    if (alternatives.length > 0) {
       lines.push('## Alternatives Considered');
       lines.push('');
-      for (const alt of adr.alternatives) {
+      for (const alt of alternatives) {
         lines.push(`- ${alt}`);
       }
       lines.push('');
     }
 
     // Architecture Impact (Mermaid diagram)
-    if (this.options.includeMermaid && adr.relatedLayers.length > 0 && architecture.layerMap.length > 0) {
+    if (this.options.includeMermaid && relatedLayers.length > 0 && architecture.layerMap.length > 0) {
       lines.push('## Architecture Impact');
       lines.push('');
       lines.push('```mermaid');
@@ -131,7 +137,7 @@ export class ADRGenerator {
 
       // Filter to affected layers
       const affectedLayers = architecture.layerMap.filter(
-        l => adr.relatedLayers.some(rl => l.name.toLowerCase().includes(rl.toLowerCase()))
+        l => relatedLayers.some(rl => l.name.toLowerCase().includes(rl.toLowerCase()))
       );
 
       // Fall back to all layers if filter matched nothing
@@ -160,13 +166,13 @@ export class ADRGenerator {
     // Related
     lines.push('## Related');
     lines.push('');
-    if (adr.relatedLayers.length > 0) {
-      lines.push(`- **Layers**: ${adr.relatedLayers.join(', ')}`);
+    if (relatedLayers.length > 0) {
+      lines.push(`- **Layers**: ${relatedLayers.join(', ')}`);
     }
-    if (adr.relatedDomains.length > 0) {
-      lines.push(`- **Domains**: ${adr.relatedDomains.join(', ')}`);
+    if (relatedDomains.length > 0) {
+      lines.push(`- **Domains**: ${relatedDomains.join(', ')}`);
     }
-    if (adr.relatedLayers.length === 0 && adr.relatedDomains.length === 0) {
+    if (relatedLayers.length === 0 && relatedDomains.length === 0) {
       lines.push('No specific layers or domains identified.');
     }
     lines.push('');
@@ -202,7 +208,7 @@ export class ADRGenerator {
       const adrNum = adr.id.replace(/[^0-9]/g, '').padStart(4, '0');
       const slug = titleToSlug(adr.title);
       const fileName = `adr-${adrNum}-${slug}.md`;
-      const layers = adr.relatedLayers.join(', ') || '-';
+      const layers = (adr.relatedLayers ?? []).join(', ') || '-';
       lines.push(`| [${adr.id}](./${fileName}) | ${adr.title} | ${capitalize(adr.status)} | ${layers} |`);
     }
 
