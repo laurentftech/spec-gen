@@ -893,6 +893,7 @@ export async function handleGetLowRiskRefactorCandidates(
   limit = 5,
   filePattern?: string
 ): Promise<unknown> {
+  limit = Math.max(1, Math.min(limit, 500));
   const absDir = await validateDirectory(directory);
   const ctx = await readCachedContext(absDir);
 
@@ -958,6 +959,7 @@ export async function handleGetLeafFunctions(
   filePattern?: string,
   sortBy: 'fanIn' | 'name' | 'file' = 'fanIn'
 ): Promise<unknown> {
+  limit = Math.max(1, Math.min(limit, 500));
   const absDir = await validateDirectory(directory);
   const ctx = await readCachedContext(absDir);
 
@@ -1021,6 +1023,8 @@ export async function handleGetCriticalHubs(
   limit = 10,
   minFanIn = 3
 ): Promise<unknown> {
+  limit = Math.max(1, Math.min(limit, 500));
+  minFanIn = Math.max(1, Math.min(minFanIn, 100));
   const absDir = await validateDirectory(directory);
   const ctx = await readCachedContext(absDir);
 
@@ -1124,6 +1128,8 @@ export async function handleGetSubgraph(
   maxDepth = 3,
   format: 'json' | 'mermaid' = 'json'
 ): Promise<unknown> {
+  // Cap depth to prevent unbounded BFS / resource exhaustion
+  maxDepth = Math.max(1, Math.min(maxDepth, 20));
   const absDir = await validateDirectory(directory);
   const ctx = await readCachedContext(absDir);
 
@@ -1214,7 +1220,7 @@ export async function handleGetSubgraph(
     const nodeLines = subNodes.map(n => {
       const id = idOf.get(n.name + '|' + n.file)!;
       const label = `"${n.name}\\n${n.file}"`;
-      return n.isSeed ? `    ${id}[${label}]:::seed` : `    ${id}["${n.name}\\n${n.file}"]`;
+      return n.isSeed ? `    ${id}[${label}]:::seed` : `    ${id}[${label}]`;
     });
 
     const edgeLines = subEdges.map(e => {

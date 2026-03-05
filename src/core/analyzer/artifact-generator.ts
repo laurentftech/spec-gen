@@ -898,10 +898,10 @@ export class AnalysisArtifactGenerator {
 
     // Signature extraction + call graph for ALL analyzed files
     // Read each file once and reuse the content for both operations.
-    const { extractSignatures } = await import('./signature-extractor.js');
+    const { extractSignatures, detectLanguage } = await import('./signature-extractor.js');
     const { CallGraphBuilder, serializeCallGraph } = await import('./call-graph.js');
-    const { detectLanguage } = await import('./signature-extractor.js');
 
+    const CALL_GRAPH_LANGS = new Set(['Python', 'TypeScript', 'JavaScript', 'Go', 'Rust', 'Ruby', 'Java']);
     const signatures: import('./signature-extractor.js').FileSignatureMap[] = [];
     const callGraphFiles: Array<{ path: string; content: string; language: string }> = [];
 
@@ -921,7 +921,6 @@ export class AnalysisArtifactGenerator {
 
         // Call graph — all languages supported by tree-sitter extractors, exclude test files
         const lang = detectLanguage(file.path);
-        const CALL_GRAPH_LANGS = new Set(['Python', 'TypeScript', 'JavaScript', 'Go', 'Rust', 'Ruby', 'Java']);
         if (!isTest && CALL_GRAPH_LANGS.has(lang)) {
           callGraphFiles.push({ path: file.path, content, language: lang });
         }

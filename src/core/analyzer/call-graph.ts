@@ -904,8 +904,12 @@ export class CallGraphBuilder {
       });
     }
 
-    // Pass 3: Calculate fanIn / fanOut
+    // Pass 3: Calculate fanIn / fanOut (count unique caller→callee pairs, not call sites)
+    const seenPairs = new Set<string>();
     for (const edge of edges) {
+      const pairKey = `${edge.callerId}\0${edge.calleeId}`;
+      if (seenPairs.has(pairKey)) continue;
+      seenPairs.add(pairKey);
       const caller = allNodes.get(edge.callerId);
       const callee = allNodes.get(edge.calleeId);
       if (caller) caller.fanOut++;

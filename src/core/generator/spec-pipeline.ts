@@ -6,7 +6,7 @@
  */
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import logger from '../../utils/logger.js';
 import type { LLMService } from '../services/llm-service.js';
 import type { RepoStructure, LLMContext } from '../analyzer/artifact-generator.js';
@@ -1073,11 +1073,9 @@ ${architecture.keyDecisions.map((d, i) => `${i + 1}. ${d}`).join('\n')}`;
   ): Promise<Array<{ path: string; content: string }>> {
     // Guard: never pass test files to the LLM stages regardless of what Stage 1 suggested
     const safePaths = llmPaths.filter(p => !isTestFile(p));
-    if (safePaths.length === 0 && llmPaths.length > 0) {
-      // Stage 1 only suggested test files — use fallback instead
+    if (safePaths.length === 0) {
       return fallback.filter(f => !isTestFile(f.path));
     }
-    if (safePaths.length === 0) return fallback.filter(f => !isTestFile(f.path));
     llmPaths = safePaths;
 
     const allFiles = context.phase2_deep.files;
@@ -1093,7 +1091,10 @@ ${architecture.keyDecisions.map((d, i) => `${i + 1}. ${d}`).join('\n')}`;
       // 2. Read from disk when rootPath is configured (covers files outside phase2_deep)
       if (this.options.rootPath) {
         try {
-          const content = await readFile(join(this.options.rootPath, p), 'utf-8');
+          const absPath = resolve(this.options.rootPath, p);
+          // Prevent path traversal outside the project root
+          if (!absPath.startsWith(resolve(this.options.rootPath))) continue;
+          const content = await readFile(absPath, 'utf-8');
           resolved.push({ path: p, content });
         } catch {
           // file not found or unreadable — skip
