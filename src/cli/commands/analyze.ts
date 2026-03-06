@@ -359,18 +359,18 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
 
       // Call Graph
       const cg = artifacts.llmContext.callGraph;
-      if (cg && cg.stats.totalNodes > 0) {
+      if (cg && cg.stats?.totalNodes > 0) {
         console.log('  Call Graph (static analysis):');
         console.log(`    ├─ Functions: ${cg.stats.totalNodes}`);
         console.log(`    ├─ Internal calls: ${cg.stats.totalEdges}`);
-        if (cg.hubFunctions.length > 0) {
+        if (cg.hubFunctions?.length > 0) {
           const hubs = cg.hubFunctions.slice(0, 3).map(f => `${f.name}(fanIn=${f.fanIn})`).join(', ');
           console.log(`    ├─ Hub functions: ${hubs}`);
         }
-        if (cg.layerViolations.length > 0) {
+        if (cg.layerViolations?.length > 0) {
           console.log(`    ├─ ⚠ Layer violations: ${cg.layerViolations.length}`);
         }
-        console.log(`    └─ Entry points: ${cg.entryPoints.length}`);
+        console.log(`    └─ Entry points: ${cg.entryPoints?.length ?? 0}`);
         console.log('');
       }
 
@@ -403,21 +403,25 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
           console.log('');
 
           const top = (rp.priorities as Array<{ function: string; file: string; fanIn: number; fanOut: number; issues: string[]; requirements: string[] }>).slice(0, 7);
-          const maxNameLen = Math.max(...top.map(p => p.function.length), 8);
-          const maxFileLen = Math.max(...top.map(p => p.file.split('/').pop()!.length), 8);
+          if (top.length === 0) {
+            console.log('    (no refactoring candidates)');
+          } else {
+            const maxNameLen = Math.max(...top.map(p => (p.function ?? '').length), 8);
+            const maxFileLen = Math.max(...top.map(p => (p.file?.split('/').pop() ?? '').length), 8);
 
-          for (const p of top) {
-            const name  = p.function.padEnd(maxNameLen);
-            const file  = p.file.split('/').pop()!.padEnd(maxFileLen);
-            const main  = p.issues[0];
-            const val   = main === 'high_fan_in'  ? `fanIn=${p.fanIn}`
-                        : main === 'high_fan_out' ? `fanOut=${p.fanOut}`
-                        : main === 'in_cycle'     ? `cycle`
-                        : main === 'unreachable'  ? `unreachable`
-                        : `${p.requirements.length} req`;
-            const extra = p.issues.slice(1).map(i => issueLabel[i] ?? i).join(', ');
-            const reqs  = p.requirements.length > 0 ? `  [${p.requirements.slice(0,2).join(', ')}${p.requirements.length > 2 ? '…' : ''}]` : '';
-            console.log(`    ${name}  ${file}  ${val.padEnd(12)}${extra ? '  +' + extra : ''}${reqs}`);
+            for (const p of top) {
+              const name  = (p.function ?? '').padEnd(maxNameLen);
+              const file  = (p.file?.split('/').pop() ?? '').padEnd(maxFileLen);
+              const main  = p.issues?.[0];
+              const val   = main === 'high_fan_in'  ? `fanIn=${p.fanIn}`
+                          : main === 'high_fan_out' ? `fanOut=${p.fanOut}`
+                          : main === 'in_cycle'     ? `cycle`
+                          : main === 'unreachable'  ? `unreachable`
+                          : `${p.requirements?.length ?? 0} req`;
+              const extra = (p.issues ?? []).slice(1).map(i => issueLabel[i] ?? i).join(', ');
+              const reqs  = (p.requirements?.length ?? 0) > 0 ? `  [${p.requirements.slice(0,2).join(', ')}${p.requirements.length > 2 ? '…' : ''}]` : '';
+              console.log(`    ${name}  ${file}  ${val.padEnd(12)}${extra ? '  +' + extra : ''}${reqs}`);
+            }
           }
 
           if (rp.cycles?.length > 0) {

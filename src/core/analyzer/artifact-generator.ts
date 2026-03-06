@@ -902,16 +902,17 @@ export class AnalysisArtifactGenerator {
       totalTokens: phase3Files.reduce((sum, f) => sum + (f.tokens ?? 0), 0),
     };
 
-    // FIX 4+5: Tous les imports dynamiques groupés ici, CALL_GRAPH_LANGS sorti de la boucle
+    // Signature extraction + call graph for ALL analyzed files
+    // Read each file once and reuse the content for both operations.
+    // All dynamic imports grouped here; CALL_GRAPH_LANGS hoisted out of the loop.
     const { extractSignatures, detectLanguage } = await import('./signature-extractor.js');
     const { CallGraphBuilder, serializeCallGraph } = await import('./call-graph.js');
     const { detectDuplicates } = await import('./duplicate-detector.js');
     const { analyzeForRefactoring } = await import('./refactor-analyzer.js');
 
+    const CALL_GRAPH_LANGS = new Set(['Python', 'TypeScript', 'JavaScript', 'Go', 'Rust', 'Ruby', 'Java']);
     const signatures: import('./signature-extractor.js').FileSignatureMap[] = [];
     const callGraphFiles: Array<{ path: string; content: string; language: string }> = [];
-
-    const CALL_GRAPH_LANGS = new Set(['Python', 'TypeScript', 'JavaScript', 'Go', 'Rust', 'Ruby', 'Java']);
 
     for (const file of repoMap.allFiles) {
       try {

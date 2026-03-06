@@ -16,6 +16,7 @@ Thumbs.db
 #*#
 .claude
 .spec-gen/
+.mcp.json
 
 # --------------------
 # Python Specific
@@ -174,3 +175,4 @@ test-results/
 */.fastembed_cache/
 .kilocode/
 .vibe/
+result

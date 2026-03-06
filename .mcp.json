@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "spec-gen": {
-      "command": "node",
-      "args": ["/Users/laurent/Projets/spec-gen/dist/cli/index.js", "mcp"]
-    }
-  }
-}

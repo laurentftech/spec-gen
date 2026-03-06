@@ -26,6 +26,51 @@ spec-gen generate   # Generate specs (requires API key)
 spec-gen drift      # Check for spec drift
 ```
 
+<details>
+<summary>Nix/NixOS</summary>
+
+**Run directly:**
+
+```bash
+nix run github:clay-good/spec-gen -- init
+nix run github:clay-good/spec-gen -- analyze
+nix run github:clay-good/spec-gen -- generate
+```
+
+**Temporary shell:**
+
+```bash
+nix shell github:clay-good/spec-gen
+spec-gen --version
+```
+
+**System flake integration:**
+
+```nix
+{
+  inputs.spec-gen.url = "github:clay-good/spec-gen";
+
+  outputs = { self, nixpkgs, spec-gen }: {
+    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+      modules = [{
+        environment.systemPackages = [ spec-gen.packages.x86_64-linux.default ];
+      }];
+    };
+  };
+}
+```
+
+**Development:**
+
+```bash
+git clone https://github.com/clay-good/spec-gen
+cd spec-gen
+nix develop
+npm run dev
+```
+
+</details>
+
 ## What It Does
 
 **1. Analyze** (no API key needed)

@@ -551,7 +551,7 @@ export class AnthropicProvider implements LLMProvider {
 
     if (!response.ok) {
       const error = await response.text();
-      const errorObj = this.parseError(error, response.status);
+      const errorObj = this.parseError(error, response.status, response.headers.get('retry-after'));
       throw errorObj;
     }
 
@@ -579,12 +579,12 @@ export class AnthropicProvider implements LLMProvider {
     };
   }
 
-  private parseError(error: string, status: number): Error & { status?: number; retryable?: boolean; retryAfterMs?: number } {
+  private parseError(error: string, status: number, retryAfterHeader?: string | null): Error & { status?: number; retryable?: boolean; retryAfterMs?: number } {
     const err = new Error(error) as Error & { status?: number; retryable?: boolean; retryAfterMs?: number };
     err.status = status;
     err.retryable = status === 429 || status >= 500;
     if (status === 429) {
-      err.retryAfterMs = parseRetryAfterMs(error);
+      err.retryAfterMs = parseRetryAfterMs(error, retryAfterHeader);
     }
     return err;
   }
@@ -646,7 +646,7 @@ export class OpenAIProvider implements LLMProvider {
 
     if (!response.ok) {
       const error = await response.text();
-      const errorObj = this.parseError(error, response.status);
+      const errorObj = this.parseError(error, response.status, response.headers.get('retry-after'));
       throw errorObj;
     }
 
@@ -668,12 +668,12 @@ export class OpenAIProvider implements LLMProvider {
     };
   }
 
-  private parseError(error: string, status: number): Error & { status?: number; retryable?: boolean; retryAfterMs?: number } {
+  private parseError(error: string, status: number, retryAfterHeader?: string | null): Error & { status?: number; retryable?: boolean; retryAfterMs?: number } {
     const err = new Error(error) as Error & { status?: number; retryable?: boolean; retryAfterMs?: number };
     err.status = status;
     err.retryable = status === 429 || status >= 500;
     if (status === 429) {
-      err.retryAfterMs = parseRetryAfterMs(error);
+      err.retryAfterMs = parseRetryAfterMs(error, retryAfterHeader);
     }
     return err;
   }
