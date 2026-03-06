@@ -401,6 +401,7 @@ Priority: CLI flags > environment variables > config file > provider defaults.
 | `spec-gen drift` | Detect spec drift (static) | No |
 | `spec-gen drift --use-llm` | Detect spec drift (LLM-enhanced) | Yes |
 | `spec-gen run` | Full pipeline: init, analyze, generate | Yes |
+| `spec-gen view` | Launch interactive graph & spec viewer in the browser | No |
 | `spec-gen mcp` | Start MCP server (stdio, for Cline / Claude Code) | No |
 
 ### Global Options
@@ -720,6 +721,59 @@ minFanIn   number   Minimum fan-in threshold to be considered a hub (default: 3)
 2. get_mapping({ directory, orphansOnly: true })      # functions with no spec coverage
 ```
 
+## Interactive Graph Viewer
+
+`spec-gen view` launches a local React app that visualises your codebase analysis and lets you explore spec requirements side-by-side with the dependency graph.
+
+```bash
+# Run analysis first (if not already done)
+spec-gen analyze
+
+# Launch the viewer (opens browser automatically)
+spec-gen view
+
+# Options
+spec-gen view --port 4000          # custom port (default: 5173)
+spec-gen view --host 0.0.0.0       # expose on LAN
+spec-gen view --no-open            # don't open browser automatically
+spec-gen view --analysis <path>    # custom analysis dir (default: .spec-gen/analysis/)
+spec-gen view --spec <path>        # custom spec dir (default: ./openspec/specs/)
+```
+
+### What the viewer shows
+
+| Panel | Content |
+|-------|---------|
+| **Graph** | Interactive force-directed dependency graph with cluster grouping |
+| **Refactor** | Refactoring priorities overlaid on the graph (god functions, SRP violations, cycles) |
+| **Spec** | Requirements linked to the selected file — body, domain, confidence, service |
+| **Info** | File metadata: exports, metrics, imports/exports, blast radius |
+| **Clusters** | Colour-coded architectural clusters |
+
+### Automatic data loading
+
+The viewer auto-loads all available data on startup:
+
+| Endpoint | Source | Required? |
+|----------|--------|-----------|
+| `/api/dependency-graph` | `.spec-gen/analysis/dependency-graph.json` | Yes |
+| `/api/refactor-report` | `.spec-gen/analysis/refactor-priorities.json` | No |
+| `/api/mapping` | `.spec-gen/analysis/mapping.json` | No |
+| `/api/spec-requirements` | `openspec/specs/**/*.md` + `mapping.json` | No |
+
+Run `spec-gen generate` to produce `mapping.json` and the spec files. Once present, the SPEC tab shows the full requirement body for each file selected in the graph.
+
+### View Options
+
+```bash
+spec-gen view [options]
+  --analysis <path>    Analysis directory (default: .spec-gen/analysis/)
+  --spec <path>        Spec files directory (default: ./openspec/specs/)
+  --port <n>           Port (default: 5173)
+  --host <host>        Bind host (default: 127.0.0.1; use 0.0.0.0 for LAN)
+  --no-open            Skip automatic browser open
+```
+
 ## Output
 
 spec-gen writes to the OpenSpec directory structure:
@@ -751,6 +805,8 @@ Static analysis output is stored in `.spec-gen/analysis/`:
 | `llm-context.json` | Context prepared for LLM |
 | `dependencies.mermaid` | Visual dependency graph |
 | `SUMMARY.md` | Human-readable analysis summary |
+| `call-graph.json` | Function-level call graph (7 languages) |
+| `refactor-priorities.json` | Refactoring issues by file and function |
 | `mapping.json` | Requirement→function mapping (produced by `generate`) |
 
 ## Configuration
