@@ -610,10 +610,10 @@ function FlatGraph({
           );
         })}
       </g>
-      <foreignObject x="8" y="8" width="62" height="22" style={{ pointerEvents: 'all' }}>
+      <foreignObject x="8" y="8" width="82" height="22" style={{ pointerEvents: 'all' }}>
         <button
           onClick={reset}
-          title="Reset view (or double-click background)"
+          title="Reset pan/zoom (or double-click background)"
           style={{
             fontSize: 8,
             padding: '3px 8px',
@@ -627,7 +627,7 @@ function FlatGraph({
             letterSpacing: '0.05em',
           }}
         >
-          ⌖ reset
+          ⌖ reset view
         </button>
       </foreignObject>
     </svg>
@@ -643,6 +643,8 @@ function ClusterGraph({
   expandedClusters,
   onToggle,
   onSelectNode,
+  onClear,
+  hasSelection,
   selectedId,
   affectedIds,
   linkedIds,
@@ -1026,25 +1028,43 @@ function ClusterGraph({
           );
         })}
       </g>
-      <foreignObject x="8" y="8" width="62" height="22" style={{ pointerEvents: 'all' }}>
-        <button
-          onClick={reset}
-          title="Reset view (or double-click background)"
-          style={{
-            fontSize: 8,
-            padding: '3px 8px',
-            background: '#0d0f22',
-            border: `1px solid ${transform.x !== 0 || transform.y !== 0 || transform.k !== 1 ? '#7c6af7' : '#1a1f38'}`,
-            borderRadius: 4,
-            color:
-              transform.x !== 0 || transform.y !== 0 || transform.k !== 1 ? '#7c6af7' : '#2a2f4a',
-            cursor: 'pointer',
-            fontFamily: "'JetBrains Mono',monospace",
-            letterSpacing: '0.05em',
-          }}
-        >
-          ⌖ reset
-        </button>
+      <foreignObject x="8" y="8" width="175" height="22" style={{ pointerEvents: 'all' }}>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button
+            onClick={reset}
+            title="Reset pan/zoom (or double-click background)"
+            style={{
+              fontSize: 8,
+              padding: '3px 8px',
+              background: '#0d0f22',
+              border: `1px solid ${transform.x !== 0 || transform.y !== 0 || transform.k !== 1 ? '#7c6af7' : '#1a1f38'}`,
+              borderRadius: 4,
+              color: transform.x !== 0 || transform.y !== 0 || transform.k !== 1 ? '#7c6af7' : '#2a2f4a',
+              cursor: 'pointer',
+              fontFamily: "'JetBrains Mono',monospace",
+              letterSpacing: '0.05em',
+            }}
+          >
+            ⌖ reset view
+          </button>
+          <button
+            onClick={onClear}
+            title="Clear selection and collapse all clusters (Escape)"
+            style={{
+              fontSize: 8,
+              padding: '3px 8px',
+              background: '#0d0f22',
+              border: `1px solid ${hasSelection ? '#7c6af7' : '#1a1f38'}`,
+              borderRadius: 4,
+              color: hasSelection ? '#7c6af7' : '#2a2f4a',
+              cursor: hasSelection ? 'pointer' : 'default',
+              fontFamily: "'JetBrains Mono',monospace",
+              letterSpacing: '0.05em',
+            }}
+          >
+            × clear selection
+          </button>
+        </div>
       </foreignObject>
     </svg>
   );
@@ -1739,6 +1759,19 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
     });
   }, []);
 
+  const clearSelection = useCallback(() => {
+    setSelectedId(null);
+    setAffectedIds([]);
+    setExpandedClusters(new Set());
+  }, []);
+
+  // Escape key: deselect + collapse
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') clearSelection(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [clearSelection]);
+
   const selectedNode = graph?.nodes.find((n) => n.id === selectedId);
   const selectedEdges = useMemo(() => {
     if (!selectedId) return [];
@@ -2087,6 +2120,8 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
               expandedClusters={expandedClusters}
               onToggle={toggleCluster}
               onSelectNode={handleSelect}
+              onClear={clearSelection}
+              hasSelection={selectedId !== null || expandedClusters.size > 0}
               selectedId={selectedId}
               affectedIds={affectedIds}
               linkedIds={linkedIds}
