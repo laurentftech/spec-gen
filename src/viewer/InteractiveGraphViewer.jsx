@@ -648,6 +648,7 @@ function ClusterGraph({
   selectedId,
   affectedIds,
   linkedIds,
+  focusedIds,
 }) {
   const clusterPos = useMemo(
     () => computeClusterLayout(clusters),
@@ -916,7 +917,9 @@ function ClusterGraph({
               {(() => {
                 const clusterLinked =
                   linkedIds.size > 0 && allMembers.some((n) => linkedIds.has(n.id));
-                const isClusterGreyed = visibleMembers.length === 0 && !clusterLinked;
+                const hasFocused = focusedIds?.length > 0;
+                const clusterFocused = hasFocused && allMembers.some((n) => focusedIds.includes(n.id));
+                const isClusterGreyed = (visibleMembers.length === 0 && !clusterLinked) || (hasFocused && !clusterFocused && !clusterLinked);
                 // Highlight if any member is linked but cluster is not expanded
                 const isLinkedCollapsed = clusterLinked && !isExpanded;
                 return (
@@ -991,7 +994,8 @@ function ClusterGraph({
                   const isSel = n.id === selectedId;
                   const isAff = affectedIds.includes(n.id);
                   const col = extColor(n.ext);
-                  const isGreyed = !visibleIds.has(n.id) && !linkedIds.has(n.id);
+                  const isGreyed = (!visibleIds.has(n.id) && !linkedIds.has(n.id)) ||
+                    (focusedIds?.length > 0 && !focusedIds.includes(n.id) && !linkedIds.has(n.id));
                   return (
                     <g
                       key={n.id}
@@ -1344,9 +1348,13 @@ function computeArchOverview(graph, llmCtx) {
 }
 
 /** Simple SVG cluster-map: boxes in a grid with arrows for dependsOn. */
-function ArchitectureView({ graph, llmCtx }) {
+function ArchitectureView({ graph, llmCtx, focusedIds }) {
   const overview = useMemo(() => computeArchOverview(graph, llmCtx), [graph, llmCtx]);
   const [hovered, setHovered] = useState(null);
+  const focusedClusterIds = useMemo(() => {
+    if (!focusedIds?.length || !graph) return null;
+    return new Set(graph.nodes.filter(n => focusedIds.includes(n.id)).map(n => n.cluster.id));
+  }, [focusedIds, graph]);
 
   if (!overview) return <div style={{ color: '#3a3f5c', padding: 24, fontSize: 11 }}>No graph loaded.</div>;
 
@@ -1436,18 +1444,20 @@ function ArchitectureView({ graph, llmCtx }) {
             const { x, y } = pos[cl.id] ?? { x: 0, y: 0 };
             const color = ROLE_COLOR[cl.role] ?? '#475569';
             const isHov = hovered === cl.id;
+            const isDimmed = focusedClusterIds && !focusedClusterIds.has(cl.id);
             return (
               <g
                 key={cl.id}
                 onMouseEnter={() => setHovered(cl.id)}
                 onMouseLeave={() => setHovered(null)}
                 style={{ cursor: 'default' }}
+                opacity={isDimmed ? 0.15 : 1}
               >
                 <rect
                   x={x} y={y} width={BOX_W} height={BOX_H}
                   rx={6} ry={6}
                   fill={isHov ? '#12163a' : '#0b0e28'}
-                  stroke={isHov ? color : '#1e2240'}
+                  stroke={isHov ? color : isDimmed ? '#0e1028' : '#1e2240'}
                   strokeWidth={isHov ? 1.5 : 1}
                 />
                 {/* Role color strip */}
@@ -2171,7 +2181,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
         {/* Canvas */}
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
           {viewMode === 'architecture' ? (
-            <ArchitectureView graph={graph} llmCtx={llmCtx} />
+            <ArchitectureView graph={graph} llmCtx={llmCtx} focusedIds={focusedIds} />
           ) : viewMode === 'clusters' ? (
             <ClusterGraph
               clusters={graph.clusters.filter(
@@ -2190,6 +2200,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
               selectedId={selectedId}
               affectedIds={affectedIds}
               linkedIds={linkedIds}
+              focusedIds={focusedIds}
             />
           ) : (
             <FlatGraph
