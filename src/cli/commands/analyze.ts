@@ -28,6 +28,7 @@ import {
 
 interface ExtendedAnalyzeOptions extends AnalyzeOptions {
   force?: boolean;
+  embed?: boolean;
 }
 
 interface AnalysisResult {
@@ -212,6 +213,11 @@ export const analyzeCommand = new Command('analyze')
     'Force re-analysis even if recent analysis exists',
     false
   )
+  .option(
+    '--embed',
+    'Build a semantic vector index after analysis (requires EMBED_BASE_URL + EMBED_MODEL)',
+    false
+  )
   .addHelpText(
     'after',
     `
@@ -226,6 +232,7 @@ Examples:
   $ spec-gen analyze --output ./my-analysis
                                      Custom output location
   $ spec-gen analyze --force         Force re-analysis
+  $ spec-gen analyze --embed         Also build semantic vector index
 
 Output files:
   .spec-gen/analysis/
@@ -250,6 +257,7 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
       include: options.include ?? [],
       exclude: options.exclude ?? [],
       force: options.force ?? false,
+      embed: options.embed ?? false,
       quiet: false,
       verbose: false,
       noColor: false,
@@ -511,6 +519,46 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
       console.log(`    ├─ ${opts.output}dependencies.mermaid`);
       console.log(`    └─ ${opts.output}SUMMARY.md`);
       console.log('');
+
+      // ========================================================================
+      // PHASE 5 (optional): BUILD VECTOR INDEX
+      // ========================================================================
+      if (opts.embed) {
+        console.log('  Building semantic vector index...');
+        try {
+          const { EmbeddingService } = await import('../../core/analyzer/embedding-service.js');
+          const { VectorIndex } = await import('../../core/analyzer/vector-index.js');
+
+          // Resolve embedding config: env vars take priority, then .spec-gen/config.json
+          let embedSvc: InstanceType<typeof EmbeddingService>;
+          try {
+            embedSvc = EmbeddingService.fromEnv();
+          } catch {
+            const cfg = await readSpecGenConfig(rootPath);
+            if (!cfg) throw new Error('No embedding config found. Set EMBED_BASE_URL and EMBED_MODEL, or add "embedding" to .spec-gen/config.json');
+            const svcFromConfig = EmbeddingService.fromConfig(cfg);
+            if (!svcFromConfig) throw new Error('No embedding config found. Set EMBED_BASE_URL and EMBED_MODEL, or add "embedding" to .spec-gen/config.json');
+            embedSvc = svcFromConfig;
+          }
+
+          const cg = result.artifacts.llmContext.callGraph;
+          const sigs = result.artifacts.llmContext.signatures ?? [];
+
+          if (!cg || cg.nodes.length === 0) {
+            console.log('    ⚠ No call graph data — vector index skipped');
+          } else {
+            const hubIds = new Set(cg.hubFunctions.map(f => f.id));
+            const entryIds = new Set(cg.entryPoints.map(f => f.id));
+
+            await VectorIndex.build(outputPath, cg.nodes, sigs, hubIds, entryIds, embedSvc);
+            console.log(`    ✓ Vector index built (${cg.nodes.length} functions)`);
+            console.log(`    → ${opts.output}vector-index/`);
+          }
+        } catch (embedErr) {
+          console.log(`    ✗ Vector index failed: ${(embedErr as Error).message}`);
+        }
+        console.log('');
+      }
 
       // Duration
       const totalDuration = Date.now() - startTime;

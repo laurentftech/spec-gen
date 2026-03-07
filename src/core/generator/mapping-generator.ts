@@ -11,6 +11,7 @@ import { writeFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { PipelineResult } from './spec-pipeline.js';
 import type { DependencyGraphResult } from '../analyzer/dependency-graph.js';
+import type { SearchResult } from '../analyzer/vector-index.js';
 
 // ============================================================================
 // TYPES
@@ -21,7 +22,7 @@ export interface FunctionRef {
   file: string;    // relative path
   line: number;
   kind: string;
-  confidence: 'llm' | 'heuristic';
+  confidence: 'llm' | 'semantic' | 'heuristic';
 }
 
 export interface RequirementMapping {
@@ -86,13 +87,57 @@ function similarityScore(operationName: string, functionName: string): number {
 // MAPPING GENERATOR
 // ============================================================================
 
+/**
+ * A semantic search function closed over VectorIndex + EmbeddingService + outputDir.
+ * Returns ranked results (closest first, score = cosine distance) for a text query.
+ */
+export type SemanticSearchFn = (query: string, limit: number) => Promise<SearchResult[]>;
+
+/**
+ * Maximum cosine distance to accept a semantic match.
+ * Equivalent to cosine similarity >= 0.65 (distance = 1 - similarity).
+ */
+const SEMANTIC_MAX_DISTANCE = 0.35;
+
 export class MappingGenerator {
   private rootPath: string;
   private openspecPath: string;
+  private semanticSearch?: SemanticSearchFn;
 
-  constructor(rootPath: string, openspecPath = 'openspec') {
+  constructor(
+    rootPath: string,
+    openspecPath = 'openspec',
+    semanticSearch?: SemanticSearchFn
+  ) {
     this.rootPath = rootPath;
     this.openspecPath = openspecPath;
+    this.semanticSearch = semanticSearch;
+  }
+
+  /** Semantic lookup: returns FunctionRefs matched by vector similarity */
+  private async semanticMatch(
+    query: string,
+    exportIndex: Map<string, FunctionRef[]>
+  ): Promise<FunctionRef[]> {
+    if (!this.semanticSearch) return [];
+
+    let results: SearchResult[];
+    try {
+      results = await this.semanticSearch(query, 5);
+    } catch {
+      return [];
+    }
+
+    const matched: FunctionRef[] = [];
+    for (const r of results.filter(r => r.score <= SEMANTIC_MAX_DISTANCE)) {
+      const refs = exportIndex.get(r.record.name);
+      if (refs && refs.length > 0) {
+        for (const ref of refs) {
+          matched.push({ ...ref, confidence: 'semantic' });
+        }
+      }
+    }
+    return matched.slice(0, 2);
   }
 
   async generate(
@@ -142,7 +187,17 @@ export class MappingGenerator {
           }
         }
 
-        // 2. Heuristic fallback — find best matching export(s)
+        // 2. Semantic fallback — vector similarity on operation name + description
+        if (functions.length === 0) {
+          const query = op.description ? `${op.name} ${op.description}` : op.name;
+          const semanticRefs = await this.semanticMatch(query, exportIndex);
+          for (const ref of semanticRefs) {
+            functions.push(ref);
+            mappedFunctionNames.add(`${ref.name}::${ref.file}`);
+          }
+        }
+
+        // 3. Heuristic fallback — find best matching export(s)
         if (functions.length === 0) {
           const scored: Array<{ ref: FunctionRef; score: number }> = [];
           for (const [name, refs] of exportIndex) {
@@ -186,7 +241,17 @@ export class MappingGenerator {
             }
           }
 
-          // 2. Heuristic fallback on operation name
+          // 2. Semantic fallback
+          if (functions.length === 0) {
+            const query = op.description ? `${op.name} ${op.description}` : op.name;
+            const semanticRefs = await this.semanticMatch(query, exportIndex);
+            for (const ref of semanticRefs) {
+              functions.push(ref);
+              mappedFunctionNames.add(`${ref.name}::${ref.file}`);
+            }
+          }
+
+          // 3. Heuristic fallback on operation name
           if (functions.length === 0) {
             const scored: Array<{ ref: FunctionRef; score: number }> = [];
             for (const [name, refs] of exportIndex) {

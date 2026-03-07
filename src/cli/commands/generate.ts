@@ -677,7 +677,25 @@ Each spec.md follows OpenSpec conventions:
       // Generate requirement→function mapping artifact if dep graph is available
       if (depGraph) {
         try {
-          const mapper = new MappingGenerator(rootPath, specGenConfig.openspecPath);
+          // Wire semantic search if a vector index exists for this project
+          let semanticSearch: import('./../../core/generator/mapping-generator.js').SemanticSearchFn | undefined;
+          const analysisDir = join(rootPath, '.spec-gen', 'analysis');
+          const { VectorIndex } = await import('../../core/analyzer/vector-index.js');
+          if (VectorIndex.exists(analysisDir)) {
+            const { EmbeddingService } = await import('../../core/analyzer/embedding-service.js');
+            let embedSvc: InstanceType<typeof EmbeddingService> | undefined;
+            try {
+              embedSvc = EmbeddingService.fromEnv();
+            } catch {
+              const svc = EmbeddingService.fromConfig(specGenConfig);
+              if (svc) embedSvc = svc;
+            }
+            if (embedSvc) {
+              const svc = embedSvc;
+              semanticSearch = (query, limit) => VectorIndex.search(analysisDir, query, svc, { limit });
+            }
+          }
+          const mapper = new MappingGenerator(rootPath, specGenConfig.openspecPath, semanticSearch);
           const mapping = await mapper.generate(pipelineResult, depGraph);
           logger.success(
             `Requirement mapping: ${mapping.stats.mappedRequirements}/${mapping.stats.totalRequirements} requirements mapped, ${mapping.stats.orphanCount} orphan functions → .spec-gen/analysis/mapping.json`

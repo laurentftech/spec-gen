@@ -30,6 +30,11 @@
     "test:coverage": "vitest run --coverage",
     "test:openspec-compat": "vitest run --grep 'openspec' || echo 'No OpenSpec compat tests yet'",
     "test:e2e": "vitest run --grep 'e2e' || echo 'No E2E tests yet'",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "embed:up": "docker compose up -d embedding-server",
+    "embed:down": "docker compose down embedding-server",
+    "embed:build": "docker compose build embedding-server",
+    "embed:logs": "docker compose logs -f embedding-server",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build && npm run test:run"
@@ -72,7 +77,10 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^7.2.1",
+    "@lancedb/lancedb": "^0.26.2",
+    "@lancedb/lancedb-darwin-x64": "^0.22.3",
     "@modelcontextprotocol/sdk": "^1.27.1",
+    "apache-arrow": "^21.1.0",
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
     "glob": "^11.0.0",
@@ -93,8 +101,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
-    "@vitejs/plugin-react": "^5.0.2",
     "@types/node": "^22.10.5",
+    "@vitejs/plugin-react": "^5.0.2",
     "@vitest/coverage-v8": "^4.0.18",
     "eslint": "^9.17.0",
     "memfs": "^4.15.0",

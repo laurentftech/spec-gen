@@ -424,6 +424,42 @@ const TOOL_DEFINITIONS = [
       required: ['directory'],
     },
   },
+  {
+    name: 'search_code',
+    description:
+      'Semantic search over indexed functions using a natural language query. ' +
+      'Returns the closest functions by meaning — useful for finding implementations, ' +
+      'understanding how a concept is handled, or navigating unfamiliar codebases. ' +
+      'Requires a vector index built with "spec-gen analyze --embed". ' +
+      'Configure the embedding endpoint via EMBED_BASE_URL + EMBED_MODEL env vars ' +
+      'or the "embedding" section in .spec-gen/config.json.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: {
+          type: 'string',
+          description: 'Absolute path to the project directory',
+        },
+        query: {
+          type: 'string',
+          description: 'Natural language query, e.g. "authenticate user with JWT"',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results to return (default: 10)',
+        },
+        language: {
+          type: 'string',
+          description: 'Filter by language: "TypeScript", "Python", "Go", "Rust", "Ruby", "Java"',
+        },
+        minFanIn: {
+          type: 'number',
+          description: 'Only return functions with at least this many callers (hub filter)',
+        },
+      },
+      required: ['directory', 'query'],
+    },
+  },
 ];
 
 // ============================================================================
@@ -1549,6 +1585,90 @@ export async function handleGetGodFunctions(
 }
 
 // ============================================================================
+// SEMANTIC SEARCH HANDLER
+// ============================================================================
+
+/**
+ * Semantic search over the vector index built by "spec-gen analyze --embed".
+ *
+ * The embedding endpoint is resolved in priority order:
+ *   1. EMBED_BASE_URL + EMBED_MODEL environment variables
+ *   2. "embedding" section in .spec-gen/config.json
+ */
+export async function handleSearchCode(
+  directory: string,
+  query: string,
+  limit = 10,
+  language?: string,
+  minFanIn?: number
+): Promise<unknown> {
+  const absDir = await validateDirectory(directory);
+  const outputDir = join(absDir, '.spec-gen', 'analysis');
+
+  const { VectorIndex } = await import('../../core/analyzer/vector-index.js');
+  const { EmbeddingService } = await import('../../core/analyzer/embedding-service.js');
+
+  if (!VectorIndex.exists(outputDir)) {
+    return {
+      error:
+        'No vector index found. Run "spec-gen analyze --embed" first, ' +
+        'then configure EMBED_BASE_URL and EMBED_MODEL.',
+    };
+  }
+
+  let embedSvc: InstanceType<typeof EmbeddingService>;
+  try {
+    embedSvc = EmbeddingService.fromEnv();
+  } catch {
+    const cfg = await readSpecGenConfig(absDir);
+    if (!cfg) {
+      return {
+        error:
+          'No embedding configuration found. ' +
+          'Set EMBED_BASE_URL and EMBED_MODEL env vars, ' +
+          'or add an "embedding" section to .spec-gen/config.json.',
+      };
+    }
+    const svcFromConfig = EmbeddingService.fromConfig(cfg);
+    if (!svcFromConfig) {
+      return {
+        error:
+          'No embedding configuration found. ' +
+          'Set EMBED_BASE_URL and EMBED_MODEL env vars, ' +
+          'or add an "embedding" section to .spec-gen/config.json.',
+      };
+    }
+    embedSvc = svcFromConfig;
+  }
+
+  limit = Math.max(1, Math.min(limit, 100));
+
+  const results = await VectorIndex.search(outputDir, query, embedSvc, {
+    limit,
+    language,
+    minFanIn,
+  });
+
+  return {
+    query,
+    count: results.length,
+    results: results.map(r => ({
+      score: r.score,
+      name: r.record.name,
+      filePath: r.record.filePath,
+      className: r.record.className || undefined,
+      language: r.record.language,
+      signature: r.record.signature || undefined,
+      docstring: r.record.docstring || undefined,
+      fanIn: r.record.fanIn,
+      fanOut: r.record.fanOut,
+      isHub: r.record.isHub,
+      isEntryPoint: r.record.isEntryPoint,
+    })),
+  };
+}
+
+// ============================================================================
 // MCP SERVER
 // ============================================================================
 
@@ -1617,6 +1737,10 @@ async function startMcpServer(): Promise<void> {
         const { directory, base = 'auto', files = [], domains = [], failOn = 'warning', maxFiles = 100 } =
           args as { directory: string; base?: string; files?: string[]; domains?: string[]; failOn?: 'error' | 'warning' | 'info'; maxFiles?: number };
         result = await handleCheckSpecDrift(directory, base, files, domains, failOn, maxFiles);
+      } else if (name === 'search_code') {
+        const { directory, query, limit = 10, language, minFanIn } =
+          args as { directory: string; query: string; limit?: number; language?: string; minFanIn?: number };
+        result = await handleSearchCode(directory, query, limit, language, minFanIn);
       } else {
         return {
           content: [{ type: 'text', text: `Unknown tool: ${name}` }],

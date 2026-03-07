@@ -256,7 +256,23 @@ export async function specGenGenerate(options: GenerateApiOptions = {}): Promise
   // Generate mapping artifact
   if ((options.mapping ?? true) && depGraph) {
     try {
-      const mapper = new MappingGenerator(rootPath, openspecRelPath);
+      let semanticSearch: import('../core/generator/mapping-generator.js').SemanticSearchFn | undefined;
+      const analysisDir = join(rootPath, '.spec-gen', 'analysis');
+      const { VectorIndex } = await import('../core/analyzer/vector-index.js');
+      if (VectorIndex.exists(analysisDir)) {
+        const { EmbeddingService } = await import('../core/analyzer/embedding-service.js');
+        let embedSvc: InstanceType<typeof EmbeddingService> | undefined;
+        try { embedSvc = EmbeddingService.fromEnv(); } catch { /* no env config */ }
+        if (!embedSvc) {
+          const svc = EmbeddingService.fromConfig(specGenConfig);
+          if (svc) embedSvc = svc;
+        }
+        if (embedSvc) {
+          const svc = embedSvc;
+          semanticSearch = (query, limit) => VectorIndex.search(analysisDir, query, svc, { limit });
+        }
+      }
+      const mapper = new MappingGenerator(rootPath, openspecRelPath, semanticSearch);
       await mapper.generate(pipelineResult, depGraph);
       progress(onProgress, 'Generating mapping artifact', 'complete');
     } catch {

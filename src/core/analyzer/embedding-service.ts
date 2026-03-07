@@ -1,0 +1,131 @@
+/**
+ * EmbeddingService
+ *
+ * Computes text embeddings via any OpenAI-compatible `/embeddings` endpoint
+ * (OpenAI, Ollama, LocalAI, vLLM, LM Studio, …).
+ *
+ * Configuration (in priority order):
+ *   1. Constructor argument `EmbeddingConfig`
+ *   2. Environment variables: EMBED_BASE_URL, EMBED_MODEL, EMBED_API_KEY
+ *
+ * The service batches texts in groups of `batchSize` (default 64) and
+ * resolves all batches sequentially to avoid overloading the server.
+ */
+
+import type { SpecGenConfig } from '../../types/index.js';
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+export interface EmbeddingConfig {
+  /** Base URL of the OpenAI-compatible API, e.g. "http://localhost:11434/v1" */
+  baseUrl: string;
+  /** Embedding model name, e.g. "nomic-embed-text" or "text-embedding-3-small" */
+  model: string;
+  /** API key — optional for local servers */
+  apiKey?: string;
+  /** Maximum number of texts per API call (default: 64) */
+  batchSize?: number;
+}
+
+// ============================================================================
+// EMBEDDING SERVICE
+// ============================================================================
+
+export class EmbeddingService {
+  private baseUrl: string;
+  private model: string;
+  private apiKey: string;
+  private batchSize: number;
+
+  constructor(config: EmbeddingConfig) {
+    this.baseUrl = config.baseUrl.replace(/\/$/, '');
+    this.model = config.model;
+    this.apiKey = config.apiKey ?? '';
+    this.batchSize = config.batchSize ?? 64;
+  }
+
+  /**
+   * Build an EmbeddingService from environment variables.
+   * Throws if EMBED_BASE_URL or EMBED_MODEL are not set.
+   */
+  static fromEnv(): EmbeddingService {
+    const baseUrl = process.env.EMBED_BASE_URL;
+    const model = process.env.EMBED_MODEL;
+    if (!baseUrl) throw new Error('EMBED_BASE_URL environment variable is required');
+    if (!model) throw new Error('EMBED_MODEL environment variable is required');
+    return new EmbeddingService({
+      baseUrl,
+      model,
+      apiKey: process.env.EMBED_API_KEY,
+    });
+  }
+
+  /**
+   * Build an EmbeddingService from a SpecGenConfig.
+   * Returns null if no embedding config is present.
+   */
+  static fromConfig(cfg: SpecGenConfig): EmbeddingService | null {
+    if (!cfg.embedding?.baseUrl || !cfg.embedding?.model) return null;
+    return new EmbeddingService({
+      baseUrl: cfg.embedding.baseUrl,
+      model: cfg.embedding.model,
+      apiKey: cfg.embedding.apiKey,
+    });
+  }
+
+  /**
+   * Compute embeddings for a list of texts.
+   * Returns one embedding vector per input text (same order).
+   */
+  async embed(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) return [];
+
+    const results: number[][] = [];
+
+    for (let i = 0; i < texts.length; i += this.batchSize) {
+      const batch = texts.slice(i, i + this.batchSize);
+      const vectors = await this.callEmbeddingsApi(batch);
+      results.push(...vectors);
+    }
+
+    return results;
+  }
+
+  private async callEmbeddingsApi(texts: string[]): Promise<number[][]> {
+    const url = `${this.baseUrl}/embeddings`;
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (this.apiKey) {
+      headers['Authorization'] = `Bearer ${this.apiKey}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ input: texts, model: this.model }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      throw new Error(
+        `Embedding API error ${response.status} from ${url}: ${body.slice(0, 200)}`
+      );
+    }
+
+    const json = (await response.json()) as {
+      data: Array<{ embedding: number[]; index: number }>;
+    };
+
+    if (!Array.isArray(json.data)) {
+      throw new Error(`Unexpected embedding response format: missing "data" array`);
+    }
+
+    // Sort by index to guarantee order matches input
+    const sorted = [...json.data].sort((a, b) => a.index - b.index);
+    return sorted.map(d => d.embedding);
+  }
+}

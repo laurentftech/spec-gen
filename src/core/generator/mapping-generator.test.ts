@@ -2,11 +2,13 @@
  * MappingGenerator Tests
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdir, rm, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { MappingGenerator } from './mapping-generator.js';
+import type { SemanticSearchFn } from './mapping-generator.js';
+import type { SearchResult } from '../analyzer/vector-index.js';
 import type { PipelineResult } from './spec-pipeline.js';
 import type { DependencyGraphResult, DependencyNode } from '../analyzer/dependency-graph.js';
 import type { ScoredFile } from '../../types/index.js';
@@ -575,5 +577,200 @@ describe('MappingGenerator — output', () => {
 
     const artifact = await generator.generate(pipeline, graph);
     expect(artifact.mappings[0].specFile).toBe('custom/specs-dir/specs/auth/spec.md');
+  });
+});
+
+// ============================================================================
+// Semantic search tier
+// ============================================================================
+
+/** Build a minimal SearchResult for a function name with a given cosine distance */
+function makeSearchResult(name: string, distance: number): SearchResult {
+  return {
+    record: {
+      id: `id-${name}`,
+      name,
+      filePath: `src/${name}.ts`,
+      className: '',
+      language: 'TypeScript',
+      signature: `function ${name}(): void`,
+      docstring: '',
+      fanIn: 0,
+      fanOut: 0,
+      isHub: false,
+      isEntryPoint: false,
+      text: name,
+    },
+    score: distance,
+  };
+}
+
+describe('MappingGenerator — semantic search tier', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await createTempDir();
+    await mkdir(join(tmpDir, '.spec-gen', 'analysis'), { recursive: true });
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('uses semantic match when LLM functionName is absent and heuristic would miss', async () => {
+    // "authenticate user" semantically matches "validateCredentials" (distance 0.2 < 0.35)
+    // but heuristic would score 0 (no token overlap)
+    const mockSearch: SemanticSearchFn = async (_query, _limit) => [
+      makeSearchResult('validateCredentials', 0.2),
+    ];
+
+    const generator = new MappingGenerator(tmpDir, 'openspec', mockSearch);
+    const pipeline = makePipeline([{
+      name: 'AuthService',
+      purpose: 'auth',
+      operations: [{ name: 'authenticate user', description: 'authenticate the user', scenarios: [] }],
+      dependencies: [],
+      sideEffects: [],
+      domain: 'auth',
+    }]);
+    const graph = makeDepGraph(makeNode('src/validateCredentials.ts', [makeExport('validateCredentials')]));
+
+    const artifact = await generator.generate(pipeline, graph);
+    const fn = artifact.mappings[0].functions[0];
+    expect(fn.name).toBe('validateCredentials');
+    expect(fn.confidence).toBe('semantic');
+  });
+
+  it('skips semantic results with distance above threshold (0.35)', async () => {
+    // distance 0.4 > 0.35 → rejected, falls through to heuristic which also misses → 0 functions
+    const mockSearch: SemanticSearchFn = async (_query, _limit) => [
+      makeSearchResult('validateCredentials', 0.4),
+    ];
+
+    const generator = new MappingGenerator(tmpDir, 'openspec', mockSearch);
+    const pipeline = makePipeline([{
+      name: 'AuthService',
+      purpose: 'auth',
+      operations: [{ name: 'authenticate user', description: 'authenticate', scenarios: [] }],
+      dependencies: [],
+      sideEffects: [],
+      domain: 'auth',
+    }]);
+    const graph = makeDepGraph(makeNode('src/validateCredentials.ts', [makeExport('validateCredentials')]));
+
+    const artifact = await generator.generate(pipeline, graph);
+    expect(artifact.mappings[0].functions).toHaveLength(0);
+  });
+
+  it('semantic tier is skipped when LLM functionName already matched', async () => {
+    const mockSearch = vi.fn<SemanticSearchFn>();
+
+    const generator = new MappingGenerator(tmpDir, 'openspec', mockSearch);
+    const pipeline = makePipeline([{
+      name: 'AuthService',
+      purpose: 'auth',
+      operations: [{
+        name: 'Login',
+        description: 'login user',
+        scenarios: [],
+        functionName: 'loginUser',
+      }],
+      dependencies: [],
+      sideEffects: [],
+      domain: 'auth',
+    }]);
+    const graph = makeDepGraph(makeNode('src/auth.ts', [makeExport('loginUser')]));
+
+    const artifact = await generator.generate(pipeline, graph);
+    expect(artifact.mappings[0].functions[0].confidence).toBe('llm');
+    expect(mockSearch).not.toHaveBeenCalled();
+  });
+
+  it('semantic tier is skipped when heuristic would be unnecessary (semantic not provided)', async () => {
+    // No semantic search function → falls straight to heuristic
+    const generator = new MappingGenerator(tmpDir, 'openspec');
+    const pipeline = makePipeline([{
+      name: 'AuthService',
+      purpose: 'auth',
+      operations: [{ name: 'loginUser', description: 'login', scenarios: [] }],
+      dependencies: [],
+      sideEffects: [],
+      domain: 'auth',
+    }]);
+    const graph = makeDepGraph(makeNode('src/auth.ts', [makeExport('loginUser')]));
+
+    const artifact = await generator.generate(pipeline, graph);
+    // heuristic matched (exact normalized), confidence = 'heuristic'
+    expect(artifact.mappings[0].functions[0].confidence).toBe('heuristic');
+  });
+
+  it('passes operation name + description as query to semantic search', async () => {
+    let capturedQuery = '';
+    const mockSearch: SemanticSearchFn = async (query, _limit) => {
+      capturedQuery = query;
+      return [];
+    };
+
+    const generator = new MappingGenerator(tmpDir, 'openspec', mockSearch);
+    const pipeline = makePipeline([{
+      name: 'AuthService',
+      purpose: 'auth',
+      operations: [{ name: 'login', description: 'authenticate the user securely', scenarios: [] }],
+      dependencies: [],
+      sideEffects: [],
+      domain: 'auth',
+    }]);
+    const graph = makeDepGraph(makeNode('src/auth.ts', [makeExport('unrelatedFn')]));
+
+    await generator.generate(pipeline, graph);
+    expect(capturedQuery).toBe('login authenticate the user securely');
+  });
+
+  it('falls back gracefully when semantic search throws', async () => {
+    const mockSearch: SemanticSearchFn = async () => { throw new Error('index unavailable'); };
+
+    const generator = new MappingGenerator(tmpDir, 'openspec', mockSearch);
+    const pipeline = makePipeline([{
+      name: 'AuthService',
+      purpose: 'auth',
+      operations: [{ name: 'loginUser', description: 'login', scenarios: [] }],
+      dependencies: [],
+      sideEffects: [],
+      domain: 'auth',
+    }]);
+    const graph = makeDepGraph(makeNode('src/auth.ts', [makeExport('loginUser')]));
+
+    // Should not throw; heuristic picks up loginUser
+    const artifact = await generator.generate(pipeline, graph);
+    expect(artifact.mappings[0].functions[0].name).toBe('loginUser');
+    expect(artifact.mappings[0].functions[0].confidence).toBe('heuristic');
+  });
+
+  it('caps semantic results at 2 functions per operation', async () => {
+    // 3 close results, all below threshold — only 2 should be returned
+    const mockSearch: SemanticSearchFn = async (_query, _limit) => [
+      makeSearchResult('fnA', 0.1),
+      makeSearchResult('fnB', 0.15),
+      makeSearchResult('fnC', 0.2),
+    ];
+
+    const generator = new MappingGenerator(tmpDir, 'openspec', mockSearch);
+    const pipeline = makePipeline([{
+      name: 'AuthService',
+      purpose: 'auth',
+      operations: [{ name: 'authenticate', description: 'auth', scenarios: [] }],
+      dependencies: [],
+      sideEffects: [],
+      domain: 'auth',
+    }]);
+    const graph = makeDepGraph(makeNode('src/auth.ts', [
+      makeExport('fnA'),
+      makeExport('fnB'),
+      makeExport('fnC'),
+    ]));
+
+    const artifact = await generator.generate(pipeline, graph);
+    expect(artifact.mappings[0].functions).toHaveLength(2);
+    expect(artifact.mappings[0].functions.every(f => f.confidence === 'semantic')).toBe(true);
   });
 });
