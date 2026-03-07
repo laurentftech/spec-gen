@@ -879,49 +879,7 @@ function ClusterGraph({
 
           return (
             <g key={cl.id}>
-              {/* Expanded member nodes */}
-              {isExpanded &&
-                allMembers.map((n) => {
-                  const np = nodeLayouts[cl.id]?.[n.id];
-                  if (!np) return null;
-                  const isSel = n.id === selectedId;
-                  const isAff = affectedIds.includes(n.id);
-                  const col = extColor(n.ext);
-                  const isGreyed = !visibleIds.has(n.id) && !linkedIds.has(n.id);
-                  return (
-                    <g
-                      key={n.id}
-                      transform={`translate(${np.x},${np.y})`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!isDrag()) onSelectNode(n.id);
-                      }}
-                      style={{ cursor: 'pointer' }}
-                      filter={isSel ? 'url(#nglow)' : undefined}
-                      opacity={isGreyed ? 0.18 : 1}
-                    >
-                      <circle
-                        r={13}
-                        fill={isSel ? `${col}1a` : '#0b0d1e'}
-                        stroke={isSel ? col : isAff ? col : cl.color}
-                        strokeWidth={isSel ? 2 : 0.8}
-                        strokeOpacity={isSel ? 1 : isAff ? 0.9 : 0.45}
-                      />
-                      <text
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        fontSize={6}
-                        fill={isSel ? '#fff' : '#5a6090'}
-                        fontFamily="'JetBrains Mono',monospace"
-                        style={{ pointerEvents: 'none' }}
-                      >
-                        {n.label.length > 10 ? n.label.slice(0, 9) + '…' : n.label}
-                      </text>
-                    </g>
-                  );
-                })}
-
-              {/* Cluster bubble */}
+              {/* Cluster bubble — rendered first so nodes paint on top and receive clicks */}
               {(() => {
                 const clusterLinked =
                   linkedIds.size > 0 && allMembers.some((n) => linkedIds.has(n.id));
@@ -991,6 +949,48 @@ function ClusterGraph({
                   </g>
                 );
               })()}
+
+              {/* Member nodes — rendered after cluster bubble to sit on top and receive clicks */}
+              {isExpanded &&
+                allMembers.map((n) => {
+                  const np = nodeLayouts[cl.id]?.[n.id];
+                  if (!np) return null;
+                  const isSel = n.id === selectedId;
+                  const isAff = affectedIds.includes(n.id);
+                  const col = extColor(n.ext);
+                  const isGreyed = !visibleIds.has(n.id) && !linkedIds.has(n.id);
+                  return (
+                    <g
+                      key={n.id}
+                      transform={`translate(${np.x},${np.y})`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!isDrag()) onSelectNode(n.id);
+                      }}
+                      style={{ cursor: 'pointer' }}
+                      filter={isSel ? 'url(#nglow)' : undefined}
+                      opacity={isGreyed ? 0.18 : 1}
+                    >
+                      <circle
+                        r={13}
+                        fill={isSel ? `${col}1a` : '#0b0d1e'}
+                        stroke={isSel ? col : isAff ? col : cl.color}
+                        strokeWidth={isSel ? 2 : 0.8}
+                        strokeOpacity={isSel ? 1 : isAff ? 0.9 : 0.45}
+                      />
+                      <text
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize={6}
+                        fill={isSel ? '#fff' : '#5a6090'}
+                        fontFamily="'JetBrains Mono',monospace"
+                        style={{ pointerEvents: 'none' }}
+                      >
+                        {n.label.length > 10 ? n.label.slice(0, 9) + '…' : n.label}
+                      </text>
+                    </g>
+                  );
+                })}
             </g>
           );
         })}
