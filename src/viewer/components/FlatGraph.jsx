@@ -68,16 +68,16 @@ export function FlatGraph({
     >
       <defs>
         <marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="2.5" orient="auto">
-          <path d="M0,0 L0,5 L6,2.5z" fill="#1e2340" />
+          <path d="M0,0 L0,5 L6,2.5z" style={{ fill: 'var(--ac-arrow)' }} />
         </marker>
         <marker id="arr-sel" markerWidth="6" markerHeight="6" refX="5" refY="2.5" orient="auto">
-          <path d="M0,0 L0,5 L6,2.5z" fill="#7c6af7" />
+          <path d="M0,0 L0,5 L6,2.5z" style={{ fill: 'var(--ac-primary)' }} />
         </marker>
         <marker id="arr-aff" markerWidth="6" markerHeight="6" refX="5" refY="2.5" orient="auto">
           <path d="M0,0 L0,5 L6,2.5z" fill="#f77c6a" />
         </marker>
         <marker id="arr-type" markerWidth="6" markerHeight="6" refX="5" refY="2.5" orient="auto">
-          <path d="M0,0 L0,5 L6,2.5z" fill="#2a2f5a" />
+          <path d="M0,0 L0,5 L6,2.5z" style={{ fill: 'var(--ac-edge-type)' }} />
         </marker>
         <filter id="glow">
           <feGaussianBlur stdDeviation="4" result="b" />
@@ -145,7 +145,7 @@ export function FlatGraph({
               y1={s.y + ny * nr}
               x2={t.x - nx * (nr + 5)}
               y2={t.y - ny * (nr + 5)}
-              stroke={isSel ? '#7c6af7' : isAff ? '#f77c6a' : e.isType ? '#252a4a' : '#181c36'}
+              stroke={isSel ? 'var(--ac-primary)' : isAff ? '#f77c6a' : e.isType ? 'var(--ac-edge-type)' : 'var(--bd-edge)'}
               strokeWidth={isSel ? 1.5 : isAff ? 1.2 : 0.8}
               strokeOpacity={isSel ? 0.9 : isAff ? 0.7 : e.isType ? 0.35 : 0.55}
               strokeDasharray={e.isType ? '4 2' : undefined}
@@ -209,8 +209,8 @@ export function FlatGraph({
               )}
               <circle
                 r={r}
-                fill={isSel ? `${col}1a` : isAff ? `${col}0d` : '#0b0d1e'}
-                stroke={isSel ? col : isAff ? col : '#1c2038'}
+                fill={isSel ? `${col}1a` : isAff ? `${col}0d` : 'var(--bg-node)'}
+                stroke={isSel ? col : isAff ? col : 'var(--bd-edge)'}
                 strokeWidth={isSel ? 2.5 : isAff ? 2 : 0.8}
               />
               {n.isEntry && (
@@ -228,7 +228,7 @@ export function FlatGraph({
                 dominantBaseline="middle"
                 fontSize={7}
                 fontWeight={isSel ? 700 : 400}
-                fill={isSel ? '#fff' : isAff ? col : '#5a6090'}
+                fill={isSel ? 'var(--tx-node-sel)' : isAff ? col : 'var(--tx-node)'}
                 fontFamily="'JetBrains Mono',monospace"
                 style={{ pointerEvents: 'none' }}
               >
@@ -257,11 +257,11 @@ export function FlatGraph({
           style={{
             fontSize: 8,
             padding: '2px 6px',
-            background: '#0d0f22',
-            border: `1px solid ${transform.x !== 0 || transform.y !== 0 || transform.k !== 1 ? '#7c6af7' : '#1a1f38'}`,
+            background: 'var(--bg-input)',
+            border: `1px solid ${transform.x !== 0 || transform.y !== 0 || transform.k !== 1 ? 'var(--ac-primary)' : 'var(--bd-muted)'}`,
             borderRadius: 4,
             color:
-              transform.x !== 0 || transform.y !== 0 || transform.k !== 1 ? '#7c6af7' : '#2a2f4a',
+              transform.x !== 0 || transform.y !== 0 || transform.k !== 1 ? 'var(--ac-primary)' : 'var(--tx-faint)',
             cursor: 'pointer',
             fontFamily: "'JetBrains Mono',monospace",
             letterSpacing: '0.05em',

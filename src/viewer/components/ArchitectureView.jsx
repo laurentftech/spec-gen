@@ -10,7 +10,7 @@ export function ArchitectureView({ graph, llmCtx, focusedIds }) {
     return new Set(graph.nodes.filter(n => focusedIds.includes(n.id)).map(n => n.cluster.id));
   }, [focusedIds, graph]);
 
-  if (!overview) return <div style={{ color: '#3a3f5c', padding: 24, fontSize: 11 }}>No graph loaded.</div>;
+  if (!overview) return <div style={{ color: 'var(--tx-ghost)', padding: 24, fontSize: 11 }}>No graph loaded.</div>;
 
   const { summary, clusters, globalEntryPoints, criticalHubs } = overview;
 
@@ -49,7 +49,7 @@ export function ArchitectureView({ graph, llmCtx, focusedIds }) {
         <line
           key={`${cl.id}→${toId}`}
           x1={sx} y1={sy} x2={ex} y2={ey}
-          stroke={isHov ? '#7c6af7' : '#1e2240'}
+          stroke={isHov ? 'var(--ac-primary)' : 'var(--ac-arrow)'}
           strokeWidth={isHov ? 1.5 : 1}
           markerEnd="url(#arrowhead)"
           opacity={isHov ? 1 : 0.6}
@@ -71,8 +71,8 @@ export function ArchitectureView({ graph, llmCtx, focusedIds }) {
             summary.cycles > 0 ? ['⚠ cycles', summary.cycles] : null,
             summary.layerViolations > 0 ? ['⚠ violations', summary.layerViolations] : null,
           ].filter(Boolean).map(([l, v]) => (
-            <div key={l} style={{ fontSize: 9, color: '#6a70a0', background: '#0e1028', borderRadius: 4, padding: '2px 8px', border: '1px solid #141830' }}>
-              <span style={{ color: l.startsWith('⚠') ? '#f97316' : '#c8cde8' }}>{v}</span> {l}
+            <div key={l} style={{ fontSize: 9, color: 'var(--tx-muted)', background: 'var(--bg-raised)', borderRadius: 4, padding: '2px 8px', border: '1px solid var(--bd-muted)' }}>
+              <span style={{ color: l.startsWith('⚠') ? '#f97316' : 'var(--tx-primary)' }}>{v}</span> {l}
             </div>
           ))}
         </div>
@@ -80,7 +80,7 @@ export function ArchitectureView({ graph, llmCtx, focusedIds }) {
         <svg width={SVG_W} height={SVG_H} style={{ display: 'block', minWidth: SVG_W }}>
           <defs>
             <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-              <path d="M0,0 L0,6 L6,3 z" fill="#3a3f6c" />
+              <path d="M0,0 L0,6 L6,3 z" style={{ fill: 'var(--ac-cluster-arr)' }} />
             </marker>
           </defs>
 
@@ -102,24 +102,24 @@ export function ArchitectureView({ graph, llmCtx, focusedIds }) {
                 <rect
                   x={x} y={y} width={BOX_W} height={BOX_H}
                   rx={6} ry={6}
-                  fill={isHov ? '#12163a' : '#0b0e28'}
-                  stroke={isHov ? color : isDimmed ? '#0e1028' : '#1e2240'}
+                  style={{ fill: isHov ? 'var(--bg-hover)' : 'var(--bg-node)' }}
+                  stroke={isHov ? color : isDimmed ? 'var(--bg-raised)' : 'var(--ac-arrow)'}
                   strokeWidth={isHov ? 1.5 : 1}
                 />
                 <rect x={x} y={y} width={4} height={BOX_H} rx={3} ry={3} fill={color} opacity={0.8} />
-                <text x={x + 12} y={y + 18} fill="#c8cde8" fontSize={10} fontWeight="600" fontFamily="inherit">
+                <text x={x + 12} y={y + 18} style={{ fill: 'var(--tx-primary)' }} fontSize={10} fontWeight="600" fontFamily="inherit">
                   {cl.name.length > 18 ? cl.name.slice(0, 17) + '…' : cl.name}
                 </text>
                 <text x={x + 12} y={y + 31} fill={color} fontSize={8} fontFamily="inherit" opacity={0.9}>
                   {ROLE_LABEL[cl.role] ?? cl.role}
                 </text>
-                <text x={x + 12} y={y + 44} fill="#3a4060" fontSize={8} fontFamily="inherit">
+                <text x={x + 12} y={y + 44} style={{ fill: 'var(--tx-dim)' }} fontSize={8} fontFamily="inherit">
                   {cl.fileCount} files
                   {cl.hubCount > 0 ? `  ·  ${cl.hubCount} hub${cl.hubCount > 1 ? 's' : ''}` : ''}
                   {cl.entryPointCount > 0 ? `  ·  ${cl.entryPointCount} entry` : ''}
                 </text>
                 {cl.dependsOn.length > 0 && (
-                  <text x={x + BOX_W - 6} y={y + 18} fill="#3a4060" fontSize={7} fontFamily="inherit" textAnchor="end">
+                  <text x={x + BOX_W - 6} y={y + 18} style={{ fill: 'var(--tx-dim)' }} fontSize={7} fontFamily="inherit" textAnchor="end">
                     →{cl.dependsOn.length}
                   </text>
                 )}
@@ -130,7 +130,7 @@ export function ArchitectureView({ graph, llmCtx, focusedIds }) {
 
         <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
           {Object.entries(ROLE_LABEL).map(([role, label]) => (
-            <div key={role} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 8, color: '#3a4060' }}>
+            <div key={role} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 8, color: 'var(--tx-dim)' }}>
               <div style={{ width: 8, height: 8, borderRadius: 2, background: ROLE_COLOR[role] }} />
               {label}
             </div>
@@ -138,7 +138,7 @@ export function ArchitectureView({ graph, llmCtx, focusedIds }) {
         </div>
       </div>
 
-      <div style={{ width: 220, borderLeft: '1px solid #0f1224', overflow: 'auto', padding: '12px 10px', flexShrink: 0 }}>
+      <div style={{ width: 220, borderLeft: '1px solid var(--bd-faint)', overflow: 'auto', padding: '12px 10px', flexShrink: 0 }}>
         {globalEntryPoints.length > 0 && (
           <>
             <div style={{ ...S, color: '#4ade80', fontWeight: 600, marginBottom: 6, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
@@ -146,8 +146,8 @@ export function ArchitectureView({ graph, llmCtx, focusedIds }) {
             </div>
             {globalEntryPoints.map((ep, i) => (
               <div key={i} style={{ marginBottom: 6 }}>
-                <div style={{ ...S, color: '#c8cde8', fontWeight: 600 }}>{ep.name}</div>
-                <div style={{ ...S, color: '#3a4060', wordBreak: 'break-all' }}>{ep.file}</div>
+                <div style={{ ...S, color: 'var(--tx-primary)', fontWeight: 600 }}>{ep.name}</div>
+                <div style={{ ...S, color: 'var(--tx-dim)', wordBreak: 'break-all' }}>{ep.file}</div>
               </div>
             ))}
           </>
@@ -160,8 +160,8 @@ export function ArchitectureView({ graph, llmCtx, focusedIds }) {
             </div>
             {criticalHubs.map((hub, i) => (
               <div key={i} style={{ marginBottom: 6 }}>
-                <div style={{ ...S, color: '#c8cde8', fontWeight: 600 }}>{hub.name}</div>
-                <div style={{ ...S, color: '#3a4060', wordBreak: 'break-all' }}>{hub.file}</div>
+                <div style={{ ...S, color: 'var(--tx-primary)', fontWeight: 600 }}>{hub.name}</div>
+                <div style={{ ...S, color: 'var(--tx-dim)', wordBreak: 'break-all' }}>{hub.file}</div>
                 <div style={{ ...S, color: '#f97316', opacity: 0.7 }}>fanIn {hub.fanIn}  ·  fanOut {hub.fanOut}</div>
               </div>
             ))}
@@ -169,7 +169,7 @@ export function ArchitectureView({ graph, llmCtx, focusedIds }) {
         )}
 
         {globalEntryPoints.length === 0 && criticalHubs.length === 0 && (
-          <div style={{ ...S, color: '#3a3f5c' }}>Run <code style={{ color: '#7c6af7' }}>spec-gen analyze</code> to populate call graph data.</div>
+          <div style={{ ...S, color: 'var(--tx-ghost)' }}>Run <code style={{ color: 'var(--ac-primary)' }}>spec-gen analyze</code> to populate call graph data.</div>
         )}
       </div>
     </div>

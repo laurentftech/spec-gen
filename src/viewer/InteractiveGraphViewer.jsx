@@ -14,6 +14,7 @@ import { FilterBar } from './components/FilterBar.jsx';
 import { ArchitectureView } from './components/ArchitectureView.jsx';
 import { Hint, SL, Row, Chip, KindBadge } from './components/MicroComponents.jsx';
 import { ChatPanel } from './components/ChatPanel.jsx';
+import { THEMES, THEME_KEYS, DEFAULT_THEME } from './utils/themes.js';
 
 export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '/api/spec' }) {
   const [graph, setGraph] = useState(null);
@@ -42,6 +43,16 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
   });
   const [loaded, setLoaded] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [themeName, setThemeName] = useState(
+    () => localStorage.getItem('spec-gen-theme') || DEFAULT_THEME
+  );
+  const theme = THEMES[themeName] ?? THEMES[DEFAULT_THEME];
+  const cycleTheme = () => setThemeName((prev) => {
+    const idx = THEME_KEYS.indexOf(prev);
+    const next = THEME_KEYS[(idx + 1) % THEME_KEYS.length];
+    localStorage.setItem('spec-gen-theme', next);
+    return next;
+  });
   const fileRef = useRef();
   const hasAutoLoadedRef = useRef(false);
 
@@ -327,25 +338,26 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
     return (
       <div
         style={{
+          ...theme.vars,
           width: '100%',
           height: '100vh',
-          background: '#07091a',
+          background: 'var(--bg-base)',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           fontFamily: "'JetBrains Mono',monospace",
-          color: '#c8cde8',
+          color: 'var(--tx-primary)',
           opacity: loaded ? 1 : 0,
           transition: 'opacity 0.3s',
         }}
       >
-        <div style={{ fontSize: 10, letterSpacing: '0.18em', color: '#2a2f4a', marginBottom: 28 }}>
+        <div style={{ fontSize: 10, letterSpacing: '0.18em', color: 'var(--tx-faint)', marginBottom: 28 }}>
           INTERACTIVE GRAPH VIEWER
         </div>
         <div
           style={{
-            border: '1px dashed #252a45',
+            border: '1px dashed var(--ac-edge-type)',
             borderRadius: 12,
             padding: '44px 64px',
             textAlign: 'center',
@@ -363,11 +375,11 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
             }
           }}
         >
-          <div style={{ fontSize: 32, marginBottom: 14, color: '#7c6af7' }}>⬡</div>
-          <div style={{ fontSize: 12, color: '#8890b0', marginBottom: 6 }}>
-            Drop a <code style={{ color: '#7c6af7' }}>dependency-graph.json</code>
+          <div style={{ fontSize: 32, marginBottom: 14, color: 'var(--ac-primary)' }}>⬡</div>
+          <div style={{ fontSize: 12, color: 'var(--tx-secondary)', marginBottom: 6 }}>
+            Drop a <code style={{ color: 'var(--ac-primary)' }}>dependency-graph.json</code>
           </div>
-          <div style={{ fontSize: 10, color: '#3a3f5c' }}>or click to browse</div>
+          <div style={{ fontSize: 10, color: 'var(--tx-ghost)' }}>or click to browse</div>
         </div>
         <input
           ref={fileRef}
@@ -411,11 +423,12 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
   return (
     <div
       style={{
+        ...theme.vars,
         width: '100%',
         height: '100vh',
-        background: '#07091a',
+        background: 'var(--bg-base)',
         fontFamily: "'JetBrains Mono',monospace",
-        color: '#c8cde8',
+        color: 'var(--tx-primary)',
         display: 'flex',
         flexDirection: 'column',
         opacity: loaded ? 1 : 0,
@@ -429,8 +442,8 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
           alignItems: 'center',
           gap: 10,
           padding: '8px 18px',
-          borderBottom: '1px solid #0f1224',
-          background: '#080a1c',
+          borderBottom: '1px solid var(--bd-faint)',
+          background: 'var(--bg-panel)',
           flexShrink: 0,
         }}
       >
@@ -440,12 +453,12 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
               width: 6,
               height: 6,
               borderRadius: '50%',
-              background: '#7c6af7',
-              boxShadow: '0 0 8px #7c6af7',
+              background: 'var(--ac-primary)',
+              boxShadow: '0 0 8px var(--ac-primary)',
             }}
           />
           <span
-            style={{ fontSize: 10, fontWeight: 700, color: '#e0e4f0', letterSpacing: '0.09em' }}
+            style={{ fontSize: 10, fontWeight: 700, color: 'var(--tx-bright)', letterSpacing: '0.09em' }}
           >
             GRAPH VIEWER
           </span>
@@ -459,14 +472,14 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
             key={l}
             style={{
               fontSize: 9,
-              color: '#3a4060',
-              background: '#0e1028',
+              color: 'var(--tx-dim)',
+              background: 'var(--bg-raised)',
               borderRadius: 4,
               padding: '2px 7px',
-              border: '1px solid #141830',
+              border: '1px solid var(--bd-muted)',
             }}
           >
-            <span style={{ color: '#6a70a0' }}>{v}</span> {l}
+            <span style={{ color: 'var(--tx-muted)' }}>{v}</span> {l}
           </div>
         ))}
         <div style={{ display: 'flex', gap: 2, marginLeft: 8 }}>
@@ -485,10 +498,10 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
               style={{
                 padding: '3px 10px',
                 fontSize: 9,
-                background: viewMode === v ? '#181b38' : 'transparent',
-                border: `1px solid ${viewMode === v ? '#7c6af7' : '#141830'}`,
+                background: viewMode === v ? 'var(--bg-select)' : 'transparent',
+                border: `1px solid ${viewMode === v ? 'var(--ac-primary)' : 'var(--bd-muted)'}`,
                 borderRadius: 4,
-                color: viewMode === v ? '#c8cde8' : '#3a3f5c',
+                color: viewMode === v ? 'var(--tx-primary)' : 'var(--tx-ghost)',
                 cursor: 'pointer',
                 fontFamily: 'inherit',
               }}
@@ -503,9 +516,9 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
             onChange={(e) => handleSearch(e.target.value)}
             placeholder="search name, path, export, tag…"
             style={{
-              background: '#0c0e22',
-              border: '1px solid #141830',
-              color: '#c8cde8',
+              background: 'var(--bg-input)',
+              border: '1px solid var(--bd-muted)',
+              color: 'var(--tx-primary)',
               padding: '5px 12px 5px 26px',
               borderRadius: 5,
               fontSize: 9,
@@ -521,7 +534,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
               top: '50%',
               transform: 'translateY(-50%)',
               fontSize: 11,
-              color: '#3a3f5c',
+              color: 'var(--tx-ghost)',
             }}
           >
             ⌕
@@ -535,7 +548,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                 top: '50%',
                 transform: 'translateY(-50%)',
                 fontSize: 10,
-                color: '#3a3f5c',
+                color: 'var(--tx-ghost)',
                 cursor: 'pointer',
                 lineHeight: 1,
               }}
@@ -551,7 +564,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                 top: '50%',
                 transform: 'translateY(-50%)',
                 fontSize: 9,
-                color: '#7c6af7',
+                color: 'var(--ac-primary)',
               }}
             >
               {focusedIds.length}
@@ -565,15 +578,15 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                 right: 0,
                 marginTop: 4,
                 width: 280,
-                background: '#0d0f22',
-                border: '1px solid #1a1f38',
+                background: 'var(--bg-input)',
+                border: '1px solid var(--bd-muted)',
                 borderRadius: 5,
                 zIndex: 100,
                 boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
                 overflow: 'hidden',
               }}
             >
-              <div style={{ padding: '4px 8px', borderBottom: '1px solid #1a1f38', fontSize: 8, color: '#3a3f5c', fontFamily: 'inherit' }}>
+              <div style={{ padding: '4px 8px', borderBottom: '1px solid var(--bd-muted)', fontSize: 8, color: 'var(--tx-ghost)', fontFamily: 'inherit' }}>
                 ✦ semantic matches
               </div>
               {semanticResults.map((r) => {
@@ -585,20 +598,20 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                     style={{
                       padding: '5px 8px',
                       cursor: node ? 'pointer' : 'default',
-                      borderBottom: '1px solid #111428',
+                      borderBottom: '1px solid var(--bd-faint)',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: 2,
                       opacity: node ? 1 : 0.4,
                     }}
-                    onMouseEnter={(e) => { if (node) e.currentTarget.style.background = '#131630'; }}
+                    onMouseEnter={(e) => { if (node) e.currentTarget.style.background = 'var(--bg-hover)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: 9, color: '#c8cde8', fontFamily: "'JetBrains Mono',monospace" }}>{r.name}</span>
-                      <span style={{ fontSize: 8, color: '#4a3f7a', fontFamily: 'inherit' }}>{(1 - r.score).toFixed(2)}</span>
+                      <span style={{ fontSize: 9, color: 'var(--tx-primary)', fontFamily: "'JetBrains Mono',monospace" }}>{r.name}</span>
+                      <span style={{ fontSize: 8, color: 'var(--tx-dim)', fontFamily: 'inherit' }}>{(1 - r.score).toFixed(2)}</span>
                     </div>
-                    <span style={{ fontSize: 8, color: '#3a3f5c', fontFamily: 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 8, color: 'var(--tx-ghost)', fontFamily: 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {r.filePath.split('/').slice(-2).join('/')}
                     </span>
                   </div>
@@ -614,9 +627,9 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
           }}
           style={{
             background: 'none',
-            border: '1px solid #1a1f38',
+            border: '1px solid var(--bd-muted)',
             borderRadius: 4,
-            color: '#3a3f5c',
+            color: 'var(--tx-ghost)',
             fontSize: 8,
             padding: '3px 8px',
             cursor: 'pointer',
@@ -629,10 +642,10 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
         <button
           onClick={() => mappingRef.current.click()}
           style={{
-            background: mapping ? '#0a1a0a' : 'none',
-            border: `1px solid ${mapping ? '#4ade80' : '#1a1f38'}`,
+            background: mapping ? 'var(--bg-select)' : 'none',
+            border: `1px solid ${mapping ? 'var(--ac-teal)' : 'var(--bd-muted)'}`,
             borderRadius: 4,
-            color: mapping ? '#4ade80' : '#3a3f5c',
+            color: mapping ? 'var(--ac-teal)' : 'var(--tx-ghost)',
             fontSize: 8,
             padding: '3px 8px',
             cursor: 'pointer',
@@ -646,10 +659,10 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
         <button
           onClick={() => specRef.current.click()}
           style={{
-            background: Object.keys(specReqs).length ? '#0a0a1a' : 'none',
-            border: `1px solid ${Object.keys(specReqs).length ? '#7c6af7' : '#1a1f38'}`,
+            background: Object.keys(specReqs).length ? 'var(--bg-select)' : 'none',
+            border: `1px solid ${Object.keys(specReqs).length ? 'var(--ac-primary)' : 'var(--bd-muted)'}`,
             borderRadius: 4,
-            color: Object.keys(specReqs).length ? '#7c6af7' : '#3a3f5c',
+            color: Object.keys(specReqs).length ? 'var(--ac-primary)' : 'var(--tx-ghost)',
             fontSize: 8,
             padding: '3px 8px',
             cursor: 'pointer',
@@ -663,10 +676,10 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
         <button
           onClick={() => setChatOpen((v) => !v)}
           style={{
-            background: chatOpen ? '#1a1050' : 'none',
-            border: `1px solid ${chatOpen ? '#7c6af7' : '#1a1f38'}`,
+            background: chatOpen ? 'var(--bg-select)' : 'none',
+            border: `1px solid ${chatOpen ? 'var(--ac-primary)' : 'var(--bd-muted)'}`,
             borderRadius: 4,
-            color: chatOpen ? '#7c6af7' : '#3a3f5c',
+            color: chatOpen ? 'var(--ac-primary)' : 'var(--tx-ghost)',
             fontSize: 8,
             padding: '3px 8px',
             cursor: 'pointer',
@@ -676,6 +689,23 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
           title="Toggle AI chat"
         >
           ✦ CHAT
+        </button>
+        <button
+          onClick={cycleTheme}
+          title="Cycle theme"
+          style={{
+            background: 'none',
+            border: '1px solid var(--bd-muted)',
+            borderRadius: 4,
+            color: 'var(--ac-primary)',
+            fontSize: 8,
+            padding: '3px 8px',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            letterSpacing: '0.06em',
+          }}
+        >
+          {theme.label}
         </button>
         <input
           ref={mappingRef}
@@ -761,7 +791,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                 left: '50%',
                 transform: 'translateX(-50%)',
                 fontSize: 9,
-                color: '#181c38',
+                color: 'var(--bd-edge)',
                 letterSpacing: '0.1em',
                 pointerEvents: 'none',
                 whiteSpace: 'nowrap',
@@ -786,15 +816,15 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
         <div
           style={{
             width: 282,
-            borderLeft: '1px solid #0f1224',
-            background: '#080b1e',
+            borderLeft: '1px solid var(--bd-faint)',
+            background: 'var(--bg-deep)',
             display: viewMode === 'architecture' ? 'none' : 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
             flexShrink: 0,
           }}
         >
-          <div style={{ display: 'flex', borderBottom: '1px solid #0f1224', flexShrink: 0 }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--bd-faint)', flexShrink: 0 }}>
             {['node', 'links', 'blast', 'spec', 'skeleton', 'info'].map((t) => (
               <button
                 key={t}
@@ -804,8 +834,8 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                   padding: '7px 0',
                   background: 'none',
                   border: 'none',
-                  borderBottom: tab === t ? '2px solid #7c6af7' : '2px solid transparent',
-                  color: tab === t ? '#c8cde8' : '#3a3f5c',
+                  borderBottom: tab === t ? '2px solid var(--ac-primary)' : '2px solid transparent',
+                  color: tab === t ? 'var(--tx-primary)' : 'var(--tx-ghost)',
                   fontSize: 8,
                   letterSpacing: '0.06em',
                   fontWeight: 700,
@@ -824,13 +854,13 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
             {tab === 'node' && !selectedNode && <Hint>Select a node to inspect it.</Hint>}
             {tab === 'node' && selectedNode && (
               <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#e0e4f0', marginBottom: 2 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tx-bright)', marginBottom: 2 }}>
                   {selectedNode.label}
                 </div>
                 <div
                   style={{
                     fontSize: 8,
-                    color: '#3a3f5c',
+                    color: 'var(--tx-ghost)',
                     marginBottom: 9,
                     wordBreak: 'break-all',
                     lineHeight: 1.7,
@@ -847,7 +877,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                 <Row
                   label="score"
                   value={
-                    <span style={{ color: '#7c6af7', fontWeight: 700 }}>{selectedNode.score}</span>
+                    <span style={{ color: 'var(--ac-primary)', fontWeight: 700 }}>{selectedNode.score}</span>
                   }
                 />
                 <Row
@@ -877,12 +907,12 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                           gap: 5,
                           alignItems: 'center',
                           padding: '3px 0',
-                          borderBottom: '1px solid #0f1228',
+                          borderBottom: '1px solid var(--bd-faint)',
                         }}
                       >
                         <KindBadge kind={ex.kind} />
-                        <span style={{ fontSize: 9, color: '#8890b0' }}>{ex.name}</span>
-                        <span style={{ marginLeft: 'auto', fontSize: 8, color: '#2a2f4a' }}>
+                        <span style={{ fontSize: 9, color: 'var(--tx-secondary)' }}>{ex.name}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 8, color: 'var(--tx-faint)' }}>
                           L{ex.line}
                         </span>
                       </div>
@@ -948,7 +978,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                     <>
                       <SL>Imports ({outEdges.length})</SL>
                       {outEdges.length === 0 && (
-                        <div style={{ color: '#2a2f4a', fontSize: 9 }}>No imports.</div>
+                        <div style={{ color: 'var(--tx-faint)', fontSize: 9 }}>No imports.</div>
                       )}
                       {outEdges.map((e, i) => {
                         const tn = graph.nodes.find((n) => n.id === e.target);
@@ -959,9 +989,9 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                             style={{
                               padding: '5px 7px',
                               marginBottom: 3,
-                              background: '#0c0e20',
+                              background: 'var(--bg-input)',
                               borderRadius: 4,
-                              border: `1px solid ${tn?.cluster.color || '#141830'}22`,
+                              border: `1px solid ${tn?.cluster.color || 'var(--bd-muted)'}22`,
                               cursor: 'pointer',
                             }}
                           >
@@ -974,17 +1004,17 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                               }}
                             >
                               <span style={{ fontSize: 8, color: extColor(tn?.ext || '') }}>↗</span>
-                              <span style={{ fontSize: 9, color: '#c8cde8' }}>
+                              <span style={{ fontSize: 9, color: 'var(--tx-primary)' }}>
                                 {tn?.label || e.target}
                               </span>
                               {e.isType && (
-                                <span style={{ fontSize: 7, color: '#3a3f6a', marginLeft: 'auto' }}>
+                                <span style={{ fontSize: 7, color: 'var(--tx-ghost)', marginLeft: 'auto' }}>
                                   type
                                 </span>
                               )}
                             </div>
                             {e.importedNames.length > 0 && (
-                              <div style={{ fontSize: 7.5, color: '#3a4060', paddingLeft: 12 }}>
+                              <div style={{ fontSize: 7.5, color: 'var(--tx-dim)', paddingLeft: 12 }}>
                                 {e.importedNames.join(', ')}
                               </div>
                             )}
@@ -993,7 +1023,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                       })}
                       <SL>Imported by ({inEdges.length})</SL>
                       {inEdges.length === 0 && (
-                        <div style={{ color: '#2a2f4a', fontSize: 9 }}>
+                        <div style={{ color: 'var(--tx-faint)', fontSize: 9 }}>
                           Not imported by any visible files.
                         </div>
                       )}
@@ -1006,9 +1036,9 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                             style={{
                               padding: '5px 7px',
                               marginBottom: 3,
-                              background: '#0c0e20',
+                              background: 'var(--bg-input)',
                               borderRadius: 4,
-                              border: `1px solid ${sn?.cluster.color || '#141830'}22`,
+                              border: `1px solid ${sn?.cluster.color || 'var(--bd-muted)'}22`,
                               cursor: 'pointer',
                             }}
                           >
@@ -1020,18 +1050,18 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                                 marginBottom: e.importedNames.length ? 3 : 0,
                               }}
                             >
-                              <span style={{ fontSize: 8, color: '#7c6af7' }}>↙</span>
-                              <span style={{ fontSize: 9, color: '#c8cde8' }}>
+                              <span style={{ fontSize: 8, color: 'var(--ac-primary)' }}>↙</span>
+                              <span style={{ fontSize: 9, color: 'var(--tx-primary)' }}>
                                 {sn?.label || e.source}
                               </span>
                               {e.isType && (
-                                <span style={{ fontSize: 7, color: '#3a3f6a', marginLeft: 'auto' }}>
+                                <span style={{ fontSize: 7, color: 'var(--tx-ghost)', marginLeft: 'auto' }}>
                                   type
                                 </span>
                               )}
                             </div>
                             {e.importedNames.length > 0 && (
-                              <div style={{ fontSize: 7.5, color: '#3a4060', paddingLeft: 12 }}>
+                              <div style={{ fontSize: 7.5, color: 'var(--tx-dim)', paddingLeft: 12 }}>
                                 {e.importedNames.join(', ')}
                               </div>
                             )}
@@ -1050,11 +1080,11 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
             )}
             {tab === 'blast' && selectedId && (
               <div>
-                <div style={{ fontSize: 9, color: '#8890b0', marginBottom: 10 }}>
-                  Modifying <span style={{ color: '#7c6af7' }}>{selectedNode?.label}</span> impacts:
+                <div style={{ fontSize: 9, color: 'var(--tx-secondary)', marginBottom: 10 }}>
+                  Modifying <span style={{ color: 'var(--ac-primary)' }}>{selectedNode?.label}</span> impacts:
                 </div>
                 {affectedIds.length === 0 ? (
-                  <div style={{ color: '#2a2f4a', fontSize: 9 }}>No visible downstream nodes.</div>
+                  <div style={{ color: 'var(--tx-faint)', fontSize: 9 }}>No visible downstream nodes.</div>
                 ) : (
                   affectedIds.map((id) => {
                     const n = graph.nodes.find((x) => x.id === id);
@@ -1068,9 +1098,9 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                           gap: 6,
                           padding: '4px 7px',
                           marginBottom: 3,
-                          background: '#0c0e20',
+                          background: 'var(--bg-input)',
                           borderRadius: 4,
-                          border: '1px solid #141830',
+                          border: '1px solid var(--bd-muted)',
                           cursor: 'pointer',
                         }}
                       >
@@ -1080,7 +1110,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                         <span
                           style={{
                             fontSize: 9,
-                            color: '#c8cde8',
+                            color: 'var(--tx-primary)',
                             flex: 1,
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
@@ -1100,12 +1130,12 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                   style={{
                     marginTop: 10,
                     padding: '8px 10px',
-                    background: '#0c0e20',
+                    background: 'var(--bg-input)',
                     borderRadius: 5,
-                    border: '1px solid #1a1f38',
+                    border: '1px solid var(--bd-muted)',
                   }}
                 >
-                  <div style={{ fontSize: 8, color: '#3a3f5c', marginBottom: 2 }}>BLAST RADIUS</div>
+                  <div style={{ fontSize: 8, color: 'var(--tx-ghost)', marginBottom: 2 }}>BLAST RADIUS</div>
                   <div
                     style={{
                       fontSize: 22,
@@ -1115,11 +1145,11 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                           ? '#f77c6a'
                           : affectedIds.length > 3
                             ? '#f7c76a'
-                            : '#7c6af7',
+                            : 'var(--ac-primary)',
                     }}
                   >
                     {affectedIds.length}{' '}
-                    <span style={{ fontSize: 10, fontWeight: 400, color: '#3a3f5c' }}>nodes</span>
+                    <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--tx-ghost)' }}>nodes</span>
                   </div>
                 </div>
               </div>
@@ -1128,8 +1158,8 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
             {/* SPEC */}
             {tab === 'spec' && !mapping && (
               <Hint>
-                Load a <code style={{ color: '#7c6af7' }}>mapping.json</code> and{' '}
-                <code style={{ color: '#7c6af7' }}>spec.md</code> using the MAP / SPEC buttons in
+                Load a <code style={{ color: 'var(--ac-primary)' }}>mapping.json</code> and{' '}
+                <code style={{ color: 'var(--ac-primary)' }}>spec.md</code> using the MAP / SPEC buttons in
                 the top bar.
               </Hint>
             )}
@@ -1158,11 +1188,11 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                 if (unique.length === 0)
                   return <Hint>No spec requirements mapped to this file.</Hint>;
 
-                const confidenceColor = (c) => (c === 'llm' ? '#4ade80' : '#3a3f5c');
+                const confidenceColor = (c) => (c === 'llm' ? '#4ade80' : 'var(--tx-ghost)');
 
                 return (
                   <div>
-                    <div style={{ fontSize: 8, color: '#3a3f5c', marginBottom: 8 }}>
+                    <div style={{ fontSize: 8, color: 'var(--tx-ghost)', marginBottom: 8 }}>
                       {unique.length} requirement{unique.length > 1 ? 's' : ''} linked
                     </div>
                     {unique.map((entry, i) => {
@@ -1179,16 +1209,16 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                           key={i}
                           style={{
                             marginBottom: 10,
-                            background: '#0b0d1f',
+                            background: 'var(--bg-node)',
                             borderRadius: 5,
-                            border: '1px solid #141830',
+                            border: '1px solid var(--bd-muted)',
                             overflow: 'hidden',
                           }}
                         >
                           <div
                             style={{
                               padding: '6px 9px',
-                              borderBottom: '1px solid #0f1224',
+                              borderBottom: '1px solid var(--bd-faint)',
                               display: 'flex',
                               alignItems: 'center',
                               gap: 5,
@@ -1196,7 +1226,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                             }}
                           >
                             <span
-                              style={{ fontSize: 9, fontWeight: 700, color: '#c8cde8', flex: 1 }}
+                              style={{ fontSize: 9, fontWeight: 700, color: 'var(--tx-primary)', flex: 1 }}
                             >
                               {entry.requirement}
                             </span>
@@ -1224,7 +1254,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                               style={{
                                 padding: '7px 9px',
                                 fontSize: 8.5,
-                                color: '#8890b0',
+                                color: 'var(--tx-secondary)',
                                 lineHeight: 1.7,
                                 maxHeight: 200,
                                 overflow: 'auto',
@@ -1236,7 +1266,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                                     <div
                                       key={li}
                                       style={{
-                                        color: '#5a6090',
+                                        color: 'var(--tx-node)',
                                         fontWeight: 700,
                                         marginTop: 6,
                                         fontSize: 8,
@@ -1247,7 +1277,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                                   );
                                 if (line.startsWith('- **'))
                                   return (
-                                    <div key={li} style={{ paddingLeft: 6, color: '#6a709a' }}>
+                                    <div key={li} style={{ paddingLeft: 6, color: 'var(--tx-secondary)' }}>
                                       {line.replace(/\*\*/g, '')}
                                     </div>
                                   );
@@ -1257,21 +1287,21 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                               })}
                             </div>
                           ) : (
-                            <div style={{ padding: '7px 9px', fontSize: 8, color: '#2a2f4a' }}>
+                            <div style={{ padding: '7px 9px', fontSize: 8, color: 'var(--tx-faint)' }}>
                               {req
                                 ? 'Requirement title mismatch — spec section not found in the spec file.'
-                                : <>Spec not loaded — run <code style={{ color: '#7c6af7' }}>spec-gen view</code> or load <code style={{ color: '#7c6af7' }}>spec.md</code> manually.</>}
+                                : <>Spec not loaded — run <code style={{ color: 'var(--ac-primary)' }}>spec-gen view</code> or load <code style={{ color: 'var(--ac-primary)' }}>spec.md</code> manually.</>}
                             </div>
                           )}
                           <div
                             style={{
                               padding: '4px 9px',
-                              borderTop: '1px solid #0f1224',
+                              borderTop: '1px solid var(--bd-faint)',
                               fontSize: 7.5,
-                              color: '#2a3060',
+                              color: 'var(--ac-cluster-arr)',
                             }}
                           >
-                            service: <span style={{ color: '#3a4080' }}>{entry.service}</span>
+                            service: <span style={{ color: 'var(--tx-dim)' }}>{entry.service}</span>
                           </div>
                         </div>
                       );
@@ -1291,10 +1321,10 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                 {!skeletonLoading && skeletonData && (
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <span style={{ fontSize: 9, color: '#6a70a0', fontFamily: 'inherit' }}>
+                      <span style={{ fontSize: 9, color: 'var(--tx-muted)', fontFamily: 'inherit' }}>
                         {skeletonData.language} · {skeletonData.skeletonLines}/{skeletonData.originalLines} lines
                       </span>
-                      <span style={{ fontSize: 9, color: skeletonData.reductionPct >= 20 ? '#7c6af7' : '#3a3f5c', fontFamily: 'inherit' }}>
+                      <span style={{ fontSize: 9, color: skeletonData.reductionPct >= 20 ? 'var(--ac-primary)' : 'var(--tx-ghost)', fontFamily: 'inherit' }}>
                         -{skeletonData.reductionPct}%
                       </span>
                     </div>
@@ -1302,12 +1332,12 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                       margin: 0,
                       fontSize: 8,
                       lineHeight: 1.6,
-                      color: '#9aa0c8',
+                      color: 'var(--tx-secondary)',
                       fontFamily: "'JetBrains Mono', monospace",
                       whiteSpace: 'pre-wrap',
                       wordBreak: 'break-word',
-                      background: '#060819',
-                      border: '1px solid #0f1224',
+                      background: 'var(--bg-deep)',
+                      border: '1px solid var(--bd-faint)',
                       borderRadius: 4,
                       padding: '8px 10px',
                     }}>
@@ -1335,11 +1365,11 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                 <SL>Active filters</SL>
                 <Row
                   label="Visible nodes"
-                  value={<span style={{ color: '#7c6af7' }}>{filterStats.visible}</span>}
+                  value={<span style={{ color: 'var(--ac-primary)' }}>{filterStats.visible}</span>}
                 />
                 <Row
                   label="Visible edges"
-                  value={<span style={{ color: '#3ecfcf' }}>{filterStats.visibleEdges}</span>}
+                  value={<span style={{ color: 'var(--ac-teal)' }}>{filterStats.visibleEdges}</span>}
                 />
                 <Row label="Orphans" value={filterStats.orphanCount} />
                 <SL>Top 10 by score</SL>
@@ -1358,12 +1388,12 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                         cursor: 'pointer',
                       }}
                     >
-                      <span style={{ fontSize: 8, color: '#2a2f4a', minWidth: 12 }}>{i + 1}</span>
+                      <span style={{ fontSize: 8, color: 'var(--tx-faint)', minWidth: 12 }}>{i + 1}</span>
                       <span style={{ fontSize: 8, color: extColor(n.ext) }}>{n.ext || '—'}</span>
                       <span
                         style={{
                           fontSize: 9,
-                          color: '#8890b0',
+                          color: 'var(--tx-secondary)',
                           flex: 1,
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
@@ -1372,7 +1402,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                       >
                         {n.label}
                       </span>
-                      <span style={{ fontSize: 9, color: '#7c6af7' }}>{n.score}</span>
+                      <span style={{ fontSize: 9, color: 'var(--ac-primary)' }}>{n.score}</span>
                     </div>
                   );
                 })}
@@ -1381,7 +1411,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
           </div>
 
           {/* Cluster legend */}
-          <div style={{ padding: '9px 13px', borderTop: '1px solid #0f1224', flexShrink: 0 }}>
+          <div style={{ padding: '9px 13px', borderTop: '1px solid var(--bd-faint)', flexShrink: 0 }}>
             <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                 <svg width="24" height="8" style={{ overflow: 'visible' }}>
@@ -1390,7 +1420,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                     y1="4"
                     x2="18"
                     y2="4"
-                    stroke="#5a6090"
+                    stroke="var(--tx-node)"
                     strokeWidth="1.5"
                     markerEnd="url(#arr-legend)"
                   />
@@ -1403,11 +1433,11 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                       refY="2.5"
                       orient="auto"
                     >
-                      <path d="M0,0 L0,5 L5,2.5z" fill="#5a6090" />
+                      <path d="M0,0 L0,5 L5,2.5z" style={{ fill: 'var(--tx-node)' }} />
                     </marker>
                   </defs>
                 </svg>
-                <span style={{ fontSize: 7.5, color: '#3a3f5c' }}>runtime import</span>
+                <span style={{ fontSize: 7.5, color: 'var(--tx-ghost)' }}>runtime import</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                 <svg width="24" height="8" style={{ overflow: 'visible' }}>
@@ -1416,7 +1446,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                     y1="4"
                     x2="18"
                     y2="4"
-                    stroke="#3a3f5c"
+                    stroke="var(--tx-ghost)"
                     strokeWidth="1.2"
                     strokeDasharray="3 2"
                     markerEnd="url(#arr-legend-type)"
@@ -1430,15 +1460,15 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                       refY="2.5"
                       orient="auto"
                     >
-                      <path d="M0,0 L0,5 L5,2.5z" fill="#3a3f5c" />
+                      <path d="M0,0 L0,5 L5,2.5z" style={{ fill: 'var(--tx-ghost)' }} />
                     </marker>
                   </defs>
                 </svg>
-                <span style={{ fontSize: 7.5, color: '#3a3f5c' }}>type-only</span>
+                <span style={{ fontSize: 7.5, color: 'var(--tx-ghost)' }}>type-only</span>
               </div>
             </div>
             <div
-              style={{ fontSize: 8, color: '#1e2240', letterSpacing: '0.08em', marginBottom: 5 }}
+              style={{ fontSize: 8, color: 'var(--ac-arrow)', letterSpacing: '0.08em', marginBottom: 5 }}
             >
               CLUSTERS · click to filter
             </div>
@@ -1470,7 +1500,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                   <span
                     style={{
                       fontSize: 7.5,
-                      color: filters.cluster === cl.name ? cl.color : '#3a3f5c',
+                      color: filters.cluster === cl.name ? cl.color : 'var(--tx-ghost)',
                     }}
                   >
                     {cl.name}

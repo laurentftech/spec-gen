@@ -1,6 +1,6 @@
 export function Hint({ children }) {
   return (
-    <div style={{ fontSize: 10, color: '#2a2f4a', lineHeight: 1.8, marginTop: 4 }}>{children}</div>
+    <div style={{ fontSize: 10, color: 'var(--tx-faint)', lineHeight: 1.8, marginTop: 4 }}>{children}</div>
   );
 }
 
@@ -9,7 +9,7 @@ export function SL({ children }) {
     <div
       style={{
         fontSize: 8,
-        color: '#3a3f5c',
+        color: 'var(--tx-ghost)',
         letterSpacing: '0.08em',
         marginTop: 12,
         marginBottom: 5,
@@ -29,11 +29,11 @@ export function Row({ label, value }) {
         justifyContent: 'space-between',
         alignItems: 'center',
         padding: '3px 0',
-        borderBottom: '1px solid #0e1025',
+        borderBottom: '1px solid var(--bd-dim)',
       }}
     >
-      <span style={{ fontSize: 9, color: '#3a4070' }}>{label}</span>
-      <span style={{ fontSize: 9, color: '#8890b0' }}>{value}</span>
+      <span style={{ fontSize: 9, color: 'var(--tx-dim)' }}>{label}</span>
+      <span style={{ fontSize: 9, color: 'var(--tx-secondary)' }}>{value}</span>
     </div>
   );
 }

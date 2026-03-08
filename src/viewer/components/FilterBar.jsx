@@ -1,12 +1,12 @@
-function FToggle({ active, onChange, label, badge, activeColor = '#7c6af7' }) {
+function FToggle({ active, onChange, label, badge, activeColor = 'var(--ac-primary)' }) {
   return (
     <button
       onClick={() => onChange(!active)}
       style={{
         background: active ? `${activeColor}1a` : 'transparent',
-        border: `1px solid ${active ? activeColor : '#1a1f38'}`,
+        border: `1px solid ${active ? activeColor : 'var(--bd-muted)'}`,
         borderRadius: 4,
-        color: active ? activeColor : '#3a3f5c',
+        color: active ? activeColor : 'var(--tx-ghost)',
         padding: '2px 8px',
         cursor: 'pointer',
         fontSize: 9,
@@ -20,10 +20,10 @@ function FToggle({ active, onChange, label, badge, activeColor = '#7c6af7' }) {
       {badge !== undefined && (
         <span
           style={{
-            background: '#0d0f22',
+            background: 'var(--bg-input)',
             borderRadius: 3,
             padding: '0 4px',
-            color: '#3a3f5c',
+            color: 'var(--tx-ghost)',
             fontSize: 8,
           }}
         >
@@ -49,13 +49,13 @@ export function FilterBar({ filters, setFilters, stats, clusterNames }) {
         gap: 10,
         flexWrap: 'wrap',
         padding: '7px 18px',
-        borderBottom: '1px solid #0f1224',
-        background: '#07091a',
+        borderBottom: '1px solid var(--bd-faint)',
+        background: 'var(--bg-base)',
         flexShrink: 0,
         fontSize: 9,
       }}
     >
-      <span style={{ color: '#2a2f4a', letterSpacing: '0.08em', fontWeight: 700 }}>FILTERS</span>
+      <span style={{ color: 'var(--tx-faint)', letterSpacing: '0.08em', fontWeight: 700 }}>FILTERS</span>
 
       <FToggle
         active={filters.hideOrphans}
@@ -74,7 +74,7 @@ export function FilterBar({ filters, setFilters, stats, clusterNames }) {
       />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-        <span style={{ color: '#2a2f4a' }}>Score ≥</span>
+        <span style={{ color: 'var(--tx-faint)' }}>Score ≥</span>
         <input
           type="range"
           min={0}
@@ -82,20 +82,20 @@ export function FilterBar({ filters, setFilters, stats, clusterNames }) {
           step={5}
           value={filters.minScore}
           onChange={(e) => setFilters((f) => ({ ...f, minScore: +e.target.value }))}
-          style={{ width: 72, accentColor: '#7c6af7' }}
+          style={{ width: 72, accentColor: 'var(--ac-primary)' }}
         />
-        <span style={{ color: '#7c6af7', minWidth: 16 }}>{filters.minScore}</span>
+        <span style={{ color: 'var(--ac-primary)', minWidth: 16 }}>{filters.minScore}</span>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-        <span style={{ color: '#2a2f4a' }}>Top</span>
+        <span style={{ color: 'var(--tx-faint)' }}>Top</span>
         <select
           value={filters.topN}
           onChange={(e) => setFilters((f) => ({ ...f, topN: +e.target.value }))}
           style={{
-            background: '#0d0f22',
-            border: '1px solid #1a1f38',
-            color: '#c8cde8',
+            background: 'var(--bg-input)',
+            border: '1px solid var(--bd-muted)',
+            color: 'var(--tx-primary)',
             borderRadius: 4,
             padding: '2px 5px',
             fontSize: 9,
@@ -108,18 +108,18 @@ export function FilterBar({ filters, setFilters, stats, clusterNames }) {
             </option>
           ))}
         </select>
-        <span style={{ color: '#2a2f4a' }}>nodes</span>
+        <span style={{ color: 'var(--tx-faint)' }}>nodes</span>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-        <span style={{ color: '#2a2f4a' }}>Cluster</span>
+        <span style={{ color: 'var(--tx-faint)' }}>Cluster</span>
         <select
           value={filters.cluster}
           onChange={(e) => setFilters((f) => ({ ...f, cluster: e.target.value }))}
           style={{
-            background: '#0d0f22',
-            border: '1px solid #1a1f38',
-            color: '#c8cde8',
+            background: 'var(--bg-input)',
+            border: '1px solid var(--bd-muted)',
+            color: 'var(--tx-primary)',
             borderRadius: 4,
             padding: '2px 5px',
             fontSize: 9,
@@ -149,9 +149,9 @@ export function FilterBar({ filters, setFilters, stats, clusterNames }) {
           }
           style={{
             background: 'none',
-            border: '1px solid #2a2f4a',
+            border: '1px solid var(--tx-faint)',
             borderRadius: 4,
-            color: '#3a3f5c',
+            color: 'var(--tx-ghost)',
             padding: '2px 7px',
             cursor: 'pointer',
             fontSize: 9,
@@ -162,13 +162,13 @@ export function FilterBar({ filters, setFilters, stats, clusterNames }) {
         </button>
       )}
 
-      <div style={{ marginLeft: 'auto', color: '#2a2f4a', display: 'flex', gap: 8 }}>
+      <div style={{ marginLeft: 'auto', color: 'var(--tx-faint)', display: 'flex', gap: 8 }}>
         <span>
-          <span style={{ color: '#7c6af7' }}>{stats.visible}</span>/
-          <span style={{ color: '#3a4060' }}>{stats.total}</span> nodes
+          <span style={{ color: 'var(--ac-primary)' }}>{stats.visible}</span>/
+          <span style={{ color: 'var(--tx-dim)' }}>{stats.total}</span> nodes
         </span>
         <span>
-          <span style={{ color: '#3ecfcf' }}>{stats.visibleEdges}</span> edges
+          <span style={{ color: 'var(--ac-teal)' }}>{stats.visibleEdges}</span> edges
         </span>
         {stats.orphanCount > 0 && !filters.hideOrphans && (
           <span style={{ color: '#f77c6a66' }}>{stats.orphanCount} orphans</span>
