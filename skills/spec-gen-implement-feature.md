@@ -47,21 +47,37 @@ From the result, identify:
 
 ---
 
-## Step 3 — Read the relevant OpenSpec specification (if available)
+## Step 3 — Search the OpenSpec specifications (if available)
 
-Check whether `openspec/specs/` exists in the project. If so, identify the most relevant
-domain and read its spec:
+Discover which spec domains exist, then search for requirements relevant to the feature.
 
+```xml
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>list_spec_domains</tool_name>
+  <arguments>{"directory": "$DIRECTORY"}</arguments>
+</use_mcp_tool>
 ```
-openspec/specs/<domain>/spec.md
+
+If domains are found, search the specs semantically:
+
+```xml
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>search_specs</tool_name>
+  <arguments>{"directory": "$DIRECTORY", "query": "$FEATURE_DESCRIPTION", "limit": 5}</arguments>
+</use_mcp_tool>
 ```
 
-Extract:
-- Existing operations that relate to the feature
-- Constraints or acceptance criteria already documented
-- Data types or interfaces the feature must conform to
+From the results, extract:
+- Existing requirements that relate to the feature (note their `id` for drift tracking)
+- Any constraints or acceptance criteria already documented
+- The `linkedFiles` — these are the source files already mapped to those requirements
 
-If no spec exists, note it — the feature will be flagged as `uncovered` by `check_spec_drift`
+If `search_specs` returns an index-not-found error, fall back to reading the spec file
+directly: `openspec/specs/<domain>/spec.md`.
+
+If no spec exists yet, note it — the feature will be flagged as `uncovered` by `check_spec_drift`
 after implementation. That is expected; propose running `spec-gen generate` after the feature lands.
 
 ---
