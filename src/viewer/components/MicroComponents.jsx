@@ -77,7 +77,7 @@ export function KindBadge({ kind }) {
         textAlign: 'center',
       }}
     >
-      {kind || '—'}
+      {kind || '--'}
     </span>
   );
 }

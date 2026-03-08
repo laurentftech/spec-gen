@@ -11,10 +11,8 @@ spec-gen automates this. It analyzes your codebase through static analysis, gene
 ## Quick Start
 
 ```bash
-# Install
-git clone https://github.com/clay-good/spec-gen
-cd spec-gen
-npm install && npm run build && npm link
+# Install from npm
+npm install -g spec-gen
 
 # Navigate to your project
 cd /path/to/your-project
@@ -25,6 +23,17 @@ spec-gen analyze    # Static analysis (no API key needed)
 spec-gen generate   # Generate specs (requires API key)
 spec-gen drift      # Check for spec drift
 ```
+
+<details>
+<summary>Install from source</summary>
+
+```bash
+git clone https://github.com/clay-good/spec-gen
+cd spec-gen
+npm install && npm run build && npm link
+```
+
+</details>
 
 <details>
 <summary>Nix/NixOS</summary>
@@ -298,7 +307,7 @@ spec-gen supports four providers. The default is Anthropic Claude.
 |----------|-----------------|-----------------|---------------|
 | Anthropic Claude | `anthropic` *(default)* | `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` |
 | OpenAI | `openai` | `OPENAI_API_KEY` | `gpt-4o` |
-| OpenAI-compatible *(Mistral, Groq, Ollama…)* | `openai-compat` | `OPENAI_COMPAT_API_KEY` | `mistral-large-latest` |
+| OpenAI-compatible *(Mistral, Groq, Ollama...)* | `openai-compat` | `OPENAI_COMPAT_API_KEY` | `mistral-large-latest` |
 | Google Gemini | `gemini` | `GEMINI_API_KEY` | `gemini-2.0-flash` |
 
 ### Selecting a provider
@@ -320,7 +329,7 @@ Override the model for a single run:
 spec-gen generate --model claude-opus-4-20250514
 ```
 
-### OpenAI-compatible servers (Ollama, Mistral, Groq, LM Studio, vLLM…)
+### OpenAI-compatible servers (Ollama, Mistral, Groq, LM Studio, vLLM...)
 
 Use `provider: "openai-compat"` with a base URL and API key:
 
@@ -328,7 +337,7 @@ Use `provider: "openai-compat"` with a base URL and API key:
 ```bash
 export OPENAI_COMPAT_BASE_URL=http://localhost:11434/v1   # Ollama, LM Studio, local servers
 export OPENAI_COMPAT_API_KEY=ollama                       # any non-empty value for local servers
-                                                          # use your real API key for cloud providers (Mistral, Groq…)
+                                                          # use your real API key for cloud providers (Mistral, Groq...)
 ```
 
 **Config file** (per-project):
@@ -385,7 +394,7 @@ Or in `config.json` under the `llm` block:
 }
 ```
 
-`sslVerify: false` disables TLS certificate validation — use only for internal servers with self-signed certificates.
+`sslVerify: false` disables TLS certificate validation -- use only for internal servers with self-signed certificates.
 
 Priority: CLI flags > environment variables > config file > provider defaults.
 
@@ -473,11 +482,11 @@ spec-gen verify [options]
 
 ## MCP Server
 
-`spec-gen mcp` starts spec-gen as a [Model Context Protocol](https://modelcontextprotocol.io/) server over stdio, exposing static analysis as tools that any MCP-compatible AI agent (Cline, Roo Code, Kilocode, Claude Code, Cursor…) can call directly — no API key required.
+`spec-gen mcp` starts spec-gen as a [Model Context Protocol](https://modelcontextprotocol.io/) server over stdio, exposing static analysis as tools that any MCP-compatible AI agent (Cline, Roo Code, Kilocode, Claude Code, Cursor...) can call directly -- no API key required.
 
 ### Setup
 
-**Claude Code** — add a `.mcp.json` at your project root (the repo ships one):
+**Claude Code** -- add a `.mcp.json` at your project root (the repo ships one):
 
 ```json
 {
@@ -490,7 +499,7 @@ spec-gen verify [options]
 }
 ```
 
-**Cline / Roo Code / Kilocode** — add the same block under `mcpServers` in the MCP settings JSON of your editor.
+**Cline / Roo Code / Kilocode** -- add the same block under `mcpServers` in the MCP settings JSON of your editor.
 
 ### Quick Start
 
@@ -513,7 +522,7 @@ spec-gen generate  # generate OpenSpec specs (requires LLM API key)
 
 #### Claude Code
 
-The repo ships a `.mcp.json` — edit the path and you are done:
+The repo ships a `.mcp.json` -- edit the path and you are done:
 
 ```json
 {
@@ -526,21 +535,21 @@ The repo ships a `.mcp.json` — edit the path and you are done:
 }
 ```
 
-The tools are available directly in any Claude Code conversation. Just ask naturally — Claude calls the right tools automatically:
+The tools are available directly in any Claude Code conversation. Just ask naturally -- Claude calls the right tools automatically:
 
 ```
 You:    Analyse my codebase and tell me what needs refactoring most urgently
-Claude: [analyze_codebase → get_refactor_report → analyze_impact on top result]
-        → Project summary, top issues ranked by priority, risk score and recommended
+Claude: [analyze_codebase -> get_refactor_report -> analyze_impact on top result]
+        -> Project summary, top issues ranked by priority, risk score and recommended
           strategy for the highest-impact function
 
 You:    Are there any duplicate functions I should consolidate?
 Claude: [get_duplicate_report]
-        → Clone groups sorted by impact (exact / structural / near), file paths, line ranges
+        -> Clone groups sorted by impact (exact / structural / near), file paths, line ranges
 
 You:    Show me everything that calls parseConfig and draw a diagram
 Claude: [get_subgraph with direction: "upstream", format: "mermaid"]
-        → Mermaid flowchart of the upstream call chain
+        -> Mermaid flowchart of the upstream call chain
 ```
 
 #### Cline / Roo Code / Kilocode
@@ -559,10 +568,10 @@ Type one of the following commands in a conversation:
 |---------|:---:|-------------|
 | `/spec-gen-analyze-codebase` | No | Architecture overview, call graph highlights, top refactor issues |
 | `/spec-gen-check-spec-drift` | No | Detect code changes not reflected in specs; per-kind remediation guidance |
-| `/spec-gen-plan-refactor` | No | Static analysis → impact assessment → written plan saved to `.spec-gen/refactor-plan.md` (no code changes) |
+| `/spec-gen-plan-refactor` | No | Static analysis -> impact assessment -> written plan saved to `.spec-gen/refactor-plan.md` (no code changes) |
 | `/spec-gen-execute-refactor` | No | Read the plan and apply changes incrementally, with tests and diff verification after each step |
 
-`analyze_codebase`, `check_spec_drift`, and all refactoring tools run on **pure static analysis** — no LLM quota consumed. Only `spec-gen generate` (the one-time spec generation step) requires an API key.
+`analyze_codebase`, `check_spec_drift`, and all refactoring tools run on **pure static analysis** -- no LLM quota consumed. Only `spec-gen generate` (the one-time spec generation step) requires an API key.
 
 ### Cline Slash Commands
 
@@ -578,13 +587,13 @@ cp /path/to/spec-gen/examples/cline-workflows/*.md .clinerules/workflows/
 | `/spec-gen-analyze-codebase` | Runs `analyze_codebase`, summarises the results (project type, file count, top 3 refactor issues, detected domains), shows the call graph highlights, and suggests next steps. |
 | `/spec-gen-check-spec-drift` | Runs `check_spec_drift`, presents issues by severity (gap / stale / uncovered / orphaned-spec), shows per-kind remediation commands, and optionally drills into affected file signatures. |
 | `/spec-gen-plan-refactor` | Runs static analysis, picks the highest-priority target with coverage gate, assesses impact and call graph, then writes a detailed plan to `.spec-gen/refactor-plan.md`. No code changes. |
-| `/spec-gen-execute-refactor` | Reads `.spec-gen/refactor-plan.md`, establishes a green baseline, and applies each planned change one at a time — with diff verification and test run after every step. Optional final step covers dead-code detection and naming alignment (requires `spec-gen generate`). |
+| `/spec-gen-execute-refactor` | Reads `.spec-gen/refactor-plan.md`, establishes a green baseline, and applies each planned change one at a time -- with diff verification and test run after every step. Optional final step covers dead-code detection and naming alignment (requires `spec-gen generate`). |
 
 All four commands ask which directory to use, call the MCP tools directly, and guide you through the results without leaving the editor. They work in Cline, Roo Code, Kilocode, and any editor that supports the `.clinerules/workflows/` convention.
 
 ### Tools
 
-All tools run on **pure static analysis** — no LLM quota consumed.
+All tools run on **pure static analysis** -- no LLM quota consumed.
 
 **Analysis**
 
@@ -593,17 +602,17 @@ All tools run on **pure static analysis** — no LLM quota consumed.
 | `analyze_codebase` | Run full static analysis: repo structure, dependency graph, call graph (hub functions, entry points, layer violations), and top refactoring priorities. Results cached for 1 hour (`force: true` to bypass). | No |
 | `get_call_graph` | Hub functions (high fan-in), entry points (no internal callers), and architectural layer violations. Supports TypeScript, JavaScript, Python, Go, Rust, Ruby, Java. | Yes |
 | `get_signatures` | Compact function/class signatures per file. Filter by path substring with `filePattern`. Useful for understanding a module's public API without reading full source. | Yes |
-| `get_duplicate_report` | Detect duplicate code: Type 1 (exact clones), Type 2 (structural — renamed variables), Type 3 (near-clones with Jaccard similarity ≥ 0.7). Groups sorted by impact. | Yes |
+| `get_duplicate_report` | Detect duplicate code: Type 1 (exact clones), Type 2 (structural -- renamed variables), Type 3 (near-clones with Jaccard similarity >= 0.7). Groups sorted by impact. | Yes |
 
 **Refactoring**
 
 | Tool | Description | Requires prior analysis |
 |------|-------------|:---:|
 | `get_refactor_report` | Prioritized list of functions with structural issues: unreachable code, hub overload (high fan-in), god functions (high fan-out), SRP violations, cyclic dependencies. | Yes |
-| `analyze_impact` | Deep impact analysis for a specific function: fan-in/fan-out, upstream call chain, downstream critical path, risk score (0–100), blast radius, and recommended strategy. | Yes |
+| `analyze_impact` | Deep impact analysis for a specific function: fan-in/fan-out, upstream call chain, downstream critical path, risk score (0-100), blast radius, and recommended strategy. | Yes |
 | `get_low_risk_refactor_candidates` | Safest functions to refactor first: low fan-in, low fan-out, not a hub, no cyclic involvement. Best starting point for incremental, low-risk sessions. | Yes |
-| `get_leaf_functions` | Functions that make no internal calls (leaves of the call graph). Zero downstream blast radius. Sorted by fan-in by default — most-called leaves have the best unit-test ROI. | Yes |
-| `get_critical_hubs` | Highest-impact hub functions ranked by criticality. Each hub gets a stability score (0–100) and a recommended approach: extract, split, facade, or delegate. | Yes |
+| `get_leaf_functions` | Functions that make no internal calls (leaves of the call graph). Zero downstream blast radius. Sorted by fan-in by default -- most-called leaves have the best unit-test ROI. | Yes |
+| `get_critical_hubs` | Highest-impact hub functions ranked by criticality. Each hub gets a stability score (0-100) and a recommended approach: extract, split, facade, or delegate. | Yes |
 
 **Navigation**
 
@@ -619,7 +628,7 @@ All tools run on **pure static analysis** — no LLM quota consumed.
 
 | Tool | Description | Requires prior analysis |
 |------|-------------|:---:|
-| `get_mapping` | Requirement→function mapping produced by `spec-gen generate`. Shows which functions implement which spec requirements, confidence level, and orphan functions with no spec coverage. | Yes (generate) |
+| `get_mapping` | Requirement->function mapping produced by `spec-gen generate`. Shows which functions implement which spec requirements, confidence level, and orphan functions with no spec coverage. | Yes (generate) |
 | `check_spec_drift` | Detect code changes not reflected in OpenSpec specs. Compares git-changed files against spec coverage maps. Issues: gap / stale / uncovered / orphaned-spec / adr-gap. | Yes (generate) |
 
 ### Parameters
@@ -728,13 +737,13 @@ limit      number   Max candidates to return (default: 5)
 directory  string   Absolute path to the project directory
 query      string   Natural-language query, e.g. "authenticate user with JWT"
 limit      number   Max results (default: 10)
-language   string   Filter by language: "TypeScript" | "Python" | "Go" | …
+language   string   Filter by language: "TypeScript" | "Python" | "Go" | ...
 minFanIn   number   Only return functions with at least this many callers
 ```
 
 ### Typical workflow
 
-**Scenario A — Initial exploration**
+**Scenario A -- Initial exploration**
 ```
 1. analyze_codebase({ directory })                    # repo structure + call graph + top issues
 2. get_call_graph({ directory })                      # hub functions + layer violations
@@ -742,7 +751,7 @@ minFanIn   number   Only return functions with at least this many callers
 4. get_refactor_report({ directory })                 # prioritized refactoring candidates
 ```
 
-**Scenario B — Targeted refactoring**
+**Scenario B -- Targeted refactoring**
 ```
 1. analyze_impact({ directory, symbol: "myFunction" })       # risk score + blast radius + strategy
 2. get_subgraph({ directory, functionName: "myFunction",     # Mermaid call neighbourhood
@@ -752,7 +761,7 @@ minFanIn   number   Only return functions with at least this many callers
 4. get_leaf_functions({ directory, filePattern: "myFile" })  # zero-risk extraction targets
 ```
 
-**Scenario C — Spec maintenance**
+**Scenario C -- Spec maintenance**
 ```
 1. check_spec_drift({ directory })                    # code changes not reflected in specs
 2. get_mapping({ directory, orphansOnly: true })      # functions with no spec coverage
@@ -799,7 +808,7 @@ Example queries:
 - "Where would I add a new API endpoint?"
 - "Show me the impact of changing the authentication service"
 
-The chat uses the LLM provider configured via `spec-gen config` or environment variables. No API key is needed for viewer-only operations (the chat agent runs locally via MCP).
+The chat requires an LLM API key (same provider configuration as `spec-gen generate`). Viewer-only operations like graph browsing, skeleton view, and search do not require an API key.
 
 ### Right panel tabs (select a node to activate)
 
@@ -808,13 +817,13 @@ The chat uses the LLM provider configured via `spec-gen config` or environment v
 | **Node** | File metadata: exports, language, score |
 | **Links** | Direct callers and callees |
 | **Blast** | Downstream impact radius |
-| **Spec** | Requirements linked to the selected file — body, domain, confidence |
+| **Spec** | Requirements linked to the selected file -- body, domain, confidence |
 | **Skeleton** | Noise-stripped source: logs and comments removed, structure preserved |
 | **Info** | Global stats and top-ranked files |
 
 ### Search
 
-The search bar filters all three views simultaneously (text match on name, path, exports, tags). If a vector index was built with `--embed`, typing ≥ 3 characters also queries the semantic index and shows the top 5 function matches in a dropdown.
+The search bar filters all three views simultaneously (text match on name, path, exports, tags). If a vector index was built with `--embed`, typing >= 3 characters also queries the semantic index and shows the top 5 function matches in a dropdown.
 
 ### Automatic data loading
 
@@ -876,10 +885,10 @@ Static analysis output is stored in `.spec-gen/analysis/`:
 | `SUMMARY.md` | Human-readable analysis summary |
 | `call-graph.json` | Function-level call graph (7 languages) |
 | `refactor-priorities.json` | Refactoring issues by file and function |
-| `mapping.json` | Requirement→function mapping (produced by `generate`) |
+| `mapping.json` | Requirement->function mapping (produced by `generate`) |
 | `vector-index/` | LanceDB semantic index (produced by `--embed`) |
 
-`spec-gen analyze` also writes **`ARCHITECTURE.md`** to your project root — a Markdown overview of module clusters, entry points, and critical hubs, refreshed on every run.
+`spec-gen analyze` also writes **`ARCHITECTURE.md`** to your project root -- a Markdown overview of module clusters, entry points, and critical hubs, refreshed on every run.
 
 ## Semantic Search
 
@@ -939,17 +948,17 @@ The index is stored in `.spec-gen/analysis/vector-index/` and is automatically u
 | `ANTHROPIC_API_KEY` | `anthropic` | Anthropic API key |
 | `ANTHROPIC_API_BASE` | `anthropic` | Custom base URL (proxy / self-hosted) |
 | `OPENAI_API_KEY` | `openai` | OpenAI API key |
-| `OPENAI_API_BASE` | `openai` | Custom base URL (Azure, proxy…) |
+| `OPENAI_API_BASE` | `openai` | Custom base URL (Azure, proxy...) |
 | `OPENAI_COMPAT_API_KEY` | `openai-compat` | API key for OpenAI-compatible server |
 | `OPENAI_COMPAT_BASE_URL` | `openai-compat` | Base URL, e.g. `https://api.mistral.ai/v1` |
 | `GEMINI_API_KEY` | `gemini` | Google Gemini API key |
-| `DEBUG` | — | Enable stack traces on errors |
-| `CI` | — | Auto-detected; enables timestamps in output |
+| `DEBUG` | -- | Enable stack traces on errors |
+| `CI` | -- | Auto-detected; enables timestamps in output |
 
 ## Requirements
 
 - Node.js 20+
-- API key for `generate`, `verify`, and `drift --use-llm` — set the env var for your chosen provider:
+- API key for `generate`, `verify`, and `drift --use-llm` -- set the env var for your chosen provider:
   ```bash
   export ANTHROPIC_API_KEY=sk-ant-...       # Anthropic (default)
   export OPENAI_API_KEY=sk-...              # OpenAI

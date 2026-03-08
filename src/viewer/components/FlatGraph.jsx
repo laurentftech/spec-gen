@@ -232,7 +232,7 @@ export function FlatGraph({
                 fontFamily="'JetBrains Mono',monospace"
                 style={{ pointerEvents: 'none' }}
               >
-                {n.label.length > 13 ? n.label.slice(0, 12) + '…' : n.label}
+                {n.label.length > 13 ? n.label.slice(0, 12) + '...' : n.label}
               </text>
               {n.score > 0 && (
                 <text

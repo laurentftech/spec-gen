@@ -4,9 +4,18 @@ import { useState, useRef, useEffect } from 'react';
 // SIMPLE MARKDOWN RENDERER
 // ============================================================================
 
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function renderInline(text) {
-  // Bold, italic, inline code
-  return text
+  // Escape HTML first to prevent XSS, then apply markdown formatting
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+  return escaped
     .replace(/`([^`]+)`/g, '<code style="background:var(--bd-muted);padding:1px 4px;border-radius:3px;font-family:JetBrains Mono,monospace;font-size:8px;color:var(--tx-primary)">$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong style="color:var(--tx-primary)">$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em style="color:var(--tx-secondary)">$1</em>');
@@ -111,7 +120,7 @@ function MarkdownBlock({ text }) {
       continue;
     }
 
-    // Empty line → spacer
+    // Empty line -> spacer
     if (line.trim() === '') {
       elements.push(<div key={i} style={{ height: 4 }} />);
       i++;
@@ -148,11 +157,11 @@ function ToolSpinner() {
 // ============================================================================
 
 /**
- * ChatPanel — agentic chatbot panel for the dependency graph viewer.
+ * ChatPanel -- agentic chatbot panel for the dependency graph viewer.
  *
  * Props:
- *   onHighlight(ids: string[]) — called when the agent returns node IDs to highlight
- *   onClose()                  — called when the panel is closed
+ *   onHighlight(ids: string[]) -- called when the agent returns node IDs to highlight
+ *   onClose()                  -- called when the panel is closed
  */
 export function ChatPanel({ onHighlight, onClose }) {
   const [messages, setMessages] = useState([
@@ -308,7 +317,7 @@ export function ChatPanel({ onHighlight, onClose }) {
               color: 'var(--tx-ghost)', fontSize: 10, padding: '2px 6px', cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1,
             }}
           >
-            ×
+            x
           </button>
         </div>
         </div>
@@ -376,7 +385,7 @@ export function ChatPanel({ onHighlight, onClose }) {
               display: 'flex', flexDirection: 'column', gap: 4,
             }}>
               {activeTools.length === 0 ? (
-                <span>thinking…</span>
+                <span>thinking...</span>
               ) : (
                 activeTools.map((name, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -413,7 +422,7 @@ export function ChatPanel({ onHighlight, onClose }) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask about the codebase… (Enter to send, Shift+Enter for newline)"
+          placeholder="Ask about the codebase... (Enter to send, Shift+Enter for newline)"
           rows={3}
           style={{
             background: 'var(--bg-input)', border: '1px solid var(--bd-muted)', borderRadius: 4,

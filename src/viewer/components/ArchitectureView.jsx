@@ -47,7 +47,7 @@ export function ArchitectureView({ graph, llmCtx, focusedIds }) {
       const isHov = hovered === cl.id || hovered === toId;
       arrows.push(
         <line
-          key={`${cl.id}→${toId}`}
+          key={`${cl.id}->${toId}`}
           x1={sx} y1={sy} x2={ex} y2={ey}
           stroke={isHov ? 'var(--ac-primary)' : 'var(--ac-arrow)'}
           strokeWidth={isHov ? 1.5 : 1}

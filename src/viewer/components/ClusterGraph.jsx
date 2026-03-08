@@ -86,11 +86,11 @@ export function ClusterGraph({
       const sn = nodes.find((n) => n.id === e.source);
       const tn = nodes.find((n) => n.id === e.target);
       if (!sn || !tn || sn.cluster.id === tn.cluster.id) return;
-      const key = `${sn.cluster.id}→${tn.cluster.id}`;
+      const key = `${sn.cluster.id}->${tn.cluster.id}`;
       counts[key] = (counts[key] || 0) + 1;
     });
     return Object.entries(counts).map(([key, count]) => {
-      const [sc, tc] = key.split('→');
+      const [sc, tc] = key.split('->');
       return { id: key, source: sc, target: tc, count };
     });
   }, [edges, nodes]);
@@ -388,7 +388,7 @@ export function ClusterGraph({
                         fontFamily="'JetBrains Mono',monospace"
                         style={{ pointerEvents: 'none' }}
                       >
-                        {n.label.length > 10 ? n.label.slice(0, 9) + '…' : n.label}
+                        {n.label.length > 10 ? n.label.slice(0, 9) + '...' : n.label}
                       </text>
                     </g>
                   );
@@ -431,7 +431,7 @@ export function ClusterGraph({
               letterSpacing: '0.05em',
             }}
           >
-            × clear
+            x clear
           </button>
         </div>
       </foreignObject>

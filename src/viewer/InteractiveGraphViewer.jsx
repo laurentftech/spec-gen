@@ -514,7 +514,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
           <input
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
-            placeholder="search name, path, export, tag…"
+            placeholder="search name, path, export, tag..."
             style={{
               background: 'var(--bg-input)',
               border: '1px solid var(--bd-muted)',
@@ -553,7 +553,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                 lineHeight: 1,
               }}
             >
-              ×
+              x
             </span>
           )}
           {focusedIds.length > 0 && (
@@ -654,7 +654,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
           }}
           title="Load mapping.json"
         >
-          {mapping ? '✓ MAP' : 'MAP'}
+          {mapping ? '[x] MAP' : 'MAP'}
         </button>
         <button
           onClick={() => specRef.current.click()}
@@ -671,7 +671,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
           }}
           title="Load spec.md"
         >
-          {Object.keys(specReqs).length ? '✓ SPEC' : 'SPEC'}
+          {Object.keys(specReqs).length ? '[x] SPEC' : 'SPEC'}
         </button>
         <button
           onClick={() => setChatOpen((v) => !v)}
@@ -688,7 +688,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
           }}
           title="Toggle AI chat"
         >
-          ✦ CHAT
+          CHAT
         </button>
         <button
           onClick={cycleTheme}
@@ -798,8 +798,8 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
               }}
             >
               {viewMode === 'clusters'
-                ? 'CLICK CLUSTER → EXPAND  ·  CLICK NODE → INSPECT'
-                : 'CLICK NODE → INSPECT'}
+                ? 'CLICK CLUSTER -> EXPAND  ·  CLICK NODE -> INSPECT'
+                : 'CLICK NODE -> INSPECT'}
             </div>
           )}
         </div>
@@ -870,7 +870,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                 </div>
                 <Row
                   label="ext"
-                  value={<Chip color={extColor(selectedNode.ext)}>{selectedNode.ext || '—'}</Chip>}
+                  value={<Chip color={extColor(selectedNode.ext)}>{selectedNode.ext || '--'}</Chip>}
                 />
                 <Row label="lines" value={selectedNode.lines} />
                 <Row label="size" value={`${(selectedNode.size / 1024).toFixed(1)} KB`} />
@@ -1316,7 +1316,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
             )}
             {tab === 'skeleton' && selectedNode && (
               <div>
-                {skeletonLoading && <Hint>Loading…</Hint>}
+                {skeletonLoading && <Hint>Loading...</Hint>}
                 {!skeletonLoading && !skeletonData && <Hint>Skeleton unavailable for this file.</Hint>}
                 {!skeletonLoading && skeletonData && (
                   <div>
@@ -1377,33 +1377,33 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                   const n = graph.nodes.find((x) => x.id === fid);
                   if (!n) return null;
                   return (
-                    <div
-                      key={fid}
-                      onClick={() => handleSelect(fid)}
-                      style={{
-                        display: 'flex',
-                        gap: 5,
-                        alignItems: 'center',
-                        padding: '3px 0',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <span style={{ fontSize: 8, color: 'var(--tx-faint)', minWidth: 12 }}>{i + 1}</span>
-                      <span style={{ fontSize: 8, color: extColor(n.ext) }}>{n.ext || '—'}</span>
-                      <span
-                        style={{
-                          fontSize: 9,
-                          color: 'var(--tx-secondary)',
-                          flex: 1,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {n.label}
-                      </span>
-                      <span style={{ fontSize: 9, color: 'var(--ac-primary)' }}>{n.score}</span>
-                    </div>
+                     <div
+                       key={fid}
+                       onClick={() => handleSelect(fid)}
+                       style={{
+                         display: 'flex',
+                         gap: 5,
+                         alignItems: 'center',
+                         padding: '3px 0',
+                         cursor: 'pointer',
+                       }}
+                     >
+                       <span style={{ fontSize: 8, color: 'var(--tx-faint)', minWidth: 12 }}>{i + 1}</span>
+                       <span style={{ fontSize: 8, color: extColor(n.ext) }}>{n.ext || '—'}</span>
+                       <span
+                         style={{
+                           fontSize: 9,
+                           color: 'var(--tx-secondary)',
+                           flex: 1,
+                           overflow: 'hidden',
+                           textOverflow: 'ellipsis',
+                           whiteSpace: 'nowrap',
+                         }}
+                       >
+                         {n.label}
+                       </span>
+                       <span style={{ fontSize: 9, color: 'var(--ac-primary)' }}>{n.score}</span>
+                     </div>
                   );
                 })}
               </div>

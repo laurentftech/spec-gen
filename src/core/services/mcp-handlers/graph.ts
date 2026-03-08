@@ -315,19 +315,19 @@ export async function handleAnalyzeImpact(
       const outputDir = join(absDir, '.spec-gen', 'analysis');
 
       if (VectorIndex.exists(outputDir)) {
-      let embedSvc: InstanceType<typeof EmbeddingService> | null = null;
-      try { embedSvc = EmbeddingService.fromEnv(); } catch {
-        const cfg = await readSpecGenConfig(absDir);
-        if (cfg?.embedding) embedSvc = EmbeddingService.fromConfig(cfg) ?? null;
-      }
-      if (embedSvc) {
-        const results = await VectorIndex.search(outputDir, symbol, embedSvc, { limit: 1 });
-        if (results.length > 0) {
-          const top = results[0].record;
-          const matched = cg.nodes.find(n => n.id === top.id);
-          if (matched) seeds = [matched];
+        let embedSvc: InstanceType<typeof EmbeddingService> | null = null;
+        try { embedSvc = EmbeddingService.fromEnv(); } catch {
+          const cfg = await readSpecGenConfig(absDir);
+          if (cfg?.embedding) embedSvc = EmbeddingService.fromConfig(cfg) ?? null;
         }
-      }
+        if (embedSvc) {
+          const results = await VectorIndex.search(outputDir, symbol, embedSvc, { limit: 1 });
+          if (results.length > 0) {
+            const top = results[0].record;
+            const matched = cg.nodes.find(n => n.id === top.id);
+            if (matched) seeds = [matched];
+          }
+        }
       }
     } catch { /* ignore fallback errors */ }
   }

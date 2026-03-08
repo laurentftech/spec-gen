@@ -10,7 +10,7 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { logger } from '../../utils/logger.js';
@@ -20,19 +20,26 @@ import { getSkeletonContent, detectLanguage } from '../../core/analyzer/code-sha
 import { runChatAgent, resolveProviderConfig } from '../../core/services/chat-agent.js';
 
 const MAX_QUERY_LENGTH = 1000;
+const MAX_CHAT_BODY_BYTES = 512 * 1024; // 512 KB limit for chat requests
 
-/** Strip internal filesystem paths from error messages before sending to clients. */
+/** Strip internal filesystem paths and API keys from error messages before sending to clients. */
 function sanitizeErrorMessage(msg: string): string {
   return msg
     .replace(/\/Users\/[^\s:]+/g, '[path]')
     .replace(/\/home\/[^\s:]+/g, '[path]')
-    .replace(/[A-Z]:\\[^\s:]+/g, '[path]');
+    .replace(/[A-Z]:\\[^\s:]+/g, '[path]')
+    .replace(/[?&]key=[A-Za-z0-9\-_]{10,}/g, '?key=[REDACTED]')
+    .replace(/sk-ant-[A-Za-z0-9\-_]{10,}/g, '[REDACTED]')
+    .replace(/sk-[A-Za-z0-9\-_]{20,}/g, '[REDACTED]')
+    .replace(/Bearer\s+\S{10,}/g, 'Bearer [REDACTED]')
+    .replace(/x-api-key:\s*\S{10,}/gi, 'x-api-key: [REDACTED]');
 }
 
 /** Ensure a resolved path stays within the project root. Returns null if invalid. */
 function safePath(rootPath: string, userPath: string): string | null {
+  const root = resolve(rootPath);
   const abs = resolve(rootPath, userPath);
-  if (!abs.startsWith(resolve(rootPath) + '/') && abs !== resolve(rootPath)) {
+  if (abs !== root && !abs.startsWith(root + sep)) {
     return null;
   }
   return abs;
@@ -349,7 +356,7 @@ export const viewCommand = new Command('view')
               });
 
               devServer.middlewares.use('/api/chat', async (req, res, next) => {
-                // Only handle the exact /api/chat path — let sub-paths (e.g. /models) fall through
+                // Only handle the exact /api/chat path -- let sub-paths (e.g. /models) fall through
                 if (req.url && req.url !== '/' && req.url !== '') { next(); return; }
                 if (req.method !== 'POST') {
                   res.statusCode = 405;
@@ -357,10 +364,19 @@ export const viewCommand = new Command('view')
                   return;
                 }
                 try {
-                  // Collect body chunks
+                  // Collect body chunks with size limit
                   const chunks: Buffer[] = [];
+                  let totalBytes = 0;
                   await new Promise<void>((resolve, reject) => {
-                    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+                    req.on('data', (chunk: Buffer) => {
+                      totalBytes += chunk.length;
+                      if (totalBytes > MAX_CHAT_BODY_BYTES) {
+                        req.destroy();
+                        reject(new Error('Request body too large'));
+                        return;
+                      }
+                      chunks.push(chunk);
+                    });
                     req.on('end', resolve);
                     req.on('error', reject);
                   });
@@ -376,12 +392,12 @@ export const viewCommand = new Command('view')
                     return;
                   }
 
-                  const history = Array.isArray(body.history) ? body.history : [];
+                  const history = Array.isArray(body.history) ? body.history.slice(-50) : [];
                   const modelOverride = typeof body.model === 'string' ? body.model : undefined;
 
                   // Build pathToNodeId from the dependency graph on-demand.
                   // Raw dependency-graph.json nodes have the shape { id, file: { path } }.
-                  // Tool results return paths relative to rootPath or absolute — normalise both.
+                  // Tool results return paths relative to rootPath or absolute -- normalise both.
                   const normalise = (p: string) =>
                     p.startsWith(rootPath) ? p.slice(rootPath.length).replace(/^\/+/, '') : p.replace(/^\/+/, '');
                   const pathToNodeId: Map<string, string> = new Map();
@@ -402,7 +418,12 @@ export const viewCommand = new Command('view')
                   res.setHeader('Connection', 'keep-alive');
                   res.statusCode = 200;
 
+                  // Abort the agent loop when the client disconnects
+                  const abortController = new AbortController();
+                  req.on('close', () => abortController.abort());
+
                   const sendEvent = (data: object) => {
+                    if (abortController.signal.aborted) return;
                     res.write(`data: ${JSON.stringify(data)}\n\n`);
                     // Flush immediately so SSE events reach the client without buffering
                     (res as unknown as { flush?: () => void }).flush?.();
@@ -412,9 +433,12 @@ export const viewCommand = new Command('view')
                     directory: rootPath,
                     messages: [...history, { role: 'user', content: body.message }],
                     modelOverride,
+                    signal: abortController.signal,
                     onToolStart: (name) => sendEvent({ type: 'tool_start', name }),
                     onToolEnd:   (name) => sendEvent({ type: 'tool_end',   name }),
                   });
+
+                  if (abortController.signal.aborted) return;
 
                   const highlightIds = filePaths
                     .map(p => pathToNodeId.get(normalise(p)))
@@ -439,10 +463,12 @@ export const viewCommand = new Command('view')
                   const cfg = await resolveProviderConfig(rootPath);
                   res.setHeader('Content-Type', 'application/json; charset=utf-8');
 
+                  const modelTimeout = AbortSignal.timeout(10_000);
                   let models: string[] = [];
                   if (cfg.kind === 'gemini') {
                     const r = await fetch(
-                      `https://generativelanguage.googleapis.com/v1beta/models?key=${cfg.apiKey}`
+                      `https://generativelanguage.googleapis.com/v1beta/models?key=${cfg.apiKey}`,
+                      { signal: modelTimeout }
                     );
                     if (r.ok) {
                       const data = await r.json() as { models?: Array<{ name: string; supportedGenerationMethods?: string[] }> };
@@ -453,6 +479,7 @@ export const viewCommand = new Command('view')
                   } else if (cfg.kind === 'anthropic') {
                     const r = await fetch(`${cfg.baseUrl}/models`, {
                       headers: { 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' },
+                      signal: modelTimeout,
                     });
                     if (r.ok) {
                       const data = await r.json() as { data?: Array<{ id: string }> };
@@ -461,7 +488,7 @@ export const viewCommand = new Command('view')
                   } else {
                     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
                     if (cfg.apiKey) headers['Authorization'] = `Bearer ${cfg.apiKey}`;
-                    const r = await fetch(`${cfg.baseUrl}/models`, { headers });
+                    const r = await fetch(`${cfg.baseUrl}/models`, { headers, signal: modelTimeout });
                     if (r.ok) {
                       const data = await r.json() as { data?: Array<{ id: string }> };
                       models = (data.data ?? []).map(m => m.id).sort();

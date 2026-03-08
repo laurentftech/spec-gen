@@ -20,7 +20,7 @@ import {
   detectDrift,
 } from '../../drift/index.js';
 import { readSpecGenConfig } from '../config-manager.js';
-import { validateDirectory, readCachedContext } from './utils.js';
+import { validateDirectory, readCachedContext, isCacheFresh } from './utils.js';
 import type { SerializedCallGraph } from '../../analyzer/call-graph.js';
 import type { MappingArtifact } from '../../generator/mapping-generator.js';
 import type { DriftResult } from '../../../types/index.js';
@@ -39,14 +39,7 @@ export async function handleAnalyzeCodebase(
   const absDir = await validateDirectory(directory);
   const outputPath = join(absDir, '.spec-gen', 'analysis');
 
-  const isCacheFresh = async (): Promise<boolean> => {
-    try {
-      const s = await stat(join(absDir, '.spec-gen', 'analysis', 'llm-context.json'));
-      return Date.now() - s.mtimeMs < 60 * 60 * 1000;
-    } catch { return false; }
-  };
-
-  if (!force && await isCacheFresh()) {
+  if (!force && await isCacheFresh(absDir)) {
     const ctx = await readCachedContext(absDir);
     if (ctx) {
       const cg = ctx.callGraph;

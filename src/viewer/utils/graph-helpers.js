@@ -72,7 +72,7 @@ export function parseGraph(raw) {
   }));
 
   const edges = (raw.edges || []).map((e) => ({
-    id: `${e.source}→${e.target}`,
+    id: `${e.source}->${e.target}`,
     source: e.source,
     target: e.target,
     isType: e.isTypeOnly || false,

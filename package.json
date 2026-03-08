@@ -59,6 +59,7 @@
   },
   "files": [
     "dist",
+    "!dist/**/*.test.*",
     "src/viewer",
     "README.md",
     "LICENSE"
