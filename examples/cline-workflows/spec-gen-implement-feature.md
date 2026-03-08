@@ -42,20 +42,32 @@ If analysis data is missing (`{ "error": "..." }`), run `analyze_codebase` first
 
 Then retry `get_architecture_overview`.
 
-## Step 3: Read the relevant OpenSpec specification (if available)
+## Step 3: Search the OpenSpec specifications (if available)
 
-Check whether the project has OpenSpec specs under `openspec/specs/`. If so, identify
-the domain most relevant to the feature (e.g. `auth`, `crawler`, `billing`) and read
-the spec file:
+Discover which spec domains exist, then search for requirements relevant to the feature.
 
-```
-openspec/specs/<domain>/spec.md
-```
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>list_spec_domains</tool_name>
+  <arguments>{"directory": "$DIRECTORY"}</arguments>
+</use_mcp_tool>
 
-From the spec, extract:
-- Existing operations that relate to the feature
+If domains are found, search the specs semantically:
+
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>search_specs</tool_name>
+  <arguments>{"directory": "$DIRECTORY", "query": "$FEATURE_DESCRIPTION", "limit": 5}</arguments>
+</use_mcp_tool>
+
+From the results, extract:
+- Existing requirements that relate to the feature (note their `id` for drift tracking)
 - Any constraints or acceptance criteria already documented
-- Data types or interfaces the feature must conform to
+- The `linkedFiles` — these are the source files already mapped to those requirements
+  (will be highlighted in the diagram viewer)
+
+If `search_specs` returns an index-not-found error, fall back to reading the spec file
+directly: `openspec/specs/<domain>/spec.md`.
 
 If no spec exists yet, note it — the feature will be "uncovered" and `check_spec_drift`
 will flag it after implementation. That is expected: propose running `spec-gen generate`

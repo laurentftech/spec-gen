@@ -88,5 +88,11 @@ Based on the analysis, guide the user through the natural next steps in order:
 4. If significant duplication was found, suggest consolidating clone groups before refactoring
 5. Suggest running `/spec-gen-plan-refactor` once the user has enough context to act,
    then `/spec-gen-execute-refactor` to apply the plan
-6. If the project has OpenSpec specs, suggest `/spec-gen-implement-feature` for any
-   new feature work (integrates specs + insertion points + drift check)
+6. If the project has OpenSpec specs:
+   - Call `list_spec_domains` to discover available spec domains
+   - Call `search_specs` to find requirements by intent — this enables spec-first reasoning
+     (question → requirements → linked source files) rather than code-first exploration
+   - Suggest `/spec-gen-implement-feature` for any new feature work
+     (integrates specs + insertion points + drift check)
+   - To enable `search_specs`, run `spec-gen analyze --embed` or `spec-gen analyze --reindex-specs`
+     (requires the embedding server)

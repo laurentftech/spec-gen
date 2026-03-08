@@ -1,6 +1,6 @@
 /**
  * MCP tool handlers for semantic search and feature insertion:
- * search_code, suggest_insertion_points.
+ * search_code, suggest_insertion_points, search_specs.
  */
 
 import { join } from 'node:path';
@@ -231,5 +231,90 @@ export async function handleSuggestInsertionPoints(
           `After implementing, run check_spec_drift to verify the code matches the spec`,
         ]
       : ['No candidates found. Try a broader description or run "spec-gen analyze --embed" to build the index.'],
+  };
+}
+
+/**
+ * List all spec domains available in the project (reads openspec/specs/ directory).
+ * Useful for the agent to discover what domains exist before doing a targeted search.
+ */
+export async function handleListSpecDomains(directory: string): Promise<unknown> {
+  const { existsSync } = await import('node:fs');
+  const { readdir } = await import('node:fs/promises');
+  const { join: pjoin } = await import('node:path');
+  const absDir = await validateDirectory(directory);
+
+  const specsDir = pjoin(absDir, 'openspec', 'specs');
+  if (!existsSync(specsDir)) {
+    return { domains: [], note: 'No openspec/specs/ directory found. Run "spec-gen generate" first.' };
+  }
+
+  let entries: string[];
+  try {
+    entries = await readdir(specsDir);
+  } catch {
+    return { domains: [] };
+  }
+
+  const { existsSync: ex2 } = await import('node:fs');
+  const domains = entries.filter(e => ex2(pjoin(specsDir, e, 'spec.md')));
+  return { domains, count: domains.length };
+}
+
+/**
+ * Semantic search over the spec index built by "spec-gen analyze --embed"
+ * or "spec-gen analyze --reindex-specs".
+ */
+export async function handleSearchSpecs(
+  directory: string,
+  query: string,
+  limit = 10,
+  domain?: string,
+  section?: string
+): Promise<unknown> {
+  const absDir = await validateDirectory(directory);
+  const outputDir = join(absDir, '.spec-gen', 'analysis');
+
+  const { SpecVectorIndex } = await import('../../analyzer/spec-vector-index.js');
+  const { EmbeddingService } = await import('../../analyzer/embedding-service.js');
+
+  if (!SpecVectorIndex.exists(outputDir)) {
+    return {
+      error:
+        'No spec index found. Run "spec-gen analyze --embed" or "spec-gen analyze --reindex-specs" first, ' +
+        'then configure EMBED_BASE_URL and EMBED_MODEL.',
+    };
+  }
+
+  let embedSvc: InstanceType<typeof EmbeddingService>;
+  try {
+    embedSvc = EmbeddingService.fromEnv();
+  } catch {
+    const cfg = await readSpecGenConfig(absDir);
+    if (!cfg) {
+      return { error: 'No embedding configuration found. Set EMBED_BASE_URL and EMBED_MODEL env vars, or add an "embedding" section to .spec-gen/config.json.' };
+    }
+    const svcFromConfig = EmbeddingService.fromConfig(cfg);
+    if (!svcFromConfig) {
+      return { error: 'No embedding configuration found. Set EMBED_BASE_URL and EMBED_MODEL env vars, or add an "embedding" section to .spec-gen/config.json.' };
+    }
+    embedSvc = svcFromConfig;
+  }
+
+  limit = Math.max(1, Math.min(limit, 50));
+  const results = await SpecVectorIndex.search(outputDir, query, embedSvc, { limit, domain, section });
+
+  return {
+    query,
+    count: results.length,
+    results: results.map(r => ({
+      score: r.score,
+      id: r.record.id,
+      domain: r.record.domain,
+      section: r.record.section,
+      title: r.record.title,
+      text: r.record.text,
+      linkedFiles: r.record.linkedFiles,
+    })),
   };
 }

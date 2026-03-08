@@ -9,7 +9,7 @@ import { Command } from 'commander';
 import { access, stat, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { logger } from '../../utils/logger.js';
-import type { AnalyzeOptions } from '../../types/index.js';
+import type { AnalyzeOptions, SpecGenConfig } from '../../types/index.js';
 import { readSpecGenConfig } from '../../core/services/config-manager.js';
 import { RepositoryMapper, type RepositoryMap } from '../../core/analyzer/repository-mapper.js';
 import type { CloneGroup, CloneInstance } from '../../core/analyzer/duplicate-detector.js';
@@ -33,6 +33,7 @@ import {
 interface ExtendedAnalyzeOptions extends AnalyzeOptions {
   force?: boolean;
   embed?: boolean;
+  reindexSpecs?: boolean;
 }
 
 interface AnalysisResult {
@@ -222,6 +223,11 @@ export const analyzeCommand = new Command('analyze')
     'Build a semantic vector index after analysis (requires EMBED_BASE_URL + EMBED_MODEL)',
     false
   )
+  .option(
+    '--reindex-specs',
+    'Re-index OpenSpec specs into the vector index without re-running full analysis (requires EMBED_BASE_URL + EMBED_MODEL)',
+    false
+  )
   .addHelpText(
     'after',
     `
@@ -236,7 +242,8 @@ Examples:
   $ spec-gen analyze --output ./my-analysis
                                      Custom output location
   $ spec-gen analyze --force         Force re-analysis
-  $ spec-gen analyze --embed         Also build semantic vector index
+  $ spec-gen analyze --embed         Also build semantic vector index (code + specs)
+  $ spec-gen analyze --reindex-specs Re-index specs only (no full re-analysis)
 
 Output files:
   .spec-gen/analysis/
@@ -262,6 +269,7 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
       exclude: options.exclude ?? [],
       force: options.force ?? false,
       embed: options.embed ?? false,
+      reindexSpecs: options.reindexSpecs ?? false,
       quiet: false,
       verbose: false,
       noColor: false,
@@ -292,6 +300,16 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
         logger.info('Exclude patterns', opts.exclude.join(', '));
       }
       logger.blank();
+
+      // ========================================================================
+      // PHASE 1b: --reindex-specs fast path (no full analysis)
+      // ========================================================================
+      if (opts.reindexSpecs) {
+        const outputPath = join(rootPath, opts.output);
+        await mkdir(outputPath, { recursive: true });
+        await runSpecIndexing(rootPath, outputPath, specGenConfig);
+        return;
+      }
 
       // ========================================================================
       // PHASE 2: CHECK EXISTING ANALYSIS
@@ -565,15 +583,18 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
           const sigs = result.artifacts.llmContext.signatures ?? [];
 
           if (!cg || cg.nodes.length === 0) {
-            console.log('    ⚠ No call graph data — vector index skipped');
+            console.log('    ⚠ No call graph data — function index skipped');
           } else {
             const hubIds = new Set(cg.hubFunctions.map(f => f.id));
             const entryIds = new Set(cg.entryPoints.map(f => f.id));
 
             await VectorIndex.build(outputPath, cg.nodes, sigs, hubIds, entryIds, embedSvc);
-            console.log(`    ✓ Vector index built (${cg.nodes.length} functions)`);
+            console.log(`    ✓ Function index built (${cg.nodes.length} functions)`);
             console.log(`    → ${opts.output}vector-index/`);
           }
+
+          // Also index specs if they exist
+          await runSpecIndexing(rootPath, outputPath, specGenConfig);
         } catch (embedErr) {
           console.log(`    ✗ Vector index failed: ${(embedErr as Error).message}`);
         }
@@ -597,3 +618,53 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
       process.exitCode = 1;
     }
   });
+
+// ============================================================================
+// SPEC INDEXING HELPER
+// ============================================================================
+
+/**
+ * Index OpenSpec specs into the vector index.
+ * Looks for specs in <rootPath>/openspec/specs/ (configured or default).
+ * Non-fatal: prints a warning if no specs found or embedding fails.
+ */
+async function runSpecIndexing(
+  rootPath: string,
+  outputPath: string,
+  specGenConfig: SpecGenConfig | null
+): Promise<void> {
+  const { existsSync } = await import('node:fs');
+  const { join: pathJoin } = await import('node:path');
+  const { EmbeddingService } = await import('../../core/analyzer/embedding-service.js');
+  const { SpecVectorIndex } = await import('../../core/analyzer/spec-vector-index.js');
+  const { readSpecGenConfig } = await import('../../core/services/config-manager.js');
+
+  // Resolve embedding service
+  let embedSvc: InstanceType<typeof EmbeddingService>;
+  try {
+    embedSvc = EmbeddingService.fromEnv();
+  } catch {
+    const cfg = specGenConfig ?? await readSpecGenConfig(rootPath);
+    if (!cfg) return; // no embedding config — silently skip
+    const svc = EmbeddingService.fromConfig(cfg);
+    if (!svc) return;
+    embedSvc = svc;
+  }
+
+  // Locate specs directory
+  const specsDir = pathJoin(rootPath, 'openspec', 'specs');
+  if (!existsSync(specsDir)) {
+    console.log('    ℹ No openspec/specs/ directory found — spec index skipped');
+    return;
+  }
+
+  const mappingJsonPath = pathJoin(outputPath, 'mapping.json');
+
+  try {
+    const { recordCount } = await SpecVectorIndex.build(outputPath, specsDir, embedSvc, mappingJsonPath);
+    console.log(`    ✓ Spec index built (${recordCount} sections)`);
+    console.log(`    → ${outputPath.replace(rootPath + '/', '')}vector-index/`);
+  } catch (err) {
+    console.log(`    ⚠ Spec index skipped: ${(err as Error).message}`);
+  }
+}

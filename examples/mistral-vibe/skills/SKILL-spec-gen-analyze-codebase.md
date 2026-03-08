@@ -101,6 +101,9 @@ Based on the analysis, guide the user through the natural next actions in order:
 2. Call `get_subgraph` on the highest-priority function to map its callers and callees
 3. If significant duplication was found, suggest consolidating clone groups **before** refactoring
 4. Suggest running `/spec-gen-plan-refactor` once the user has enough context to act, then `/spec-gen-execute-refactor` to apply the plan
+5. If the project has OpenSpec specs, call `list_spec_domains` then `search_specs` to enable
+   spec-first reasoning (question → requirements → linked source files). To activate `search_specs`,
+   run `spec-gen analyze --embed` or `spec-gen analyze --reindex-specs`.
 
 ---
 

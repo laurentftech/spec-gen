@@ -22,6 +22,8 @@ import {
 import {
   handleSearchCode,
   handleSuggestInsertionPoints,
+  handleSearchSpecs,
+  handleListSpecDomains,
 } from './mcp-handlers/semantic.js';
 
 import {
@@ -296,6 +298,69 @@ export const CHAT_TOOLS: ChatTool[] = [
         const r = result as Record<string, unknown>;
         for (const res of (r.results as Array<{ filePath?: string }>) ?? []) {
           if (res.filePath) paths.push(res.filePath);
+        }
+      }
+      return { result, filePaths: [...new Set(paths)] };
+    },
+  },
+
+  // ── List spec domains ────────────────────────────────────────────────────
+  {
+    name: 'list_spec_domains',
+    description:
+      'List all OpenSpec domains available in this project. ' +
+      'Use this first when the user asks a broad spec question and you need to discover ' +
+      'what domains exist before doing a targeted search_specs call.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+      },
+      required: ['directory'],
+    },
+    async execute(directory, args) {
+      const result = await handleListSpecDomains((args.directory as string) ?? directory);
+      return { result, filePaths: [] };
+    },
+  },
+
+  // ── Spec semantic search ─────────────────────────────────────────────────
+  {
+    name: 'search_specs',
+    description:
+      'Semantic search over OpenSpec specifications to find requirements, design notes, ' +
+      'and architecture decisions by meaning. Returns linked source files for graph highlighting. ' +
+      'Use this when the user asks "which spec covers X?", "what requirement describes Y?", ' +
+      'or "where should we implement Z?" (spec-first approach). ' +
+      'Requires a spec index (spec-gen analyze --embed or --reindex-specs).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+        query:     { type: 'string', description: 'Natural language search query' },
+        limit:     { type: 'number', description: 'Results to return (default: 10)' },
+        domain:    { type: 'string', description: 'Filter by domain name (e.g. "auth", "analyzer")' },
+        section:   {
+          type: 'string',
+          description: 'Filter by section type: "requirements", "purpose", "design", "architecture", "entities"',
+        },
+      },
+      required: ['directory', 'query'],
+    },
+    async execute(directory, args) {
+      const result = await handleSearchSpecs(
+        (args.directory as string) ?? directory,
+        args.query as string,
+        (args.limit as number) ?? 10,
+        args.domain as string | undefined,
+        args.section as string | undefined,
+      );
+      // linkedFiles arrays are returned per result — collect all for graph highlighting
+      const paths: string[] = [];
+      if (result && typeof result === 'object') {
+        const r = result as Record<string, unknown>;
+        for (const res of (r.results as Array<{ linkedFiles?: string[] }>) ?? []) {
+          for (const f of res.linkedFiles ?? []) paths.push(f);
         }
       }
       return { result, filePaths: [...new Set(paths)] };

@@ -38,6 +38,8 @@ import {
 import {
   handleSearchCode,
   handleSuggestInsertionPoints,
+  handleSearchSpecs,
+  handleListSpecDomains,
 } from '../../core/services/mcp-handlers/semantic.js';
 import {
   handleAnalyzeCodebase,
@@ -64,6 +66,7 @@ export {
   handleGetGodFunctions,
   handleSearchCode,
   handleSuggestInsertionPoints,
+  handleSearchSpecs,
   handleAnalyzeCodebase,
   handleGetArchitectureOverview,
   handleGetRefactorReport,
@@ -531,6 +534,56 @@ export const TOOL_DEFINITIONS = [
       required: ['directory', 'query'],
     },
   },
+  {
+    name: 'list_spec_domains',
+    description:
+      'List all OpenSpec domains available in this project. ' +
+      'Use this first when you need to discover what domains exist before doing a targeted search_specs call.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+      },
+      required: ['directory'],
+    },
+  },
+  {
+    name: 'search_specs',
+    description:
+      'Semantic search over OpenSpec specifications to find requirements, design notes, ' +
+      'and architecture decisions by meaning. Returns linked source files for graph highlighting. ' +
+      'Use this when asked "which spec covers X?", "what requirement describes Y?", ' +
+      'or "where should we implement Z?" (spec-first approach). ' +
+      'Requires a spec index built with "spec-gen analyze --embed" or "spec-gen analyze --reindex-specs". ' +
+      'Configure the embedding endpoint via EMBED_BASE_URL + EMBED_MODEL env vars ' +
+      'or the "embedding" section in .spec-gen/config.json.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: {
+          type: 'string',
+          description: 'Absolute path to the project directory',
+        },
+        query: {
+          type: 'string',
+          description: 'Natural language query, e.g. "email validation workflow"',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results to return (default: 10)',
+        },
+        domain: {
+          type: 'string',
+          description: 'Filter by domain name (e.g. "auth", "analyzer")',
+        },
+        section: {
+          type: 'string',
+          description: 'Filter by section type: "requirements", "purpose", "design", "architecture", "entities"',
+        },
+      },
+      required: ['directory', 'query'],
+    },
+  },
 ];
 
 // ============================================================================
@@ -613,6 +666,13 @@ async function startMcpServer(): Promise<void> {
         const { directory, description, limit = 5, language } =
           args as { directory: string; description: string; limit?: number; language?: string };
         result = await handleSuggestInsertionPoints(directory, description, limit, language);
+      } else if (name === 'search_specs') {
+        const { directory, query, limit = 10, domain, section } =
+          args as { directory: string; query: string; limit?: number; domain?: string; section?: string };
+        result = await handleSearchSpecs(directory, query, limit, domain, section);
+      } else if (name === 'list_spec_domains') {
+        const { directory } = args as { directory: string };
+        result = await handleListSpecDomains(directory);
       } else {
         return {
           content: [{ type: 'text', text: `Unknown tool: ${name}` }],

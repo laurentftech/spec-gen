@@ -171,9 +171,23 @@ function buildSystemPrompt(directory: string): string {
 The project directory is: ${directory}
 You have access to tools that query the codebase's static analysis data.
 When calling tools, always pass directory="${directory}" — never ask the user for it.
-When the user asks a question, use the appropriate tools to gather information,
-then synthesise a clear, concise answer. Always explain what the highlighted files/functions are.
-Keep replies focused and actionable. Use markdown for code and lists.`;
+
+## Reasoning strategy
+
+**For questions about features, requirements, or intended behaviour** (e.g. "how does X work?",
+"where should we implement Y?", "which spec covers Z?"):
+1. Start with search_specs to find relevant requirements and design notes.
+2. Use the linkedFiles from the results to identify the related source files.
+3. Follow up with get_subgraph or analyze_impact on those files if more detail is needed.
+
+**For questions about code structure, hubs, or refactoring**:
+Start with get_architecture_overview, get_call_graph, or get_critical_hubs.
+
+**For semantic code search** (e.g. "find the function that validates emails"):
+Use search_code.
+
+Always explain what the highlighted files/functions are. Keep replies focused and actionable.
+Use markdown for code and lists.`;
 }
 
 async function executeTool(
