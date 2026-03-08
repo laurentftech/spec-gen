@@ -315,15 +315,15 @@ export function ChatPanel({ onHighlight, onClose }) {
         {/* Model selector */}
         {modelInfo && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ fontSize: 7, color: '#3a3f5c', letterSpacing: '0.06em', flexShrink: 0 }}>
+            <span style={{ fontSize: 8, color: '#3a3f5c', letterSpacing: '0.06em', flexShrink: 0 }}>
               {modelInfo.provider.toUpperCase()}
             </span>
             <select
               value={modelInfo.currentModel}
               onChange={(e) => setModelInfo((prev) => ({ ...prev, currentModel: e.target.value }))}
               style={{
-                flex: 1, background: '#0c0e22', border: '1px solid #141830', borderRadius: 3,
-                color: '#7c6af7', fontSize: 7, padding: '1px 3px', fontFamily: 'inherit',
+                flex: 1, background: '#0c0e22', border: '1px solid #2a2f4c', borderRadius: 3,
+                color: '#9b96c8', fontSize: 8, padding: '2px 4px', fontFamily: 'inherit',
                 cursor: 'pointer', outline: 'none',
               }}
             >
