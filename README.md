@@ -486,7 +486,20 @@ spec-gen verify [options]
 
 ### Setup
 
-**Claude Code** -- add a `.mcp.json` at your project root (the repo ships one):
+**Claude Code** -- add a `.mcp.json` at your project root:
+
+```json
+{
+  "mcpServers": {
+    "spec-gen": {
+      "command": "spec-gen",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+or for local development:
 
 ```json
 {
@@ -501,86 +514,19 @@ spec-gen verify [options]
 
 **Cline / Roo Code / Kilocode** -- add the same block under `mcpServers` in the MCP settings JSON of your editor.
 
-### Quick Start
+### Cline / Roo Code / Kilocode
 
-**1. Build spec-gen**
-
-```bash
-git clone https://github.com/clay-good/spec-gen
-cd spec-gen && npm install && npm run build
-```
-
-**2. Generate specs once** (required for drift detection and naming alignment)
-
-```bash
-cd /path/to/your-project
-spec-gen init      # detect project type, create config
-spec-gen generate  # generate OpenSpec specs (requires LLM API key)
-```
-
-**3. Connect your editor**
-
-#### Claude Code
-
-The repo ships a `.mcp.json` -- edit the path and you are done:
-
-```json
-{
-  "mcpServers": {
-    "spec-gen": {
-      "command": "node",
-      "args": ["/absolute/path/to/spec-gen/dist/cli/index.js", "mcp"]
-    }
-  }
-}
-```
-
-The tools are available directly in any Claude Code conversation. Just ask naturally -- Claude calls the right tools automatically:
-
-```
-You:    Analyse my codebase and tell me what needs refactoring most urgently
-Claude: [analyze_codebase -> get_refactor_report -> analyze_impact on top result]
-        -> Project summary, top issues ranked by priority, risk score and recommended
-          strategy for the highest-impact function
-
-You:    Are there any duplicate functions I should consolidate?
-Claude: [get_duplicate_report]
-        -> Clone groups sorted by impact (exact / structural / near), file paths, line ranges
-
-You:    Show me everything that calls parseConfig and draw a diagram
-Claude: [get_subgraph with direction: "upstream", format: "mermaid"]
-        -> Mermaid flowchart of the upstream call chain
-```
-
-#### Cline / Roo Code / Kilocode
-
-Add the same `mcpServers` block in the editor's MCP settings JSON, then install the pre-built slash command workflows:
-
-```bash
-cd /path/to/your-project
-mkdir -p .clinerules/workflows
-cp /path/to/spec-gen/examples/cline-workflows/*.md .clinerules/workflows/
-```
-
-Type one of the following commands in a conversation:
-
-| Command | Needs API key | What it does |
-|---------|:---:|-------------|
-| `/spec-gen-analyze-codebase` | No | Architecture overview, call graph highlights, top refactor issues |
-| `/spec-gen-check-spec-drift` | No | Detect code changes not reflected in specs; per-kind remediation guidance |
-| `/spec-gen-plan-refactor` | No | Static analysis -> impact assessment -> written plan saved to `.spec-gen/refactor-plan.md` (no code changes) |
-| `/spec-gen-execute-refactor` | No | Read the plan and apply changes incrementally, with tests and diff verification after each step |
-
-`analyze_codebase`, `check_spec_drift`, and all refactoring tools run on **pure static analysis** -- no LLM quota consumed. Only `spec-gen generate` (the one-time spec generation step) requires an API key.
-
-### Cline Slash Commands
-
-`examples/cline-workflows/` contains four executable workflow files. Copy them to your project's `.clinerules/workflows/` to activate them as slash commands:
+For editors with MCP support, after adding the `mcpServers` block to your settings, download the slash command workflows:
 
 ```bash
 mkdir -p .clinerules/workflows
-cp /path/to/spec-gen/examples/cline-workflows/*.md .clinerules/workflows/
+curl -sL https://raw.githubusercontent.com/clay-good/spec-gen/main/examples/cline-workflows/spec-gen-analyze-codebase.md -o .clinerules/workflows/spec-gen-analyze-codebase.md
+curl -sL https://raw.githubusercontent.com/clay-good/spec-gen/main/examples/cline-workflows/spec-gen-check-spec-drift.md -o .clinerules/workflows/spec-gen-check-spec-drift.md
+curl -sL https://raw.githubusercontent.com/clay-good/spec-gen/main/examples/cline-workflows/spec-gen-plan-refactor.md -o .clinerules/workflows/spec-gen-plan-refactor.md
+curl -sL https://raw.githubusercontent.com/clay-good/spec-gen/main/examples/cline-workflows/spec-gen-execute-refactor.md -o .clinerules/workflows/spec-gen-execute-refactor.md
 ```
+
+Available commands:
 
 | Command | What it does |
 |---------|-------------|
@@ -589,7 +535,27 @@ cp /path/to/spec-gen/examples/cline-workflows/*.md .clinerules/workflows/
 | `/spec-gen-plan-refactor` | Runs static analysis, picks the highest-priority target with coverage gate, assesses impact and call graph, then writes a detailed plan to `.spec-gen/refactor-plan.md`. No code changes. |
 | `/spec-gen-execute-refactor` | Reads `.spec-gen/refactor-plan.md`, establishes a green baseline, and applies each planned change one at a time -- with diff verification and test run after every step. Optional final step covers dead-code detection and naming alignment (requires `spec-gen generate`). |
 
-All four commands ask which directory to use, call the MCP tools directly, and guide you through the results without leaving the editor. They work in Cline, Roo Code, Kilocode, and any editor that supports the `.clinerules/workflows/` convention.
+All four commands ask which directory to use, call the MCP tools directly, and guide you through the results without leaving the editor. They work in any editor that supports the `.clinerules/workflows/` convention.
+
+### Claude Skills
+
+For Claude Code, copy the skill files to `.claude/skills/` in your project:
+
+```bash
+mkdir -p .claude/skills
+curl -sL https://raw.githubusercontent.com/clay-good/spec-gen/main/skills/claude-spec-gen.md -o .claude/skills/claude-spec-gen.md
+curl -sL https://raw.githubusercontent.com/clay-good/spec-gen/main/skills/openspec-skill.md -o .claude/skills/openspec-skill.md
+```
+
+**Spec-Gen Skill** (`claude-spec-gen.md`) — Code archaeology skill that guides Claude through:
+- Project type detection and domain identification
+- Entity extraction, service analysis, API extraction
+- Architecture synthesis and OpenSpec spec generation
+
+**OpenSpec Skill** (`openspec-skill.md`) — Skill for working with OpenSpec specifications:
+- Semantic spec search with `search_specs`
+- List domains with `list_spec_domains`
+- Navigate requirements and scenarios
 
 ### Tools
 
@@ -613,6 +579,7 @@ All tools run on **pure static analysis** -- no LLM quota consumed.
 | `get_low_risk_refactor_candidates` | Safest functions to refactor first: low fan-in, low fan-out, not a hub, no cyclic involvement. Best starting point for incremental, low-risk sessions. | Yes |
 | `get_leaf_functions` | Functions that make no internal calls (leaves of the call graph). Zero downstream blast radius. Sorted by fan-in by default -- most-called leaves have the best unit-test ROI. | Yes |
 | `get_critical_hubs` | Highest-impact hub functions ranked by criticality. Each hub gets a stability score (0-100) and a recommended approach: extract, split, facade, or delegate. | Yes |
+| `get_god_functions` | Detect god functions (high fan-out, likely orchestrators) in the project or in a specific file, and return their call-graph neighborhood. Use this to identify which functions need to be refactored and understand what logical blocks to extract. | Yes |
 
 **Navigation**
 
@@ -630,6 +597,8 @@ All tools run on **pure static analysis** -- no LLM quota consumed.
 |------|-------------|:---:|
 | `get_mapping` | Requirement->function mapping produced by `spec-gen generate`. Shows which functions implement which spec requirements, confidence level, and orphan functions with no spec coverage. | Yes (generate) |
 | `check_spec_drift` | Detect code changes not reflected in OpenSpec specs. Compares git-changed files against spec coverage maps. Issues: gap / stale / uncovered / orphaned-spec / adr-gap. | Yes (generate) |
+| `search_specs` | Semantic search over OpenSpec specifications to find requirements, design notes, and architecture decisions by meaning. Returns linked source files for graph highlighting. Use this when asked "which spec covers X?" or "where should we implement Z?". Requires a spec index built with `spec-gen analyze --embed` or `--reindex-specs`. | Yes (generate) |
+| `list_spec_domains` | List all OpenSpec domains available in this project. Use this to discover what domains exist before doing a targeted `search_specs` call. | Yes (generate) |
 
 ### Parameters
 
@@ -683,6 +652,11 @@ failOn     string    Minimum severity to report: "error" | "warning" | "info" (d
 maxFiles   number    Max changed files to analyze (default: 100)
 ```
 
+**`list_spec_domains`**
+```
+directory  string   Absolute path to the project directory
+```
+
 **`analyze_impact`**
 ```
 directory  string   Absolute path to the project directory
@@ -725,6 +699,13 @@ directory  string   Absolute path to the project directory
 filePath   string   Path to the file, relative to the project directory
 ```
 
+**`get_god_functions`**
+```
+directory        string   Absolute path to the project directory
+filePath         string   Optional: restrict search to this file (relative path)
+fanOutThreshold  number   Minimum fan-out to be considered a god function (default: 8)
+```
+
 **`suggest_insertion_points`**
 ```
 directory  string   Absolute path to the project directory
@@ -739,6 +720,15 @@ query      string   Natural-language query, e.g. "authenticate user with JWT"
 limit      number   Max results (default: 10)
 language   string   Filter by language: "TypeScript" | "Python" | "Go" | ...
 minFanIn   number   Only return functions with at least this many callers
+```
+
+**`search_specs`**
+```
+directory  string   Absolute path to the project directory
+query      string   Natural language query, e.g. "email validation workflow"
+limit      number   Maximum number of results to return (default: 10)
+domain     string   Filter by domain name (e.g. "auth", "analyzer")
+section    string   Filter by section type: "requirements" | "purpose" | "design" | "architecture" | "entities"
 ```
 
 ### Typical workflow
