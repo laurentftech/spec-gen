@@ -12,7 +12,7 @@ spec-gen automates this. It analyzes your codebase through static analysis, gene
 
 ```bash
 # Install from npm
-npm install -g spec-gen
+npm install -g spec-gen-cli
 
 # Navigate to your project
 cd /path/to/your-project
@@ -277,7 +277,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm install -g spec-gen
+      - run: npm install -g spec-gen-cli
       - run: spec-gen drift --fail-on error --json
 ```
 

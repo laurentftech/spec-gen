@@ -2,7 +2,7 @@
  * SpecVectorIndex
  *
  * Builds and queries a LanceDB vector index over OpenSpec spec files.
- * Each record represents a logical section (requirement, purpose, design note…)
+ * Each record represents a logical section (requirement, purpose, design note...)
  * parsed from the Markdown spec files.
  *
  * Storage: <outputDir>/vector-index/  (same LanceDB folder as VectorIndex, different table)
@@ -45,7 +45,7 @@ export interface SpecSearchResult {
     section: string;
     title: string;
     text: string;
-    /** Parsed from JSON — list of source file paths linked to this spec section */
+    /** Parsed from JSON -- list of source file paths linked to this spec section */
     linkedFiles: string[];
   };
   score: number;
@@ -152,10 +152,10 @@ function slugifySection(title: string): string {
   return lower.replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 }
 
-/** Extract requirement key from "Requirement: MapSomething" → "mapSomething" */
+/** Extract requirement key from "Requirement: MapSomething" -> "mapSomething" */
 function slugifyRequirement(title: string): string {
   const withoutPrefix = title.replace(/^Requirement:\s*/i, '').trim();
-  // camelCase → first char lowercase
+  // camelCase -> first char lowercase
   return withoutPrefix.charAt(0).toLowerCase() + withoutPrefix.slice(1);
 }
 
@@ -164,7 +164,7 @@ function slugifyRequirement(title: string): string {
 // ============================================================================
 
 /**
- * Build a lookup: "domain:requirementKey" → string[] of source files.
+ * Build a lookup: "domain:requirementKey" -> string[] of source files.
  * Filters out wildcard entries (*) and deduplicates.
  */
 function buildMappingIndex(mappings: MappingEntry[]): Map<string, string[]> {
@@ -204,7 +204,7 @@ export class SpecVectorIndex {
    *
    * @param outputDir  Path to .spec-gen/analysis/
    * @param specsDir   Path to openspec/specs/ (or any directory containing domain/spec.md files)
-   * @param mappingJsonPath  Path to mapping.json (optional — no enrichment if absent)
+   * @param mappingJsonPath  Path to mapping.json (optional -- no enrichment if absent)
    */
   static async build(
     outputDir: string,
@@ -221,7 +221,7 @@ export class SpecVectorIndex {
         const raw = JSON.parse(await readFile(mappingJsonPath, 'utf-8'));
         mappingIndex = buildMappingIndex((raw.mappings ?? []) as MappingEntry[]);
       } catch {
-        // non-fatal — proceed without enrichment
+        // non-fatal -- proceed without enrichment
       }
     }
 

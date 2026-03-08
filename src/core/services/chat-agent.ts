@@ -1,5 +1,5 @@
 /**
- * ChatAgent — agentic tool-use loop for the diagram chatbot.
+ * ChatAgent -- agentic tool-use loop for the diagram chatbot.
  *
  * Supports three provider formats:
  *   - Anthropic Claude   (tool_use / tool_result via /v1/messages)
@@ -7,13 +7,13 @@
  *   - Google Gemini      (function calling via generateContent)
  *
  * Provider resolution (same priority as generate.ts):
- *   1. GEMINI_API_KEY                → Gemini
- *   2. ANTHROPIC_API_KEY             → Anthropic Claude
- *   3. OPENAI_COMPAT_BASE_URL        → any OpenAI-compatible endpoint
- *   4. specGenConfig.generation      → reads provider + openaiCompatBaseUrl from config
- *   5. OPENAI_API_KEY                → OpenAI directly
+ *   1. GEMINI_API_KEY                -> Gemini
+ *   2. ANTHROPIC_API_KEY             -> Anthropic Claude
+ *   3. OPENAI_COMPAT_BASE_URL        -> any OpenAI-compatible endpoint
+ *   4. specGenConfig.generation      -> reads provider + openaiCompatBaseUrl from config
+ *   5. OPENAI_API_KEY                -> OpenAI directly
  *
- * Model: OPENAI_COMPAT_MODEL env var → specGenConfig.generation.model → provider default.
+ * Model: OPENAI_COMPAT_MODEL env var -> specGenConfig.generation.model -> provider default.
  *
  * Max iterations: 8 (prevents runaway loops).
  */
@@ -22,7 +22,7 @@ import { CHAT_TOOLS, toChatToolDefinitions } from './chat-tools.js';
 import { readSpecGenConfig } from './config-manager.js';
 
 // ============================================================================
-// TYPES — OpenAI
+// TYPES -- OpenAI
 // ============================================================================
 
 interface OAIMessage {
@@ -46,7 +46,7 @@ interface OAIResponse {
 }
 
 // ============================================================================
-// TYPES — Gemini
+// TYPES -- Gemini
 // ============================================================================
 
 type GeminiPart =
@@ -67,7 +67,7 @@ interface GeminiResponse {
 }
 
 // ============================================================================
-// TYPES — Anthropic
+// TYPES -- Anthropic
 // ============================================================================
 
 type AnthropicContentBlock =
@@ -171,7 +171,7 @@ function buildSystemPrompt(directory: string): string {
   return `You are a code analysis assistant embedded in a dependency diagram viewer.
 The project directory is: ${directory}
 You have access to tools that query the codebase's static analysis data.
-When calling tools, always pass directory="${directory}" — never ask the user for it.
+When calling tools, always pass directory="${directory}" -- never ask the user for it.
 
 ## Reasoning strategy
 
@@ -307,7 +307,7 @@ async function runGeminiLoop(
     parameters: t.inputSchema,
   }));
 
-  // Convert history to Gemini content format (no system role — handled separately)
+  // Convert history to Gemini content format (no system role -- handled separately)
   const contents: GeminiContent[] = messages.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }],
@@ -347,7 +347,7 @@ async function runGeminiLoop(
     contents.push({ role: 'model', parts });
 
     if (fnCalls.length === 0) {
-      // Final answer — join all text parts
+      // Final answer -- join all text parts
       const reply = textParts.map(p => p.text).join('').trim();
       return { reply: reply || '(no response)', filePaths: [...new Set(allFilePaths)] };
     }
@@ -365,7 +365,7 @@ async function runGeminiLoop(
     contents.push({ role: 'user', parts: responseParts });
   }
 
-  // Max iterations — extract last model text
+  // Max iterations -- extract last model text
   const lastModel = [...contents].reverse().find(c => c.role === 'model');
   const lastText  = lastModel?.parts.filter((p): p is { text: string } => 'text' in p).map(p => p.text).join('') ?? '';
   return {
@@ -453,7 +453,7 @@ async function runAnthropicLoop(
     history.push({ role: 'user', content: resultBlocks });
   }
 
-  // Max iterations — extract last assistant text
+  // Max iterations -- extract last assistant text
   const lastAssistant = [...history].reverse().find(m => m.role === 'assistant');
   const lastText = Array.isArray(lastAssistant?.content)
     ? (lastAssistant.content as AnthropicContentBlock[])

@@ -69,7 +69,7 @@ export function buildReason(
     case 'add_orchestration_step':
       return `${name} orchestrates ${fanOut} downstream calls. Insert your feature as a new step in this pipeline.`;
     case 'cross_cutting_hook':
-      return `${name} is called by ${fanIn} functions — adding logic here affects the entire callsite surface.`;
+      return `${name} is called by ${fanIn} functions -- adding logic here affects the entire callsite surface.`;
     case 'extract_shared_logic':
       return `${name} is a low-traffic utility. Shared logic for your feature can live here or be extracted alongside it.`;
     default:

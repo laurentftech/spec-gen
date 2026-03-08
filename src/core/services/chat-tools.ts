@@ -2,8 +2,8 @@
  * Tool registry for the diagram chatbot.
  *
  * Each entry in CHAT_TOOLS maps a tool name to:
- *  - description / inputSchema  — forwarded to the LLM as tool definitions
- *  - execute()                  — calls the matching handler and returns
+ *  - description / inputSchema  -- forwarded to the LLM as tool definitions
+ *  - execute()                  -- calls the matching handler and returns
  *                                 { result, filePaths } where filePaths is
  *                                 the list of source files to highlight in
  *                                 the dependency graph.
@@ -355,7 +355,7 @@ export const CHAT_TOOLS: ChatTool[] = [
         args.domain as string | undefined,
         args.section as string | undefined,
       );
-      // linkedFiles arrays are returned per result — collect all for graph highlighting
+      // linkedFiles arrays are returned per result -- collect all for graph highlighting
       const paths: string[] = [];
       if (result && typeof result === 'object') {
         const r = result as Record<string, unknown>;
