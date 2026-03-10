@@ -903,7 +903,8 @@ spec-gen analyze --embed
 {
   "embedding": {
     "baseUrl": "http://localhost:11434/v1",
-    "model": "nomic-embed-text"
+    "model": "nomic-embed-text",
+    "chunkSize": 2000
   }
 }
 ```

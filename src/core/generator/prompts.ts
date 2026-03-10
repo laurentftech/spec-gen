@@ -145,6 +145,13 @@ Include:
 - integrations: Array of external systems this interacts with
 - securityModel: Authentication/authorization approach as a string
 - keyDecisions: Array of observable architectural decisions as strings
+- nodeRoles: If a "Nodes to classify" section is provided in the user message, classify each node.
+  Array of {id, role, confidence} where:
+  - id: the exact id value from the node list
+  - role: one of "service" | "orchestrator" | "entrypoint" | "controller" | "domain-model" | "adapter" | "utility"
+  - confidence: 0-1, how certain you are based on name, file path, fanIn/fanOut, and class context
+  Use the full architectural picture (layers, data flow, entities) to inform each classification.
+  Omit this field entirely if no nodes were provided.
 
 Express each key architectural aspect clearly.
 Base all conclusions on the code evidence provided.
@@ -161,7 +168,11 @@ Example output:
   "dataFlow": "HTTP request → route handler → service → repository → PostgreSQL; async email notifications via Redis queue",
   "integrations": ["PostgreSQL", "Redis", "SendGrid"],
   "securityModel": "JWT Bearer tokens issued at login; route middleware enforces authentication on all /api/* routes",
-  "keyDecisions": ["Use Prisma ORM for type-safe database access", "Redis queue for async email notifications to avoid request latency"]
+  "keyDecisions": ["Use Prisma ORM for type-safe database access", "Redis queue for async email notifications to avoid request latency"],
+  "nodeRoles": [
+    {"id": "node-abc", "role": "service", "confidence": 0.9},
+    {"id": "node-xyz", "role": "entrypoint", "confidence": 0.95}
+  ]
 }
 
 Respond with a JSON object. Respond ONLY with valid JSON.`,

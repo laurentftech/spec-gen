@@ -242,18 +242,18 @@ export function inferClusterRole(entryCount, hubCount, fileCount) {
 export function computeArchOverview(graph, llmCtx) {
   if (!graph) return null;
 
-  const hubFiles = new Set((llmCtx?.callGraph?.hubFunctions ?? []).map(h => h.filePath));
-  const entryFiles = new Set((llmCtx?.callGraph?.entryPoints ?? []).map(e => e.filePath));
+  const hubFiles = new Set((llmCtx?.callGraph?.hubFunctions ?? []).map((h) => h.filePath));
+  const entryFiles = new Set((llmCtx?.callGraph?.entryPoints ?? []).map((e) => e.filePath));
 
   const clusterOfNode = {};
-  (graph.nodes ?? []).forEach(n => {
+  (graph.nodes ?? []).forEach((n) => {
     if (n.cluster?.id) clusterOfNode[n.id] = n.cluster.id;
     const rel = n.path?.replace(/^\/+/, '') ?? '';
     if (rel && n.cluster?.id) clusterOfNode[rel] = n.cluster.id;
   });
 
   const clusterEdges = {};
-  (graph.edges ?? []).forEach(e => {
+  (graph.edges ?? []).forEach((e) => {
     const from = clusterOfNode[e.source];
     const to = clusterOfNode[e.target];
     if (from && to && from !== to) {
@@ -262,25 +262,41 @@ export function computeArchOverview(graph, llmCtx) {
     }
   });
 
-  const clusters = (graph.clusters ?? []).map(cl => {
-    const clNodes = (graph.nodes ?? []).filter(n => n.cluster?.id === cl.id);
-    const relPaths = clNodes.map(n => n.path?.replace(/^\/+/, '') ?? '');
-    const hubCount = relPaths.filter(p => hubFiles.has(p)).length;
-    const entryCount = relPaths.filter(p => entryFiles.has(p)).length;
-    const role = inferClusterRole(entryCount, hubCount, clNodes.length || cl.files?.length || 1);
-    const dependsOn = [...(clusterEdges[cl.id] ?? [])];
-    const keyFiles = relPaths.filter(p => hubFiles.has(p) || entryFiles.has(p)).slice(0, 5);
-    return { id: cl.id, name: cl.name ?? cl.id, fileCount: clNodes.length || cl.files?.length || 0, role, entryPointCount: entryCount, hubCount, dependsOn, keyFiles, color: cl.color };
-  }).sort((a, b) => b.fileCount - a.fileCount);
+  const clusters = (graph.clusters ?? [])
+    .map((cl) => {
+      const clNodes = (graph.nodes ?? []).filter((n) => n.cluster?.id === cl.id);
+      const relPaths = clNodes.map((n) => n.path?.replace(/^\/+/, '') ?? '');
+      const hubCount = relPaths.filter((p) => hubFiles.has(p)).length;
+      const entryCount = relPaths.filter((p) => entryFiles.has(p)).length;
+      const role = inferClusterRole(entryCount, hubCount, clNodes.length || cl.files?.length || 1);
+      const dependsOn = [...(clusterEdges[cl.id] ?? [])];
+      const keyFiles = relPaths.filter((p) => hubFiles.has(p) || entryFiles.has(p)).slice(0, 5);
+      return {
+        id: cl.id,
+        name: cl.name ?? cl.id,
+        fileCount: clNodes.length || cl.files?.length || 0,
+        role,
+        entryPointCount: entryCount,
+        hubCount,
+        dependsOn,
+        keyFiles,
+        color: cl.color,
+      };
+    })
+    .sort((a, b) => b.fileCount - a.fileCount);
 
-  const globalEntryPoints = (llmCtx?.callGraph?.entryPoints ?? []).slice(0, 20).map(n => ({ name: n.name, file: n.filePath, language: n.language }));
-  const criticalHubs = (llmCtx?.callGraph?.hubFunctions ?? []).slice(0, 10).map(n => ({ name: n.name, file: n.filePath, fanIn: n.fanIn, fanOut: n.fanOut }));
+  const globalEntryPoints = (llmCtx?.callGraph?.entryPoints ?? [])
+    .slice(0, 20)
+    .map((n) => ({ name: n.name, file: n.filePath, language: n.language }));
+  const criticalHubs = (llmCtx?.callGraph?.hubFunctions ?? [])
+    .slice(0, 10)
+    .map((n) => ({ name: n.name, file: n.filePath, fanIn: n.fanIn, fanOut: n.fanOut }));
 
   return {
     summary: {
-      totalFiles: graph.statistics?.nodeCount ?? (graph.nodes?.length ?? 0),
+      totalFiles: graph.statistics?.nodeCount ?? graph.nodes?.length ?? 0,
       totalClusters: clusters.length,
-      totalEdges: graph.statistics?.edgeCount ?? (graph.edges?.length ?? 0),
+      totalEdges: graph.statistics?.edgeCount ?? graph.edges?.length ?? 0,
       cycles: graph.statistics?.cycleCount ?? 0,
       layerViolations: llmCtx?.callGraph?.layerViolations?.length ?? 0,
     },
@@ -288,4 +304,72 @@ export function computeArchOverview(graph, llmCtx) {
     globalEntryPoints,
     criticalHubs,
   };
+}
+
+/**
+ * Enrich graph nodes and clusters with architectural roles from architecture_nodes.json.
+ * Add this function to graph-helpers.js and export it.
+ *
+ * archNodes: ArchitectureNode[] from /api/architecture-nodes
+ *
+ * - Each graph.node gets a `role` field (string)
+ * - Each graph.cluster gets a `role` field derived as the dominant role
+ *   among its member nodes (highest combined fanIn, unknown excluded)
+ */
+export function enrichGraphWithArchNodes(graph, archNodes) {
+  if (!archNodes?.length) return graph;
+
+  // Build lookup: node id -> role
+  // architecture_nodes use function-level ids; graph nodes are file-level.
+  // Match by filePath: stamp the role onto any graph node whose path
+  // matches the archNode's filePath, using the highest-fanIn role per file.
+  const fileRoles = new Map(); // filePath -> { role, fanIn }
+  for (const an of archNodes) {
+    if (an.role === 'unknown') continue;
+    const existing = fileRoles.get(an.filePath);
+    if (!existing || an.fanIn > existing.fanIn) {
+      fileRoles.set(an.filePath, { role: an.role, fanIn: an.fanIn });
+    }
+  }
+
+  // Also build a direct id->role map for exact matches
+  const idRoles = new Map();
+  for (const an of archNodes) {
+    if (an.role !== 'unknown') idRoles.set(an.id, an.role);
+  }
+
+  // Enrich nodes
+  const enrichedNodes = graph.nodes.map((n) => {
+    const byId = idRoles.get(n.id);
+    if (byId) return { ...n, role: byId };
+    // Fallback: match by path suffix
+    const byFile =
+      fileRoles.get(n.path) ??
+      [...fileRoles.entries()].find(([fp]) => n.path?.endsWith(fp) || fp?.endsWith(n.path))?.[1];
+    if (byFile) return { ...n, role: byFile.role };
+    return n;
+  });
+
+  // Derive cluster roles: dominant role by total fanIn among member nodes
+  const clusterRoleFanIn = new Map(); // clusterId -> { role -> fanIn }
+  for (const an of archNodes) {
+    if (an.role === 'unknown') continue;
+    const node = enrichedNodes.find(
+      (n) => n.path?.endsWith(an.filePath) || an.filePath?.endsWith(n.path)
+    );
+    if (!node?.cluster?.id) continue;
+    const cid = node.cluster.id;
+    if (!clusterRoleFanIn.has(cid)) clusterRoleFanIn.set(cid, {});
+    const bucket = clusterRoleFanIn.get(cid);
+    bucket[an.role] = (bucket[an.role] ?? 0) + an.fanIn;
+  }
+
+  const enrichedClusters = graph.clusters.map((c) => {
+    const bucket = clusterRoleFanIn.get(c.id);
+    if (!bucket) return c;
+    const dominant = Object.entries(bucket).sort((a, b) => b[1] - a[1])[0]?.[0];
+    return dominant ? { ...c, role: dominant } : c;
+  });
+
+  return { ...graph, nodes: enrichedNodes, clusters: enrichedClusters };
 }

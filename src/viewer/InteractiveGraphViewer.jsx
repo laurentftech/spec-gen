@@ -12,6 +12,7 @@ import { FlatGraph } from './components/FlatGraph.jsx';
 import { ClusterGraph } from './components/ClusterGraph.jsx';
 import { FilterBar } from './components/FilterBar.jsx';
 import { ArchitectureView } from './components/ArchitectureView.jsx';
+import { SimplifiedArchitectureView } from './components/SimplifiedArchitectureView.jsx';
 import { Hint, SL, Row, Chip, KindBadge } from './components/MicroComponents.jsx';
 import { ChatPanel } from './components/ChatPanel.jsx';
 import { THEMES, THEME_KEYS, DEFAULT_THEME } from './utils/themes.js';
@@ -487,6 +488,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
             ['clusters', '⬡ clusters'],
             ['flat', '⊙ flat'],
             ['architecture', '⬛ architecture'],
+            ['simplified', '◉ simplified'],
           ].map(([v, lbl]) => (
             <button
               key={v}
@@ -748,41 +750,57 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
       {/* Body */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {/* Canvas */}
-        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-          {viewMode === 'architecture' ? (
-            <ArchitectureView graph={graph} llmCtx={llmCtx} focusedIds={focusedIds} />
-          ) : viewMode === 'clusters' ? (
-            <ClusterGraph
-              clusters={graph.clusters.filter(
-                (cl) => !filters.cluster || cl.name === filters.cluster
-              )}
-              edges={visibleEdges}
-              nodes={visibleNodes}
-              allNodes={graph.nodes.filter(
-                (n) => !filters.cluster || n.cluster.name === filters.cluster
-              )}
-              expandedClusters={expandedClusters}
-              onToggle={toggleCluster}
-              onSelectNode={handleSelect}
-              onClear={clearSelection}
-              hasSelection={selectedId !== null || expandedClusters.size > 0}
-              selectedId={selectedId}
-              affectedIds={affectedIds}
-              linkedIds={linkedIds}
-              focusedIds={focusedIds}
-            />
-          ) : (
-            <FlatGraph
-              nodes={visibleNodes}
-              edges={visibleEdges}
-              selectedId={selectedId}
-              affectedIds={affectedIds}
-              focusedIds={focusedIds}
-              onSelect={handleSelect}
-              refactorOnly={filters.refactorOnly}
-              linkedIds={linkedIds}
-            />
-          )}
+         <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+           {viewMode === 'simplified' ? (
+             <SimplifiedArchitectureView
+               graph={graph}
+               llmCtx={llmCtx}
+               focusedIds={focusedIds}
+               onDrillDown={(nodeId) => {
+                 setViewMode('clusters');
+                 setSelectedId(nodeId);
+                 // Expand the cluster containing this node and blast-select it
+                 const node = graph?.nodes.find(n => n.id === nodeId);
+                 if (node?.cluster?.id) {
+                   setExpandedClusters(prev => new Set([...prev, node.cluster.id]));
+                 }
+                 setAffectedIds(computeBlast(visibleEdges, nodeId));
+               }}
+             />
+           ) : viewMode === 'architecture' ? (
+             <ArchitectureView graph={graph} llmCtx={llmCtx} focusedIds={focusedIds} />
+           ) : viewMode === 'clusters' ? (
+             <ClusterGraph
+               clusters={graph.clusters.filter(
+                 (cl) => !filters.cluster || cl.name === filters.cluster
+               )}
+               edges={visibleEdges}
+               nodes={visibleNodes}
+               allNodes={graph.nodes.filter(
+                 (n) => !filters.cluster || n.cluster.name === filters.cluster
+               )}
+               expandedClusters={expandedClusters}
+               onToggle={toggleCluster}
+               onSelectNode={handleSelect}
+               onClear={clearSelection}
+               hasSelection={selectedId !== null || expandedClusters.size > 0}
+               selectedId={selectedId}
+               affectedIds={affectedIds}
+               linkedIds={linkedIds}
+               focusedIds={focusedIds}
+             />
+           ) : (
+             <FlatGraph
+               nodes={visibleNodes}
+               edges={visibleEdges}
+               selectedId={selectedId}
+               affectedIds={affectedIds}
+               focusedIds={focusedIds}
+               onSelect={handleSelect}
+               refactorOnly={filters.refactorOnly}
+               linkedIds={linkedIds}
+             />
+           )}
           {!selectedId && (
             <div
               style={{
@@ -816,47 +834,47 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
         <div
           style={{
             width: 282,
-            borderLeft: '1px solid var(--bd-faint)',
-            background: 'var(--bg-deep)',
-            display: viewMode === 'architecture' ? 'none' : 'flex',
+            borderLeft: '1px solid #0f1224',
+            background: '#080b1e',
+            display: viewMode === 'architecture' || viewMode === 'simplified' ? 'none' : 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
             flexShrink: 0,
           }}
         >
-          <div style={{ display: 'flex', borderBottom: '1px solid var(--bd-faint)', flexShrink: 0 }}>
-            {['node', 'links', 'blast', 'spec', 'skeleton', 'info'].map((t) => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                style={{
-                  flex: 1,
-                  padding: '7px 0',
-                  background: 'none',
-                  border: 'none',
-                  borderBottom: tab === t ? '2px solid var(--ac-primary)' : '2px solid transparent',
-                  color: tab === t ? 'var(--tx-primary)' : 'var(--tx-ghost)',
-                  fontSize: 8,
-                  letterSpacing: '0.06em',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  textTransform: 'uppercase',
-                }}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
+          <div style={{ display: 'flex', borderBottom: '1px solid #0f1224', flexShrink: 0 }}>
+           {['node', 'links', 'blast', 'spec', 'skeleton', 'info'].map((t) => (
+             <button
+               key={t}
+               onClick={() => setTab(t)}
+               style={{
+                 flex: 1,
+                 padding: '7px 0',
+                 background: 'none',
+                 border: 'none',
+                 borderBottom: tab === t ? '2px solid var(--ac-primary)' : '2px solid transparent',
+                 color: tab === t ? 'var(--tx-primary)' : 'var(--tx-ghost)',
+                 fontSize: 8,
+                 letterSpacing: '0.06em',
+                 fontWeight: 700,
+                 cursor: 'pointer',
+                 fontFamily: 'inherit',
+                 textTransform: 'uppercase',
+               }}
+             >
+               {t}
+             </button>
+           ))}
+         </div>
 
-          <div style={{ flex: 1, overflow: 'auto', padding: 13 }}>
-            {/* NODE */}
-            {tab === 'node' && !selectedNode && <Hint>Select a node to inspect it.</Hint>}
-            {tab === 'node' && selectedNode && (
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tx-bright)', marginBottom: 2 }}>
-                  {selectedNode.label}
-                </div>
+         <div style={{ flex: 1, overflow: 'auto', padding: 13 }}>
+           {/* NODE */}
+           {tab === 'node' && !selectedNode && <Hint>Select a node to inspect it.</Hint>}
+           {tab === 'node' && selectedNode && (
+             <div>
+               <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--tx-bright)', marginBottom: 2 }}>
+                 {selectedNode.label}
+               </div>
                 <div
                   style={{
                     fontSize: 8,

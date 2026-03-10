@@ -27,13 +27,13 @@ import { toMermaidFormat } from './dependency-graph.js';
 export function isTestFile(filePath: string): boolean {
   const name = filePath.replace(/\\/g, '/');
   return (
-    /\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$/.test(name) ||   // JS/TS: foo.test.ts
-    /(^|\/)__tests__\//.test(name) ||                          // JS/TS: __tests__/
-    /(^|\/)test_[^/]+\.(ts|js|py)$/.test(name) ||             // Python/TS: test_foo.py
-    /[^/]+_test\.(py|go)$/.test(name) ||                      // Python/Go: foo_test.py, foo_test.go
-    /(^|\/)tests?\/[^/]+\.(py|ts|js|rb|php)$/.test(name) ||  // tests/ directory
-    /[A-Z][a-zA-Z0-9]*Test\.(java|kt|scala)$/.test(name) ||  // Java: FooTest.java
-    /[A-Z][a-zA-Z0-9]*Spec\.(kt|scala|rb)$/.test(name)       // Kotlin/Ruby: FooSpec.kt
+    /\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$/.test(name) || // JS/TS: foo.test.ts
+    /(^|\/)__tests__\//.test(name) || // JS/TS: __tests__/
+    /(^|\/)test_[^/]+\.(ts|js|py)$/.test(name) || // Python/TS: test_foo.py
+    /[^/]+_test\.(py|go)$/.test(name) || // Python/Go: foo_test.py, foo_test.go
+    /(^|\/)tests?\/[^/]+\.(py|ts|js|rb|php)$/.test(name) || // tests/ directory
+    /[A-Z][a-zA-Z0-9]*Test\.(java|kt|scala)$/.test(name) || // Java: FooTest.java
+    /[A-Z][a-zA-Z0-9]*Spec\.(kt|scala|rb)$/.test(name) // Kotlin/Ruby: FooSpec.kt
   );
 }
 
@@ -49,6 +49,24 @@ export interface ArchitectureLayer {
   purpose: string;
   files: string[];
   representativeFile: string | null;
+}
+
+/**
+ * Architecture node information for simplified view
+ */
+export interface ArchitectureNode {
+  id: string; // matches call graph node id
+  filePath: string; // relative path — used by enrichGraphWithArchNodes to match graph nodes
+  role:
+    | 'service'
+    | 'orchestrator'
+    | 'entrypoint'
+    | 'controller'
+    | 'domain-model'
+    | 'adapter'
+    | 'utility'
+    | 'unknown';
+  confidence: number; // 0-1, from LLM or 0.5 for heuristic
 }
 
 /**
@@ -154,6 +172,7 @@ export interface AnalysisArtifacts {
   summaryMarkdown: string;
   dependencyDiagram: string;
   llmContext: LLMContext;
+  architectureNodes: ArchitectureNode[];
 }
 
 /**
@@ -204,12 +223,18 @@ export class AnalysisArtifactGenerator {
     const summaryMarkdown = this.generateSummaryMarkdown(repoMap, depGraph, repoStructure);
     const dependencyDiagram = this.generateDependencyDiagram(depGraph);
     const llmContext = await this.generateLLMContext(repoMap, depGraph);
+    const architectureNodes = this.generateArchitectureNodes(
+      repoMap,
+      depGraph,
+      llmContext.callGraph
+    );
 
     return {
       repoStructure,
       summaryMarkdown,
       dependencyDiagram,
       llmContext,
+      architectureNodes,
     };
   }
 
@@ -231,17 +256,15 @@ export class AnalysisArtifactGenerator {
         join(this.options.outputDir, 'repo-structure.json'),
         JSON.stringify(artifacts.repoStructure, null, 2)
       ),
-      writeFile(
-        join(this.options.outputDir, 'SUMMARY.md'),
-        artifacts.summaryMarkdown
-      ),
-      writeFile(
-        join(this.options.outputDir, 'dependencies.mermaid'),
-        artifacts.dependencyDiagram
-      ),
+      writeFile(join(this.options.outputDir, 'SUMMARY.md'), artifacts.summaryMarkdown),
+      writeFile(join(this.options.outputDir, 'dependencies.mermaid'), artifacts.dependencyDiagram),
       writeFile(
         join(this.options.outputDir, 'llm-context.json'),
         JSON.stringify(artifacts.llmContext, null, 2)
+      ),
+      writeFile(
+        join(this.options.outputDir, 'architecture_nodes.json'),
+        JSON.stringify(artifacts.architectureNodes, null, 2)
       ),
     ]);
 
@@ -274,14 +297,15 @@ export class AnalysisArtifactGenerator {
     const keyFiles = this.generateKeyFiles(repoMap);
 
     // Calculate statistics
-    const avgScore = repoMap.allFiles.length > 0
-      ? repoMap.allFiles.reduce((sum, f) => sum + f.score, 0) / repoMap.allFiles.length
-      : 0;
+    const avgScore =
+      repoMap.allFiles.length > 0
+        ? repoMap.allFiles.reduce((sum, f) => sum + f.score, 0) / repoMap.allFiles.length
+        : 0;
 
     return {
       projectName: repoMap.metadata.projectName,
       projectType: this.formatProjectType(repoMap.metadata.projectType),
-      frameworks: repoMap.summary.frameworks.map(f => f.name),
+      frameworks: repoMap.summary.frameworks.map((f) => f.name),
       architecture: {
         pattern: architecturePattern,
         layers,
@@ -328,19 +352,28 @@ export class AnalysisArtifactGenerator {
     _depGraph: DependencyGraphResult
   ): 'layered' | 'modular' | 'microservices' | 'monolith' | 'unknown' {
     const dirs = repoMap.summary.directories;
-    const dirNames = dirs.map(d => basename(d.path).toLowerCase());
+    const dirNames = dirs.map((d) => basename(d.path).toLowerCase());
 
     // Check for layered architecture indicators
-    const layeredIndicators = ['controllers', 'services', 'repositories', 'routes', 'models', 'views'];
-    const hasLayeredStructure = layeredIndicators.filter(i => dirNames.some(d => d.includes(i))).length >= 3;
+    const layeredIndicators = [
+      'controllers',
+      'services',
+      'repositories',
+      'routes',
+      'models',
+      'views',
+    ];
+    const hasLayeredStructure =
+      layeredIndicators.filter((i) => dirNames.some((d) => d.includes(i))).length >= 3;
 
     // Check for modular/domain-driven indicators
     const moduleIndicators = ['modules', 'features', 'domains'];
-    const hasModularStructure = moduleIndicators.some(i => dirNames.includes(i));
+    const hasModularStructure = moduleIndicators.some((i) => dirNames.includes(i));
 
     // Check for microservices indicators
-    const hasMultiplePackageJson = repoMap.configFiles.filter(f => f.name === 'package.json').length > 1;
-    const hasDockerCompose = repoMap.configFiles.some(f => f.name.includes('docker-compose'));
+    const hasMultiplePackageJson =
+      repoMap.configFiles.filter((f) => f.name === 'package.json').length > 1;
+    const hasDockerCompose = repoMap.configFiles.some((f) => f.name.includes('docker-compose'));
 
     // Determine pattern
     if (hasMultiplePackageJson && hasDockerCompose) {
@@ -366,70 +399,74 @@ export class AnalysisArtifactGenerator {
     const layers: ArchitectureLayer[] = [];
 
     // API/Routes layer
-    const apiFiles = repoMap.allFiles.filter(f =>
-      f.directory.includes('routes') ||
-      f.directory.includes('controllers') ||
-      f.directory.includes('api') ||
-      f.name.includes('route') ||
-      f.name.includes('controller')
+    const apiFiles = repoMap.allFiles.filter(
+      (f) =>
+        f.directory.includes('routes') ||
+        f.directory.includes('controllers') ||
+        f.directory.includes('api') ||
+        f.name.includes('route') ||
+        f.name.includes('controller')
     );
     if (apiFiles.length > 0) {
       layers.push({
         name: 'API Layer',
         purpose: 'HTTP request handling and routing',
-        files: apiFiles.map(f => f.path),
+        files: apiFiles.map((f) => f.path),
         representativeFile: apiFiles[0]?.path ?? null,
       });
     }
 
     // Service/Business layer
-    const serviceFiles = repoMap.allFiles.filter(f =>
-      f.directory.includes('services') ||
-      f.directory.includes('business') ||
-      f.directory.includes('domain') ||
-      f.name.includes('service') ||
-      f.name.includes('manager')
+    const serviceFiles = repoMap.allFiles.filter(
+      (f) =>
+        f.directory.includes('services') ||
+        f.directory.includes('business') ||
+        f.directory.includes('domain') ||
+        f.name.includes('service') ||
+        f.name.includes('manager')
     );
     if (serviceFiles.length > 0) {
       layers.push({
         name: 'Service Layer',
         purpose: 'Business logic and domain operations',
-        files: serviceFiles.map(f => f.path),
+        files: serviceFiles.map((f) => f.path),
         representativeFile: serviceFiles[0]?.path ?? null,
       });
     }
 
     // Data/Repository layer
-    const dataFiles = repoMap.allFiles.filter(f =>
-      f.directory.includes('repositories') ||
-      f.directory.includes('data') ||
-      f.directory.includes('database') ||
-      f.directory.includes('models') ||
-      f.name.includes('repository') ||
-      f.name.includes('model')
+    const dataFiles = repoMap.allFiles.filter(
+      (f) =>
+        f.directory.includes('repositories') ||
+        f.directory.includes('data') ||
+        f.directory.includes('database') ||
+        f.directory.includes('models') ||
+        f.name.includes('repository') ||
+        f.name.includes('model')
     );
     if (dataFiles.length > 0) {
       layers.push({
         name: 'Data Layer',
         purpose: 'Data access and persistence',
-        files: dataFiles.map(f => f.path),
+        files: dataFiles.map((f) => f.path),
         representativeFile: dataFiles[0]?.path ?? null,
       });
     }
 
     // Infrastructure layer
-    const infraFiles = repoMap.allFiles.filter(f =>
-      f.directory.includes('infrastructure') ||
-      f.directory.includes('config') ||
-      f.directory.includes('middleware') ||
-      f.directory.includes('utils') ||
-      f.isConfig
+    const infraFiles = repoMap.allFiles.filter(
+      (f) =>
+        f.directory.includes('infrastructure') ||
+        f.directory.includes('config') ||
+        f.directory.includes('middleware') ||
+        f.directory.includes('utils') ||
+        f.isConfig
     );
     if (infraFiles.length > 0) {
       layers.push({
         name: 'Infrastructure Layer',
         purpose: 'Configuration, middleware, and utilities',
-        files: infraFiles.map(f => f.path),
+        files: infraFiles.map((f) => f.path),
         representativeFile: infraFiles[0]?.path ?? null,
       });
     }
@@ -466,7 +503,7 @@ export class AnalysisArtifactGenerator {
       domains.push({
         name: domainName,
         suggestedSpecPath: `openspec/specs/${domainName}/spec.md`,
-        files: files.map(f => f.path),
+        files: files.map((f) => f.path),
         entities,
         keyFile: keyFile?.path ?? null,
       });
@@ -477,14 +514,14 @@ export class AnalysisArtifactGenerator {
       const clusterName = this.normalizeDomainName(cluster.suggestedDomain);
 
       // Skip if already covered
-      if (domains.some(d => d.name === clusterName)) continue;
+      if (domains.some((d) => d.name === clusterName)) continue;
 
       // Skip small clusters
       if (cluster.files.length < 2) continue;
 
       // Get file details
       const files = cluster.files
-        .map(id => depGraph.nodes.find(n => n.id === id)?.file)
+        .map((id) => depGraph.nodes.find((n) => n.id === id)?.file)
         .filter((f): f is ScoredFile => f !== undefined);
 
       if (files.length === 0) continue;
@@ -495,7 +532,7 @@ export class AnalysisArtifactGenerator {
       domains.push({
         name: clusterName,
         suggestedSpecPath: `openspec/specs/${clusterName}/spec.md`,
-        files: files.map(f => f.path),
+        files: files.map((f) => f.path),
         entities,
         keyFile: keyFile?.path ?? null,
       });
@@ -508,11 +545,13 @@ export class AnalysisArtifactGenerator {
    * Normalize domain name for OpenSpec path
    */
   private normalizeDomainName(name: string): string {
-    return name
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '') || 'misc';
+    return (
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '') || 'misc'
+    );
   }
 
   /**
@@ -528,7 +567,7 @@ export class AnalysisArtifactGenerator {
       // Convert to PascalCase as potential entity name
       const entityName = name
         .split(/[-_.]/)
-        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join('');
 
       // Skip generic names
@@ -545,7 +584,7 @@ export class AnalysisArtifactGenerator {
    * Generate entry points information
    */
   private generateEntryPoints(repoMap: RepositoryMap): EntryPointInfo[] {
-    return repoMap.entryPoints.map(file => {
+    return repoMap.entryPoints.map((file) => {
       // Determine entry point type
       let type: EntryPointInfo['type'] = 'application-entry';
       if (file.name.includes('test') || file.name.includes('spec')) {
@@ -590,7 +629,11 @@ export class AnalysisArtifactGenerator {
         sources.push(file.path);
       }
       // Sinks: repositories, database, storage
-      else if (dir.includes('repositories') || dir.includes('database') || dir.includes('storage')) {
+      else if (
+        dir.includes('repositories') ||
+        dir.includes('database') ||
+        dir.includes('storage')
+      ) {
         sinks.push(file.path);
       }
       // Transformers: services, middleware
@@ -660,9 +703,11 @@ export class AnalysisArtifactGenerator {
     lines.push('## Overview');
     lines.push(`- **Type**: ${this.formatProjectTypeReadable(repoMap.metadata.projectType)}`);
     if (repoMap.summary.frameworks.length > 0) {
-      lines.push(`- **Frameworks**: ${repoMap.summary.frameworks.map(f => f.name).join(', ')}`);
+      lines.push(`- **Frameworks**: ${repoMap.summary.frameworks.map((f) => f.name).join(', ')}`);
     }
-    lines.push(`- **Files Analyzed**: ${repoMap.summary.analyzedFiles} of ${repoMap.summary.totalFiles} (${repoMap.summary.skippedFiles} skipped)`);
+    lines.push(
+      `- **Files Analyzed**: ${repoMap.summary.analyzedFiles} of ${repoMap.summary.totalFiles} (${repoMap.summary.skippedFiles} skipped)`
+    );
     lines.push(`- **Analysis Date**: ${repoMap.metadata.analyzedAt}`);
     lines.push('');
 
@@ -698,7 +743,9 @@ export class AnalysisArtifactGenerator {
       lines.push('|--------|-------|--------------|-----------|');
       for (const domain of repoStructure.domains.slice(0, 10)) {
         const entities = domain.entities.slice(0, 3).join(', ') || '-';
-        lines.push(`| ${domain.name} | ${domain.files.length} | ${entities} | \`${domain.suggestedSpecPath}\` |`);
+        lines.push(
+          `| ${domain.name} | ${domain.files.length} | ${entities} | \`${domain.suggestedSpecPath}\` |`
+        );
       }
       lines.push('');
     }
@@ -712,7 +759,7 @@ export class AnalysisArtifactGenerator {
       lines.push('');
       lines.push('**Most Connected Files:**');
       for (const nodeId of topConnected) {
-        const node = depGraph.nodes.find(n => n.id === nodeId);
+        const node = depGraph.nodes.find((n) => n.id === nodeId);
         if (node) {
           const totalDegree = node.metrics.inDegree + node.metrics.outDegree;
           lines.push(`- \`${node.file.path}\` (${totalDegree} connections)`);
@@ -725,8 +772,8 @@ export class AnalysisArtifactGenerator {
       lines.push('');
       lines.push(`**Circular Dependencies**: ${depGraph.cycles.length} cycle(s) detected`);
       for (const cycle of depGraph.cycles.slice(0, 3)) {
-        const cycleFiles = cycle.map(id => {
-          const node = depGraph.nodes.find(n => n.id === id);
+        const cycleFiles = cycle.map((id) => {
+          const node = depGraph.nodes.find((n) => n.id === id);
           return node ? basename(node.file.path) : basename(id);
         });
         lines.push(`- ${cycleFiles.join(' → ')}`);
@@ -736,7 +783,9 @@ export class AnalysisArtifactGenerator {
     // Orphans
     if (depGraph.rankings.orphanNodes.length > 0) {
       lines.push('');
-      lines.push(`**Orphan Files**: ${depGraph.rankings.orphanNodes.length} file(s) with no imports or exports`);
+      lines.push(
+        `**Orphan Files**: ${depGraph.rankings.orphanNodes.length} file(s) with no imports or exports`
+      );
     }
     lines.push('');
 
@@ -757,16 +806,26 @@ export class AnalysisArtifactGenerator {
     const recommendations: string[] = [];
 
     if (depGraph.cycles.length > 0) {
-      recommendations.push(`- Consider breaking the ${depGraph.cycles.length} circular dependency cycle(s)`);
+      recommendations.push(
+        `- Consider breaking the ${depGraph.cycles.length} circular dependency cycle(s)`
+      );
     }
     if (depGraph.rankings.orphanNodes.length > 0) {
-      recommendations.push(`- Review ${depGraph.rankings.orphanNodes.length} orphan file(s) that may be unused`);
+      recommendations.push(
+        `- Review ${depGraph.rankings.orphanNodes.length} orphan file(s) that may be unused`
+      );
     }
     if (depGraph.rankings.bridgeNodes.length > 0) {
-      recommendations.push(`- The following files are critical bridges: ${depGraph.rankings.bridgeNodes.slice(0, 3).map(id => {
-        const node = depGraph.nodes.find(n => n.id === id);
-        return node ? `\`${basename(node.file.path)}\`` : '';
-      }).filter(Boolean).join(', ')}`);
+      recommendations.push(
+        `- The following files are critical bridges: ${depGraph.rankings.bridgeNodes
+          .slice(0, 3)
+          .map((id) => {
+            const node = depGraph.nodes.find((n) => n.id === id);
+            return node ? `\`${basename(node.file.path)}\`` : '';
+          })
+          .filter(Boolean)
+          .join(', ')}`
+      );
     }
 
     if (recommendations.length === 0) {
@@ -841,7 +900,7 @@ export class AnalysisArtifactGenerator {
     // Phase 2: Deep analysis (top files by importance, excluding test files)
     const phase2Files: LLMContextPhase['files'] = [];
     const topFiles = repoMap.highValueFiles
-      .filter(f => !isTestFile(f.path))
+      .filter((f) => !isTestFile(f.path))
       .slice(0, this.options.maxDeepAnalysisFiles);
 
     for (const file of topFiles) {
@@ -866,12 +925,12 @@ export class AnalysisArtifactGenerator {
     };
 
     // Phase 3: Validation (random leaf nodes not in phase 2, excluding test files)
-    const phase2Paths = new Set(phase2Files.map(f => f.path));
+    const phase2Paths = new Set(phase2Files.map((f) => f.path));
     const leafFiles = depGraph.rankings.leafNodes
-      .map(id => depGraph.nodes.find(n => n.id === id)?.file)
+      .map((id) => depGraph.nodes.find((n) => n.id === id)?.file)
       .filter((f): f is ScoredFile => f !== undefined)
-      .filter(f => !phase2Paths.has(f.path))
-      .filter(f => !isTestFile(f.path));
+      .filter((f) => !phase2Paths.has(f.path))
+      .filter((f) => !isTestFile(f.path));
 
     // FIX 3: Fisher-Yates shuffle (sort(() => Math.random()) est biaisé + mute le tableau original)
     const shuffled = [...leafFiles];
@@ -910,7 +969,15 @@ export class AnalysisArtifactGenerator {
     const { detectDuplicates } = await import('./duplicate-detector.js');
     const { analyzeForRefactoring } = await import('./refactor-analyzer.js');
 
-    const CALL_GRAPH_LANGS = new Set(['Python', 'TypeScript', 'JavaScript', 'Go', 'Rust', 'Ruby', 'Java']);
+    const CALL_GRAPH_LANGS = new Set([
+      'Python',
+      'TypeScript',
+      'JavaScript',
+      'Go',
+      'Rust',
+      'Ruby',
+      'Java',
+    ]);
     const signatures: import('./signature-extractor.js').FileSignatureMap[] = [];
     const callGraphFiles: Array<{ path: string; content: string; language: string }> = [];
 
@@ -985,11 +1052,158 @@ export class AnalysisArtifactGenerator {
     };
   }
 
-}
+  /**
+   * Generate architecture nodes for simplified view (function-level)
+   */
+  private generateArchitectureNodes(
+    repoMap: RepositoryMap,
+    depGraph: DependencyGraphResult,
+    callGraph?: import('./call-graph.js').SerializedCallGraph,
+    nodeRoles?: import('../../types/pipeline.js').NodeRoleClassification[]
+  ): ArchitectureNode[] {
+    if (!callGraph?.nodes) return [];
 
-// ============================================================================
-// CONVENIENCE FUNCTIONS
-// ============================================================================
+    // Build LLM role lookup: id → {role, confidence}
+    const llmRoleMap = new Map<string, { role: ArchitectureNode['role']; confidence: number }>();
+    for (const nr of nodeRoles ?? []) {
+      llmRoleMap.set(nr.id, {
+        role: nr.role as ArchitectureNode['role'],
+        confidence: nr.confidence,
+      });
+    }
+
+    // Build file path set for hub/entry detection
+    const relToAbs = new Map<string, string>();
+    for (const f of repoMap.allFiles) {
+      relToAbs.set(f.path.replace(/^\//, ''), f.absolutePath);
+    }
+    const hubFilePaths = new Set(
+      callGraph.hubFunctions?.map((h) => h.filePath.replace(/^\//, '')) ?? []
+    );
+    const entryFilePaths = new Set(
+      callGraph.entryPoints?.map((e) => e.filePath.replace(/^\//, '')) ?? []
+    );
+
+    const candidates: Array<{
+      id: string;
+      filePath: string;
+      role: ArchitectureNode['role'];
+      confidence: number;
+      score: number;
+    }> = [];
+
+    for (const fn of callGraph.nodes) {
+      const relNorm = fn.filePath.replace(/^\//, '');
+
+      // Structural score for filtering
+      let structural = 0;
+      if (fn.fanIn >= 8) structural += 3;
+      else if (fn.fanIn >= 4) structural += 1;
+      if (fn.fanOut >= 8) structural += 3;
+      else if (fn.fanOut >= 4) structural += 1;
+      if (hubFilePaths.has(relNorm) && fn.fanIn >= 3) structural += 3;
+      if (entryFilePaths.has(relNorm)) structural += 2;
+
+      const scoredFile = repoMap.allFiles.find((f) => f.path.replace(/^\//, '') === relNorm);
+      const semanticWeight = Math.round((scoredFile?.score ?? 0) / 20);
+      const total = structural + semanticWeight;
+
+      const isQualifyingHub = hubFilePaths.has(relNorm) && fn.fanIn >= 3;
+      const isQualifyingEntry = entryFilePaths.has(relNorm);
+      if (total < 7 && !isQualifyingHub && !isQualifyingEntry) continue;
+
+      // Role: LLM first, heuristic fallback
+      let role: ArchitectureNode['role'] = 'unknown';
+      let confidence = 0.5;
+      const llmRole = llmRoleMap.get(fn.id);
+      if (llmRole && llmRole.confidence >= 0.6) {
+        role = llmRole.role;
+        confidence = llmRole.confidence;
+      } else {
+        const nameLower = fn.name.toLowerCase();
+        if (
+          nameLower.includes('controller') ||
+          nameLower.includes('route') ||
+          nameLower.includes('api') ||
+          nameLower.includes('endpoint')
+        ) {
+          role = 'controller';
+        } else if (entryFilePaths.has(relNorm)) {
+          role = 'entrypoint';
+        } else if (hubFilePaths.has(relNorm)) {
+          if (nameLower.includes('service') || nameLower.includes('manager')) role = 'service';
+          else if (
+            nameLower.includes('model') ||
+            nameLower.includes('entity') ||
+            nameLower.includes('schema') ||
+            nameLower.includes('dto')
+          )
+            role = 'domain-model';
+          else if (
+            nameLower.includes('util') ||
+            nameLower.includes('helper') ||
+            nameLower.includes('common')
+          )
+            role = 'utility';
+          else if (
+            nameLower.includes('adapter') ||
+            nameLower.includes('gateway') ||
+            nameLower.includes('client')
+          )
+            role = 'adapter';
+          else if (fn.fanIn >= 3 && fn.fanOut >= 3) role = 'orchestrator';
+        }
+      }
+
+      candidates.push({ id: fn.id, filePath: relNorm, role, confidence, score: total });
+    }
+
+    // Sort by score, cap, then return slim shape
+    candidates.sort((a, b) => b.score - a.score);
+    return candidates.slice(0, 60).map(({ id, filePath, role, confidence }) => ({
+      id,
+      filePath,
+      role,
+      confidence,
+    }));
+  }
+
+  /**
+   * Enrich already-generated architecture nodes with LLM-derived role classifications.
+   * Called by spec-pipeline after stage 5 completes, writing the updated file to disk.
+   */
+  async enrichArchitectureNodes(
+    nodes: ArchitectureNode[],
+    nodeRoles: import('../../types/pipeline.js').NodeRoleClassification[]
+  ): Promise<ArchitectureNode[]> {
+    const llmRoleMap = new Map(nodeRoles.map((nr) => [nr.id, nr]));
+
+    // Slim shape: only update role and confidence from LLM
+    const enriched = nodes.map((node) => {
+      const llmRole = llmRoleMap.get(node.id);
+      if (llmRole && llmRole.confidence >= 0.6) {
+        return {
+          ...node,
+          role: llmRole.role as ArchitectureNode['role'],
+          confidence: llmRole.confidence,
+        };
+      }
+      return node;
+    });
+
+    // Persist updated file
+    try {
+      await writeFile(
+        join(this.options.outputDir, 'architecture_nodes.json'),
+        JSON.stringify(enriched, null, 2)
+      );
+    } catch {
+      // non-fatal — caller can proceed without updated file
+    }
+
+    return enriched;
+  }
+}
 
 /**
  * Generate all artifacts

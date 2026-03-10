@@ -28,6 +28,13 @@ export async function runStage5(
 ): Promise<StageResult<ArchitectureSynthesis>> {
   const startTime = Date.now();
 
+  // Top structurally-significant nodes passed to the LLM for role classification.
+  // We merge hubFunctions and entryPoints, deduplicate by id, and cap at 40.
+  const topNodes = [
+    ...(callGraph?.hubFunctions ?? []),
+    ...(callGraph?.entryPoints ?? []),
+  ].filter((n, i, arr) => arr.findIndex(x => x.id === n.id) === i).slice(0, 40);
+
   const userPrompt = `Synthesize the architecture from this analysis:
 
 Entities (${entities.length}):
@@ -51,14 +58,17 @@ ${callGraph.hubFunctions.slice(0, 8).map(n => `- ${n.name} (${n.filePath}, fanIn
 ${callGraph.entryPoints.length > 0 ? `\nEntry points (no internal callers — likely public API or CLI handlers):
 ${callGraph.entryPoints.slice(0, 8).map(n => `- ${n.name} (${n.filePath}${n.isAsync ? ', async' : ''})`).join('\n')}` : ''}
 ${callGraph.layerViolations.length > 0 ? `\nLayer violations detected:
-${callGraph.layerViolations.slice(0, 5).map(v => `- ${v.reason}`).join('\n')}` : ''}` : ''}`;
+${callGraph.layerViolations.slice(0, 5).map(v => `- ${v.reason}`).join('\n')}` : ''}` : ''}${topNodes.length > 0 ? `
+
+Nodes to classify (top ${topNodes.length} structurally significant functions):
+${topNodes.map(n => `- id=${n.id} name=${n.name} file=${n.filePath} fanIn=${n.fanIn} fanOut=${n.fanOut}${n.className ? ` class=${n.className}` : ''}`).join('\n')}` : ''}`;
 
   try {
     const result = await pipeline.llm.completeJSON<ArchitectureSynthesis>({
       systemPrompt: PROMPTS.stage5_architecture(survey),
       userPrompt,
       temperature: 0.3,
-      maxTokens: 3000,
+      maxTokens: 4000,
     });
 
     const stageResult: StageResult<ArchitectureSynthesis> = {

@@ -10,11 +10,11 @@ import { join, resolve } from 'node:path';
 import logger from '../../utils/logger.js';
 import type { ProgressIndicator } from '../../utils/progress.js';
 import type { LLMService } from '../services/llm-service.js';
-import type { RepoStructure, LLMContext } from '../analyzer/artifact-generator.js';
+import type { RepoStructure, LLMContext, ArchitectureNode } from '../analyzer/artifact-generator.js';
 import { buildGraphPromptSection, getFileGodFunctions, extractSubgraph } from '../analyzer/subgraph-extractor.js';
 import { getSkeletonContent, detectLanguage, isSkeletonWorthIncluding } from '../analyzer/code-shaper.js';
 import type { DependencyGraphResult } from '../analyzer/dependency-graph.js';
-import { isTestFile } from '../analyzer/artifact-generator.js';
+import { isTestFile, AnalysisArtifactGenerator } from '../analyzer/artifact-generator.js';
 import { runStage1 } from './stages/stage1-survey.js';
 import { runStage2 } from './stages/stage2-entities.js';
 import { runStage3 } from './stages/stage3-services.js';
@@ -231,8 +231,23 @@ export class SpecGenerationPipeline implements PipelineContext {
            layerMap: data.layerMap ?? [],
            integrations: data.integrations ?? [],
            keyDecisions: data.keyDecisions ?? [],
+           nodeRoles: data.nodeRoles ?? [],
          })
        );
+      // Enrich architecture_nodes.json with LLM-derived roles from stage 5
+      if (architecture.nodeRoles && architecture.nodeRoles.length > 0 && this.options.saveIntermediate) {
+        try {
+          const raw = await readFile(join(this.options.outputDir, 'architecture_nodes.json'), 'utf-8');
+          const existingNodes: ArchitectureNode[] = JSON.parse(raw);
+          const artifactGenerator = new AnalysisArtifactGenerator({
+            rootDir: this.options.rootPath,
+            outputDir: this.options.outputDir,
+          });
+          await artifactGenerator.enrichArchitectureNodes(existingNodes, architecture.nodeRoles);
+        } catch {
+          // architecture_nodes.json not present or unreadable — non-fatal
+        }
+      }
 
       // Stage 6: ADR Enrichment (optional)
       let adrs: EnrichedADR[] = [];

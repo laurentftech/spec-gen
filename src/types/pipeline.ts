@@ -119,6 +119,21 @@ export interface ArchitectureLayer {
   components: string[];
 }
 
+export type ArchitecturalRole =
+  | 'service'
+  | 'orchestrator'
+  | 'entrypoint'
+  | 'controller'
+  | 'domain-model'
+  | 'adapter'
+  | 'utility';
+
+export interface NodeRoleClassification {
+  id: string;
+  role: ArchitecturalRole;
+  confidence: number;
+}
+
 export interface ArchitectureSynthesis {
   systemPurpose: string;
   architectureStyle: string;
@@ -127,6 +142,7 @@ export interface ArchitectureSynthesis {
   integrations: string[];
   securityModel: string;
   keyDecisions: string[];
+  nodeRoles?: NodeRoleClassification[];
 }
 
 export interface EnrichedADR {

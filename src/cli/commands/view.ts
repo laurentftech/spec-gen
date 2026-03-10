@@ -70,13 +70,14 @@ export const viewCommand = new Command('view')
       host: string;
       open: boolean;
     }) => {
-      const rootPath = process.cwd();
-      const analysisDir = resolve(rootPath, options.analysis);
-      const graphPath = join(analysisDir, 'dependency-graph.json');
-      const llmContextPath = join(analysisDir, 'llm-context.json');
-      const refactorPath = join(analysisDir, 'refactor-priorities.json');
-      const mappingPath = join(analysisDir, 'mapping.json');
-      const specDir = resolve(rootPath, options.spec);
+       const rootPath = process.cwd();
+       const analysisDir = resolve(rootPath, options.analysis);
+       const graphPath = join(analysisDir, 'dependency-graph.json');
+       const llmContextPath = join(analysisDir, 'llm-context.json');
+       const refactorPath = join(analysisDir, 'refactor-priorities.json');
+       const mappingPath = join(analysisDir, 'mapping.json');
+       const architectureNodesPath = join(analysisDir, 'architecture_nodes.json');
+       const specDir = resolve(rootPath, options.spec);
 
       if (!existsSync(graphPath)) {
         logger.error(`Missing graph file: ${graphPath}`);
@@ -142,24 +143,41 @@ export const viewCommand = new Command('view')
                 }
               });
 
-              devServer.middlewares.use('/api/refactor-priorities', async (_req, res) => {
-                try {
-                  if (!existsSync(refactorPath)) {
-                    res.statusCode = 404;
-                    res.end(JSON.stringify({ error: 'refactor-priorities.json not found' }));
-                    return;
-                  }
-                  const json = await readFile(refactorPath, 'utf-8');
-                  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-                  res.statusCode = 200;
-                  res.end(json);
-                } catch (err) {
-                  res.statusCode = 500;
-                  res.end(JSON.stringify({ error: sanitizeErrorMessage((err as Error).message) }));
-                }
-              });
+               devServer.middlewares.use('/api/refactor-priorities', async (_req, res) => {
+                 try {
+                   if (!existsSync(refactorPath)) {
+                     res.statusCode = 404;
+                     res.end(JSON.stringify({ error: 'refactor-priorities.json not found' }));
+                     return;
+                   }
+                   const json = await readFile(refactorPath, 'utf-8');
+                   res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                   res.statusCode = 200;
+                   res.end(json);
+                 } catch (err) {
+                   res.statusCode = 500;
+                   res.end(JSON.stringify({ error: sanitizeErrorMessage((err as Error).message) }));
+                 }
+               });
 
-              devServer.middlewares.use('/api/mapping', async (_req, res) => {
+               devServer.middlewares.use('/api/architecture-nodes', async (_req, res) => {
+                 try {
+                   if (!existsSync(architectureNodesPath)) {
+                     res.statusCode = 404;
+                     res.end(JSON.stringify({ error: 'architecture_nodes.json not found' }));
+                     return;
+                   }
+                   const json = await readFile(architectureNodesPath, 'utf-8');
+                   res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                   res.statusCode = 200;
+                   res.end(json);
+                 } catch (err) {
+                   res.statusCode = 500;
+                   res.end(JSON.stringify({ error: sanitizeErrorMessage((err as Error).message) }));
+                 }
+               });
+
+               devServer.middlewares.use('/api/mapping', async (_req, res) => {
                 try {
                   if (!existsSync(mappingPath)) {
                     res.statusCode = 404;
