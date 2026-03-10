@@ -41,6 +41,13 @@ export class EmbeddingService {
   private apiKey: string;
   private batchSize: number;
 
+  /**
+   * Maximum characters per text before truncation.
+   * ~24 000 chars ≈ 6 000 words ≈ 8 000 tokens — stays under the 8 192-token
+   * limit of most embedding models (nomic-embed-text, text-embedding-3-small…).
+   */
+  private static readonly MAX_CHARS_PER_TEXT = 24000;
+
   constructor(config: EmbeddingConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, '');
     this.model = config.model;
@@ -79,6 +86,7 @@ export class EmbeddingService {
       model: cfg.embedding.model,
       apiKey: cfg.embedding.apiKey,
       skipSslVerify: cfg.embedding.skipSslVerify,
+      batchSize: cfg.embedding.batchSize, // FIX: was missing, causing batchSize config to be ignored
     });
   }
 
@@ -103,6 +111,16 @@ export class EmbeddingService {
   private async callEmbeddingsApi(texts: string[]): Promise<number[][]> {
     const url = `${this.baseUrl}/embeddings`;
 
+    // FIX: truncate each text to stay within the model's token limit.
+    // Most embedding models (nomic-embed-text, text-embedding-3-small…) cap at
+    // 8 192 tokens. Slicing at MAX_CHARS_PER_TEXT characters is a safe
+    // approximation (1 token ≈ 4 chars on average).
+    const truncated = texts.map(t =>
+      t.length > EmbeddingService.MAX_CHARS_PER_TEXT
+        ? t.slice(0, EmbeddingService.MAX_CHARS_PER_TEXT)
+        : t
+    );
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -113,7 +131,7 @@ export class EmbeddingService {
     const response = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ input: texts, model: this.model }),
+      body: JSON.stringify({ input: truncated, model: this.model }),
     });
 
     if (!response.ok) {
