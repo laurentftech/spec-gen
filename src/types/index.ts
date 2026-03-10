@@ -35,6 +35,8 @@ export interface EmbeddingConfig {
   apiKey?: string;
   /** Disable SSL certificate verification (e.g. self-signed certs on local servers) */
   skipSslVerify?: boolean;
+  /** Batch size for embedding requests */
+  batchSize?: number;
 }
 
 export interface AnalysisConfig {

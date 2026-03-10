@@ -109,6 +109,26 @@ describe('EmbeddingService', () => {
       expect(result).toHaveLength(3);
     });
 
+    it('uses default batchSize of 64 when not specified', async () => {
+      // Create 100 texts to test default batching
+      const texts = Array.from({ length: 100 }, (_, i) => `text${i}`);
+      const fetchMock = vi.fn()
+        .mockResolvedValue({
+          ok: true,
+          json: async () => makeEmbedResponse(texts.slice(0, 64)), // First batch
+        });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const svc = new EmbeddingService({
+        baseUrl: 'http://localhost:11434/v1',
+        model: 'test-model',
+        // No batchSize specified
+      });
+      await svc.embed(texts.slice(0, 64)); // Only first batch
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it('throws on non-ok HTTP response', async () => {
       mockFetch({ error: 'model not found' }, 404);
 

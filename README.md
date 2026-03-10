@@ -904,10 +904,12 @@ spec-gen analyze --embed
   "embedding": {
     "baseUrl": "http://localhost:11434/v1",
     "model": "nomic-embed-text",
-    "chunkSize": 2000
+    "batchSize": 64
   }
 }
 ```
+
+- `batchSize`: Number of texts to embed per API call (default: 64)
 
 The index is stored in `.spec-gen/analysis/vector-index/` and is automatically used by the viewer's search bar and the `search_code` / `suggest_insertion_points` MCP tools.
 
