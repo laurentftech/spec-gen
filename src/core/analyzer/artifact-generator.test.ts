@@ -148,6 +148,7 @@ function createMockDepGraph(overrides: Partial<DependencyGraphResult> = {}): Dep
       cohesion: 0,
       coupling: 1,
       suggestedDomain: 'services',
+      color: '#7c6af7',
       isStructural: false,
     },
   ];

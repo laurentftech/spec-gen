@@ -11,7 +11,27 @@ import { extractAllHttpEdges, type HttpEdge } from './http-route-parser.js';
 import type { ScoredFile } from '../../types/index.js';
 
 // ============================================================================
-// TYPES
+// CONSTANTS
+// ============================================================================
+
+const CLUSTER_PALETTE = [
+  '#7c6af7',
+  '#3ecfcf',
+  '#f77c6a',
+  '#6af7a0',
+  '#f7c76a',
+  '#f76ac8',
+  '#6aaff7',
+  '#c8f76a',
+  '#f7a06a',
+  '#a0a0ff',
+  '#ff6b9d',
+  '#00d4aa',
+  '#ffb347',
+];
+
+// ============================================================================
+// INTERFACES
 // ============================================================================
 
 /**
@@ -26,6 +46,11 @@ export interface DependencyNode {
     outDegree: number;
     betweenness: number;
     pageRank: number;
+  };
+  cluster?: {
+    id: string;
+    name: string;
+    color: string;
   };
 }
 
@@ -54,6 +79,7 @@ export interface FileCluster {
   cohesion: number;
   coupling: number;
   suggestedDomain: string;
+  color: string;
   /**
    * True when the cluster has at least one internal edge (files actually
    * import each other). False clusters are pure directory groups with no
@@ -182,6 +208,17 @@ export class DependencyGraphBuilder {
 
     // Detect clusters
     const clusters = this.detectClusters();
+
+    // Assign clusters to nodes
+    const clusterByNode: Record<string, { id: string; name: string; color: string }> = {};
+    clusters.forEach((cl) => {
+      cl.files.forEach((fid) => {
+        clusterByNode[fid] = { id: cl.id, name: cl.name, color: cl.color };
+      });
+    });
+    for (const [id, node] of this.nodes) {
+      node.cluster = clusterByNode[id];
+    }
 
     // Detect cycles
     const cycles = this.detectCycles();
@@ -507,6 +544,7 @@ export class DependencyGraphBuilder {
         cohesion,
         coupling,
         suggestedDomain,
+        color: CLUSTER_PALETTE[clusterId % CLUSTER_PALETTE.length],
         isStructural: internalEdges > 0,
       });
     }
