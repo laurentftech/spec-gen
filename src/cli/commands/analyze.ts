@@ -25,6 +25,7 @@ import {
   buildArchitectureOverview,
   writeArchitectureMd,
 } from '../../core/analyzer/architecture-writer.js';
+import { generateCodebaseDigest } from '../../core/analyzer/codebase-digest.js';
 
 // ============================================================================
 // TYPES
@@ -544,6 +545,13 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
         // non-fatal — analysis still succeeded
       }
 
+      // Generate .spec-gen/analysis/CODEBASE.md — agent-readable architecture digest
+      const digestWritten = await generateCodebaseDigest(
+        artifacts.llmContext,
+        depGraph,
+        { rootPath, outputDir: outputPath },
+      );
+
       // Files generated
       console.log('  Output Files:');
       console.log(`    ├─ ${opts.output}repo-structure.json`);
@@ -552,9 +560,12 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
       console.log(`    ├─ ${opts.output}dependencies.mermaid`);
       if (architectureMdWritten) {
         console.log(`    ├─ ${opts.output}SUMMARY.md`);
-        console.log('    └─ ARCHITECTURE.md');
+        console.log('    ├─ ARCHITECTURE.md');
       } else {
-        console.log(`    └─ ${opts.output}SUMMARY.md`);
+        console.log(`    ├─ ${opts.output}SUMMARY.md`);
+      }
+      if (digestWritten) {
+        console.log(`    └─ ${opts.output}CODEBASE.md  ← add to CLAUDE.md for agent context`);
       }
       console.log('');
 

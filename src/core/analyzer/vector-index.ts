@@ -333,12 +333,12 @@ export class VectorIndex {
   static async search(
     outputDir: string,
     query: string,
-    embedSvc: EmbeddingService,
+    embedSvc: EmbeddingService | null | undefined,
     opts: {
       limit?: number;
       language?: string;
       minFanIn?: number;
-      /** Enable hybrid dense+sparse retrieval via RRF (default: true) */
+      /** Enable hybrid dense+sparse retrieval via RRF (default: true when embedSvc available) */
       hybrid?: boolean;
     } = {}
   ): Promise<SearchResult[]> {
@@ -354,8 +354,19 @@ export class VectorIndex {
     const db = await connect(dbPath);
     const table = await db.openTable(TABLE_NAME);
 
+    // ── BM25-only path (no embedding service available) ───────────────────────
+    if (!embedSvc) {
+      return VectorIndex._bm25Only(table, dbPath, query, limit, language, minFanIn);
+    }
+
     // ── Dense recall ──────────────────────────────────────────────────────────
-    const [queryVector] = await embedSvc.embed([query]);
+    let queryVector: number[];
+    try {
+      [queryVector] = await embedSvc.embed([query]);
+    } catch {
+      // Embedding server unreachable — fall back to BM25
+      return VectorIndex._bm25Only(table, dbPath, query, limit, language, minFanIn);
+    }
     if (!queryVector) throw new Error('Failed to embed query');
 
     const denseFetch = hybrid ? Math.min(limit * 5, 500) : Math.min(limit * 10, 1000);
@@ -460,6 +471,77 @@ export class VectorIndex {
     return merged
       .sort((a, b) => b.score - a.score)
       .filter(({ row }) => passesFilters(row))
+      .slice(0, limit)
+      .map(({ row, score }) => ({ record: rowToRecord(row), score }));
+  }
+
+  /**
+   * BM25-only search: used when no embedding service is available.
+   * Scores the full corpus with BM25 and returns the top `limit` results.
+   */
+  private static async _bm25Only(
+    table: { query(): { toArray(): Promise<Record<string, unknown>[]> } },
+    dbPath: string,
+    query: string,
+    limit: number,
+    language?: string,
+    minFanIn?: number,
+  ): Promise<SearchResult[]> {
+    let cachedEntry = _bm25Cache.get(dbPath);
+    let allRows: Record<string, unknown>[];
+
+    if (!cachedEntry) {
+      allRows = await table.query().toArray();
+      const corpus = buildBm25Corpus(
+        allRows.map(r => ({ id: r.id as string, text: r.text as string }))
+      );
+      cachedEntry = { corpus, rowCount: allRows.length };
+      _bm25Cache.set(dbPath, cachedEntry);
+    } else {
+      allRows = await table.query().toArray();
+      if (allRows.length !== cachedEntry.rowCount) {
+        const corpus = buildBm25Corpus(
+          allRows.map(r => ({ id: r.id as string, text: r.text as string }))
+        );
+        cachedEntry = { corpus, rowCount: allRows.length };
+        _bm25Cache.set(dbPath, cachedEntry);
+      }
+    }
+
+    const { corpus } = cachedEntry;
+    const queryTokens = tokenize(query);
+    const rowById = new Map(allRows.map(r => [r.id as string, r]));
+
+    const rowToRecord = (row: Record<string, unknown>): Omit<FunctionRecord, 'vector'> => ({
+      id:          row.id as string,
+      name:        row.name as string,
+      filePath:    row.filePath as string,
+      className:   row.className as string,
+      language:    row.language as string,
+      signature:   row.signature as string,
+      docstring:   row.docstring as string,
+      fanIn:       row.fanIn as number,
+      fanOut:      row.fanOut as number,
+      isHub:       row.isHub as boolean,
+      isEntryPoint: row.isEntryPoint as boolean,
+      text:        row.text as string,
+    });
+
+    return corpus.docs
+      .map((_, i) => ({ idx: i, score: bm25Score(corpus, queryTokens, i) }))
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit * 3) // oversample before filtering
+      .map(({ idx, score }) => {
+        const row = rowById.get(corpus.docs[idx].id);
+        return row ? { row, score } : null;
+      })
+      .filter((x): x is { row: Record<string, unknown>; score: number } => x !== null)
+      .filter(({ row }) => {
+        if (language && (row.language as string) !== language) return false;
+        if (minFanIn !== undefined && minFanIn > 0 && (row.fanIn as number) < minFanIn) return false;
+        return true;
+      })
       .slice(0, limit)
       .map(({ row, score }) => ({ record: rowToRecord(row), score }));
   }

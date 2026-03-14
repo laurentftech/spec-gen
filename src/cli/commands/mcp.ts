@@ -89,9 +89,10 @@ export const TOOL_DEFINITIONS = [
   {
     name: 'analyze_codebase',
     description:
-      'Run static analysis on a project directory. Extracts repo structure, ' +
-      'dependency graph, call graph (hub functions, entry points), and top ' +
-      'refactoring priorities — all without an LLM. Results are cached for 1 hour.',
+      'USE THIS WHEN: the project has never been analyzed, or the user says the code changed ' +
+      'significantly since the last run, or other tools return "no cache found". ' +
+      'Builds the call graph, dependency graph, and refactor priorities — all without an LLM. ' +
+      'Results are cached for 1 hour; skip this if the cache is recent.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -110,10 +111,9 @@ export const TOOL_DEFINITIONS = [
   {
     name: 'get_architecture_overview',
     description:
-      'Return a high-level architecture map of the project: domain clusters with their ' +
-      'key files and roles, cross-cluster dependencies, global entry points, and critical hubs. ' +
-      'Start here when onboarding to an unknown codebase or before planning a large feature. ' +
-      'Run analyze_codebase first.',
+      'USE THIS WHEN: onboarding to an unknown codebase, or before planning a large feature. ' +
+      'Returns domain clusters, cross-cluster dependencies, global entry points, and critical hubs — ' +
+      'faster than reading package.json + directory tree yourself. Run analyze_codebase first.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -270,11 +270,10 @@ export const TOOL_DEFINITIONS = [
   {
     name: 'check_spec_drift',
     description:
-      'Detect spec drift: identify code changes that are not reflected in the ' +
-      'project\'s OpenSpec specifications. Compares git-changed files against ' +
-      'spec coverage maps. Returns issues categorised as gap, stale, uncovered, ' +
-      'or orphaned-spec. Requires spec-gen generate to have been run at least once. ' +
-      'Runs in static mode (no LLM required).',
+      'USE THIS WHEN: you\'ve modified code and want to know if the specs are still aligned, ' +
+      'or when asked "is the code in sync with the spec?", "what changed since the last spec run?". ' +
+      'Compares git-changed files against spec coverage — impossible to replicate by reading files. ' +
+      'Requires spec-gen generate to have been run at least once. No LLM required.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -312,10 +311,10 @@ export const TOOL_DEFINITIONS = [
   {
     name: 'analyze_impact',
     description:
-      'Deep impact analysis for a specific function or symbol. Returns fan-in, fan-out, ' +
-      'upstream call chain, downstream critical path, a risk score (0–100), blast radius ' +
-      'estimation, and a recommended refactoring strategy. Use this before touching any ' +
-      'function to understand the full consequences. Run analyze_codebase first.',
+      'USE THIS WHEN: you\'re about to modify a function and want to know the full consequences — ' +
+      '"what breaks if I change X?", "what\'s the blast radius of modifying Y?". ' +
+      'Returns fan-in/out, full call chains, risk score (0–100), and refactoring strategy. ' +
+      'Call this before touching any non-trivial function. Run analyze_codebase first.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -471,12 +470,11 @@ export const TOOL_DEFINITIONS = [
   {
     name: 'suggest_insertion_points',
     description:
-      'Find the best places in the codebase to implement a new feature described in natural language. ' +
-      'Combines semantic similarity with structural analysis (entry points, orchestrators, hubs) ' +
-      'to return ranked insertion candidates with an actionable strategy for each. ' +
-      'Ideal before implementing a feature: run this first, then use get_subgraph or ' +
-      'get_function_skeleton on the top candidates to understand the local context. ' +
-      'Requires a vector index built with "spec-gen analyze --embed".',
+      'USE THIS WHEN: you need to find where to implement a new feature — ' +
+      '"where should I add rate limiting?", "where\'s the best place to add email validation?". ' +
+      'Combines semantic search + call graph to return ranked candidates with strategy. ' +
+      'Call this before writing any code; then use get_subgraph on the top candidates. ' +
+      'Requires "spec-gen analyze --embed".',
     inputSchema: {
       type: 'object',
       properties: {
@@ -505,12 +503,11 @@ export const TOOL_DEFINITIONS = [
   {
     name: 'search_code',
     description:
-      'Semantic search over indexed functions using a natural language query. ' +
-      'Returns the closest functions by meaning — useful for finding implementations, ' +
-      'understanding how a concept is handled, or navigating unfamiliar codebases. ' +
-      'Requires a vector index built with "spec-gen analyze --embed". ' +
-      'Configure the embedding endpoint via EMBED_BASE_URL + EMBED_MODEL env vars ' +
-      'or the "embedding" section in .spec-gen/config.json.',
+      'USE THIS WHEN: you don\'t know which file or function handles a concept — ' +
+      '"where is rate limiting implemented?", "which function validates tokens?", ' +
+      '"what handles authentication?". Beats grep when the function name is unknown. ' +
+      'Falls back to keyword search automatically if the embedding server is down. ' +
+      'Requires "spec-gen analyze --embed" to have been run at least once.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -554,13 +551,10 @@ export const TOOL_DEFINITIONS = [
   {
     name: 'search_specs',
     description:
-      'Semantic search over OpenSpec specifications to find requirements, design notes, ' +
-      'and architecture decisions by meaning. Returns linked source files for graph highlighting. ' +
-      'Use this when asked "which spec covers X?", "what requirement describes Y?", ' +
-      'or "where should we implement Z?" (spec-first approach). ' +
-      'Requires a spec index built with "spec-gen analyze --embed" or "spec-gen analyze --reindex-specs". ' +
-      'Configure the embedding endpoint via EMBED_BASE_URL + EMBED_MODEL env vars ' +
-      'or the "embedding" section in .spec-gen/config.json.',
+      'USE THIS WHEN: asked "which spec covers X?", "what does the spec say about Y?", ' +
+      '"which requirement describes Z?". Searches specs by meaning and returns linked source files. ' +
+      'Use spec-first: check what the spec says before reading or writing code. ' +
+      'Requires "spec-gen analyze --embed" or "spec-gen analyze --reindex-specs".',
     inputSchema: {
       type: 'object',
       properties: {

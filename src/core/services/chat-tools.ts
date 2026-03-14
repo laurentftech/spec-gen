@@ -17,6 +17,7 @@ import {
   handleAnalyzeImpact,
   handleGetCriticalHubs,
   handleGetGodFunctions,
+  handleGetFileDependencies,
 } from './mcp-handlers/graph.js';
 
 import {
@@ -24,20 +25,14 @@ import {
   handleSuggestInsertionPoints,
   handleSearchSpecs,
   handleListSpecDomains,
+  handleGetSpec,
 } from './mcp-handlers/semantic.js';
 
 import {
   handleGetArchitectureOverview,
   handleGetRefactorReport,
-  handleGetFunctionBody,
   handleGetDecisions,
 } from './mcp-handlers/analysis.js';
-import {
-  handleGetFileDependencies,
-} from './mcp-handlers/graph.js';
-import {
-  handleGetSpec,
-} from './mcp-handlers/semantic.js';
 
 // ============================================================================
 // TYPES
@@ -91,9 +86,10 @@ export const CHAT_TOOLS: ChatTool[] = [
   {
     name: 'get_architecture_overview',
     description:
-      'Return a high-level architecture map: domain clusters, cross-cluster dependencies, ' +
-      'global entry points, and critical hubs. Use this as the first call when the user asks ' +
-      'about the project architecture or wants a broad overview.',
+      'USE THIS WHEN: the user asks "how is this project organized?", "what are the main ' +
+      'components?", or wants a broad overview before diving in. ' +
+      'Returns domain clusters, cross-cluster dependencies, global entry points, and critical ' +
+      'hubs in one call — faster than reading package.json + directory tree yourself.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -123,8 +119,10 @@ export const CHAT_TOOLS: ChatTool[] = [
   {
     name: 'get_call_graph',
     description:
-      'Return hub functions (high fan-in), entry points, and layer violations. ' +
-      'Use this when the user asks about which functions are most critical or most called.',
+      'USE THIS WHEN: the user asks "which functions are called the most?", "what are ' +
+      'the critical bottlenecks?", or "are there layer violations?". ' +
+      'Returns hub functions, entry points, and architecture violations across all files — ' +
+      'impossible to reconstruct by reading individual files.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -142,8 +140,10 @@ export const CHAT_TOOLS: ChatTool[] = [
   {
     name: 'get_subgraph',
     description:
-      'Extract the call subgraph around a function. Use this to show what a function calls ' +
-      '(downstream) or who calls it (upstream), or both.',
+      'USE THIS WHEN: the user needs to trace calls from or to a specific function — ' +
+      '"what does X call?", "who calls Y?", "show me the call chain for Z". ' +
+      'More targeted than get_call_graph. Works across all files without you having to ' +
+      'grep through each one.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -174,9 +174,10 @@ export const CHAT_TOOLS: ChatTool[] = [
   {
     name: 'analyze_impact',
     description:
-      'Deep impact analysis for a function: fan-in, fan-out, blast radius, risk score, ' +
-      'upstream/downstream chains. Use this when the user asks about the impact of changing ' +
-      'or adding something.',
+      'USE THIS WHEN: the user asks "what breaks if I change X?", "what\'s the blast radius ' +
+      'of modifying Y?", or "is it safe to refactor Z?". ' +
+      'Returns risk score, fan-in/out, and full upstream/downstream call chains — ' +
+      'gives the complete picture without reading every caller file.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -200,8 +201,9 @@ export const CHAT_TOOLS: ChatTool[] = [
   {
     name: 'get_critical_hubs',
     description:
-      'Return the most critical hub functions (high fan-in). Use this when the user asks ' +
-      'about bottlenecks, central functions, or what to refactor.',
+      'USE THIS WHEN: the user asks "what\'s the most central code?", "what should I ' +
+      'refactor to reduce coupling?", or "which functions are shared the most?". ' +
+      'Lists the highest fan-in functions — modifying them has the widest blast radius.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -225,8 +227,9 @@ export const CHAT_TOOLS: ChatTool[] = [
   {
     name: 'get_god_functions',
     description:
-      'Find god functions (high fan-out orchestrators). Use this when the user asks ' +
-      'about complex or oversized functions that do too much.',
+      'USE THIS WHEN: the user asks "which functions do too much?", "what are the worst ' +
+      'SRP violations?", or "which functions should be split?". ' +
+      'Finds high fan-out orchestrators — the functions most likely to need decomposition.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -250,9 +253,10 @@ export const CHAT_TOOLS: ChatTool[] = [
   {
     name: 'suggest_insertion_points',
     description:
-      'Find the best places to implement a new feature using semantic + structural analysis. ' +
-      'Use this when the user asks where to add a feature or how to integrate something new. ' +
-      'Requires a vector index (spec-gen analyze --embed).',
+      'USE THIS WHEN: the user asks "where should I add X?", "where\'s the best place to ' +
+      'implement Y?", or "how do I integrate Z into the existing code?". ' +
+      'Combines semantic search + call graph to find ranked candidates with context — ' +
+      'far more targeted than grepping for similar patterns.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -283,9 +287,10 @@ export const CHAT_TOOLS: ChatTool[] = [
   {
     name: 'search_code',
     description:
-      'Semantic search over the codebase to find functions by meaning. ' +
-      'Use this when the user asks "where is X implemented?" or "which code handles Y?". ' +
-      'Requires a vector index (spec-gen analyze --embed).',
+      'USE THIS WHEN: you don\'t know which file or function handles a concept — ' +
+      '"where is rate limiting implemented?", "which function validates tokens?", ' +
+      '"what handles authentication?". Beats grep when the function name is unknown. ' +
+      'Falls back to keyword search automatically if the embedding server is down.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -312,40 +317,19 @@ export const CHAT_TOOLS: ChatTool[] = [
     },
   },
 
-  // ── List spec domains ────────────────────────────────────────────────────
-  {
-    name: 'list_spec_domains',
-    description:
-      'List all OpenSpec domains available in this project. ' +
-      'Use this first when the user asks a broad spec question and you need to discover ' +
-      'what domains exist before doing a targeted search_specs call.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        directory: { type: 'string', description: 'Absolute path to the project directory' },
-      },
-      required: ['directory'],
-    },
-    async execute(directory, args) {
-      const result = await handleListSpecDomains((args.directory as string) ?? directory);
-      return { result, filePaths: [] };
-    },
-  },
-
-  // ── Spec semantic search ─────────────────────────────────────────────────
+  // ── Spec semantic search (+ domain discovery when query is omitted) ──────
   {
     name: 'search_specs',
     description:
-      'Semantic search over OpenSpec specifications to find requirements, design notes, ' +
-      'and architecture decisions by meaning. Returns linked source files for graph highlighting. ' +
-      'Use this when the user asks "which spec covers X?", "what requirement describes Y?", ' +
-      'or "where should we implement Z?" (spec-first approach). ' +
-      'Requires a spec index (spec-gen analyze --embed or --reindex-specs).',
+      'USE THIS WHEN: the user asks "which spec covers X?", "what does the spec say about Y?", ' +
+      '"which requirement describes Z?", or "what domains exist?". ' +
+      'Omit query to list available spec domains. Provide a query to search by meaning. ' +
+      'Returns linked source files for graph highlighting.',
     inputSchema: {
       type: 'object',
       properties: {
         directory: { type: 'string', description: 'Absolute path to the project directory' },
-        query:     { type: 'string', description: 'Natural language search query' },
+        query:     { type: 'string', description: 'Natural language search query (omit to list domains)' },
         limit:     { type: 'number', description: 'Results to return (default: 10)' },
         domain:    { type: 'string', description: 'Filter by domain name (e.g. "auth", "analyzer")' },
         section:   {
@@ -353,11 +337,17 @@ export const CHAT_TOOLS: ChatTool[] = [
           description: 'Filter by section type: "requirements", "purpose", "design", "architecture", "entities"',
         },
       },
-      required: ['directory', 'query'],
+      required: ['directory'],
     },
     async execute(directory, args) {
+      const dir = (args.directory as string) ?? directory;
+      // No query → return domain list instead
+      if (!args.query) {
+        const result = await handleListSpecDomains(dir);
+        return { result, filePaths: [] };
+      }
       const result = await handleSearchSpecs(
-        (args.directory as string) ?? directory,
+        dir,
         args.query as string,
         (args.limit as number) ?? 10,
         args.domain as string | undefined,
@@ -379,9 +369,9 @@ export const CHAT_TOOLS: ChatTool[] = [
   {
     name: 'get_spec',
     description:
-      'Return the full content of a spec domain\'s specification file plus the functions ' +
-      'that implement it. Use this when the user asks "show me the auth spec" or ' +
-      '"what does the spec say about X domain?".',
+      'USE THIS WHEN: the user asks to read a specific spec domain — "show me the auth ' +
+      'spec", "what does the analyzer spec say?", "read the API spec". ' +
+      'Returns the full spec content and the functions that implement it, in one call.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -399,44 +389,13 @@ export const CHAT_TOOLS: ChatTool[] = [
     },
   },
 
-  // ── Get function body ────────────────────────────────────────────────────
-  {
-    name: 'get_function_body',
-    description:
-      'Return the full source code of a named function. Use this after search_code ' +
-      'or suggest_insertion_points to read the actual implementation before deciding ' +
-      'where to make changes.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        directory:    { type: 'string', description: 'Absolute path to the project directory' },
-        filePath:     { type: 'string', description: 'Relative file path, e.g. "src/auth/jwt.ts"' },
-        functionName: { type: 'string', description: 'Function name, e.g. "verifyToken"' },
-      },
-      required: ['directory', 'filePath', 'functionName'],
-    },
-    async execute(directory, args) {
-      const result = await handleGetFunctionBody(
-        (args.directory as string) ?? directory,
-        args.filePath as string,
-        args.functionName as string,
-      );
-      const paths: string[] = [];
-      if (result && typeof result === 'object') {
-        const r = result as Record<string, unknown>;
-        if (typeof r.filePath === 'string') paths.push(r.filePath);
-      }
-      return { result, filePaths: paths };
-    },
-  },
-
   // ── Get file dependencies ────────────────────────────────────────────────
   {
     name: 'get_file_dependencies',
     description:
-      'Return the file-level import dependencies for a source file. ' +
-      'Use this when the user asks "what does X depend on?" or "what imports Y?" ' +
-      'to understand coupling or plan a refactor.',
+      'USE THIS WHEN: the user asks "what does file X import?", "what files depend on Y?", ' +
+      'or when planning a refactor and needing to understand coupling before touching a file. ' +
+      'Uses pre-computed in/out degree — no need to grep import statements across the codebase.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -474,8 +433,9 @@ export const CHAT_TOOLS: ChatTool[] = [
   {
     name: 'get_decisions',
     description:
-      'List or search Architecture Decision Records (ADRs). Use this when the user asks ' +
-      '"why was X decided?" or "is there an ADR about Y?" to surface documented decisions.',
+      'USE THIS WHEN: the user asks "why was X decided?", "is there an ADR about Y?", ' +
+      'or "what\'s the rationale behind Z?". Lists documented architectural decisions — ' +
+      'gives the "why" that is not visible in the code itself.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -497,9 +457,10 @@ export const CHAT_TOOLS: ChatTool[] = [
   {
     name: 'get_refactor_report',
     description:
-      'Return a prioritized refactor report: unreachable code, hub overload, god functions, ' +
-      'SRP violations, cyclic dependencies. Use this when the user asks about code quality ' +
-      'or what to improve.',
+      'USE THIS WHEN: the user asks "what should I clean up?", "what\'s the biggest ' +
+      'technical debt?", or "what are the worst code quality issues?". ' +
+      'Returns a prioritized list: unreachable code, hub overload, god functions, ' +
+      'SRP violations, cyclic dependencies — all in one report.',
     inputSchema: {
       type: 'object',
       properties: {

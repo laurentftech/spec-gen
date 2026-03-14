@@ -122,19 +122,19 @@ export async function handleSearchCode(
     };
   }
 
-  let embedSvc: InstanceType<typeof EmbeddingService>;
+  // Resolve embedding service — fall back to BM25-only search if unavailable
+  let embedSvc: InstanceType<typeof EmbeddingService> | null = null;
+  let searchMode = 'hybrid';
   try {
     embedSvc = EmbeddingService.fromEnv();
   } catch {
     const cfg = await readSpecGenConfig(absDir);
-    if (!cfg) {
-      return { error: 'No embedding configuration found. Set EMBED_BASE_URL and EMBED_MODEL env vars, or add an "embedding" section to .spec-gen/config.json.' };
+    const svcFromConfig = cfg ? EmbeddingService.fromConfig(cfg) : null;
+    if (svcFromConfig) {
+      embedSvc = svcFromConfig;
+    } else {
+      searchMode = 'bm25_fallback';
     }
-    const svcFromConfig = EmbeddingService.fromConfig(cfg);
-    if (!svcFromConfig) {
-      return { error: 'No embedding configuration found. Set EMBED_BASE_URL and EMBED_MODEL env vars, or add an "embedding" section to .spec-gen/config.json.' };
-    }
-    embedSvc = svcFromConfig;
   }
 
   limit = Math.max(1, Math.min(limit, 100));
@@ -167,6 +167,8 @@ export async function handleSearchCode(
 
   return {
     query,
+    searchMode,
+    ...(searchMode === 'bm25_fallback' ? { note: 'Embedding server unavailable — results based on keyword matching only. Configure EMBED_BASE_URL + EMBED_MODEL for semantic search.' } : {}),
     count: results.length,
     results: results.map(r => ({
       score: r.score,
