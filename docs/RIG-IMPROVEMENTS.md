@@ -241,6 +241,86 @@ retourne ceux correspondant à une requête textuelle simple (filtrage par titre
 
 ---
 
+---
+
+## Phase 5 — Tests d'intégration sur données réelles
+
+Les tests d'intégration existants ont un défaut structurel commun : ils utilisent
+des fixtures synthétiques avec des noms de fonctions déjà sémantiquement explicites
+(`verifyToken`, `executeQuery`, `hashPassword`). Un modèle d'embedding peut produire
+les bons résultats en se basant uniquement sur ces noms, sans jamais lire les
+docstrings ni les signatures. C'est précisément pourquoi le bug "docstrings non
+indexées dans la recherche sémantique" n'a pas été détecté par les tests existants
+et n'a été découvert que par des tests sur du code réel.
+
+**Principe directeur :** les tests d'intégration doivent utiliser du code réel où
+les noms de fonctions seuls sont insuffisants pour valider le comportement.
+
+---
+
+### #16 — Tests sémantiques avec noms de fonctions ambigus (critique)
+
+**Fichier :** `src/core/analyzer/vector-index.integration.test.ts`
+
+Les fixtures actuelles ont des noms parlants. Il faut des cas où le nom est opaque
+(`process`, `handle`, `run`, `execute`, `compute`) et où seules la docstring ou la
+signature permettent de retrouver la fonction via une requête sémantique. Cela
+garantit que le texte embarqué (`buildText()`) exploite réellement tous les champs,
+et pas uniquement le nom.
+
+**Exemple de cas à couvrir :**
+```
+function process(input: unknown): Result
+// docstring: "Validates an email address format using RFC 5322 rules"
+```
+→ la requête `"validate email format"` doit retourner cette fonction,
+  prouvant que la docstring est bien indexée.
+
+---
+
+### #17 — Pipeline end-to-end sur un vrai dépôt open source (élevé)
+
+Il n'existe aucun test qui exécute la chaîne complète `analyze → embed → search`
+sur un vrai codebase. Les bugs de production (champs manquants dans l'index,
+troncature silencieuse, mauvais chemin de fichier) n'apparaissent que sur du vrai
+code avec toutes ses irrégularités.
+
+**Objectif :** Fixture permanente pointant sur un petit dépôt open source connu
+(ex. le propre codebase de spec-gen, ou un projet tiers fixé à un commit précis).
+Le test doit au minimum :
+- Construire l'index complet (call graph + embeddings)
+- Vérifier que des requêtes métier connues retournent les bons fichiers
+- Vérifier que les résultats contiennent des docstrings non vides pour les fonctions
+  qui en ont
+
+---
+
+### #18 — Tests de régression pour chaque bug trouvé en production (élevé)
+
+Quand un bug est découvert sur du vrai code (comme le bug des docstrings), le
+correctif doit s'accompagner d'un test de régression qui aurait échoué avant le
+correctif. Actuellement ce processus n'est pas formalisé — les bugs sont corrigés
+sans filet.
+
+**Objectif :** Créer un fichier `src/core/analyzer/regression.integration.test.ts`
+dédié aux régressions, avec un commentaire par test indiquant le bug original et la
+date de découverte.
+
+---
+
+### #19 — Tests MCP de bout en bout sur données réelles (moyen)
+
+Les handlers MCP sont testés unitairement, mais jamais dans la chaîne complète :
+client MCP → serveur → handler → call graph réel → réponse. Des bugs d'intégration
+(sérialisation JSON, taille de réponse, timeout, cache périmé) ne peuvent apparaître
+que dans ce contexte.
+
+**Objectif :** Tests d'intégration qui démarrent le serveur MCP en mode stdio,
+appellent les outils sur un vrai projet analysé, et vérifient la cohérence des
+réponses (types corrects, pas de champs `undefined`, scores dans les bornes attendues).
+
+---
+
 ## Tableau récapitulatif
 
 | # | Lacune | Phase | Impact |
@@ -260,3 +340,7 @@ retourne ceux correspondant à une requête textuelle simple (filtrage par titre
 | 13 | `suggest_insertion_points` sans graph expansion | 4 | **Élevé** |
 | 14 | Pas de requête dépendances fichier | 4 | **Moyen** |
 | 15 | Pas d'accès aux ADRs via MCP | 4 | **Moyen** |
+| 16 | Tests sémantiques avec noms ambigus | 5 | **Critique** |
+| 17 | Pipeline e2e sur vrai dépôt open source | 5 | **Élevé** |
+| 18 | Tests de régression formalisés | 5 | **Élevé** |
+| 19 | Tests MCP bout en bout sur données réelles | 5 | **Moyen** |
