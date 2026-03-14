@@ -1352,9 +1352,24 @@ export class LLMService {
    * Simple schema validation
    */
   private validateSchema(data: unknown, schema: object): void {
-    // Simple type checking - in production use a proper JSON schema validator
     const schemaObj = schema as Record<string, unknown>;
-    if (schemaObj.type === 'object' && schemaObj.required && Array.isArray(schemaObj.required)) {
+
+    if (schemaObj.type === 'array') {
+      if (!Array.isArray(data)) {
+        throw new Error('Expected JSON array but received object');
+      }
+      // Validate each item against the items schema if provided
+      const itemsSchema = schemaObj.items as Record<string, unknown> | undefined;
+      if (itemsSchema?.required && Array.isArray(itemsSchema.required)) {
+        for (const item of data as Record<string, unknown>[]) {
+          for (const field of itemsSchema.required as string[]) {
+            if (!(field in item)) {
+              throw new Error(`Missing required field in array item: ${field}`);
+            }
+          }
+        }
+      }
+    } else if (schemaObj.type === 'object' && schemaObj.required && Array.isArray(schemaObj.required)) {
       const dataObj = data as Record<string, unknown>;
       for (const field of schemaObj.required) {
         if (!(field in dataObj)) {
