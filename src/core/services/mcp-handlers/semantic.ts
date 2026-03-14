@@ -227,7 +227,11 @@ export async function handleSuggestInsertionPoints(
   }
 
   limit = Math.max(1, Math.min(limit, 20));
-  const rawResults = await VectorIndex.search(outputDir, description, embedSvc, { limit: limit * 4, language });
+  const { readCachedContext } = await import('./utils.js');
+  const [rawResults, llmCtx] = await Promise.all([
+    VectorIndex.search(outputDir, description, embedSvc, { limit: limit * 4, language }),
+    readCachedContext(absDir),
+  ]);
 
   const candidates: InsertionCandidate[] = rawResults.map(r => {
     const role     = classifyRole(r.record.fanIn, r.record.fanOut, r.record.isHub, r.record.isEntryPoint);
@@ -250,6 +254,56 @@ export async function handleSuggestInsertionPoints(
     };
   });
 
+  // RIG-13 — Graph expansion: add depth-1 callers of semantic seed functions.
+  // Callers (orchestrators) are likely to be the right insertion point for a new feature:
+  // they coordinate the domain logic and control the execution flow.
+  if (llmCtx?.callGraph) {
+    const cg = llmCtx.callGraph;
+    const nodeById = new Map(cg.nodes.map(n => [n.id, n]));
+    // Build callerOf: nodeId → caller node ids
+    const callerOf = new Map<string, string[]>();
+    for (const e of cg.edges) {
+      if (!e.calleeId) continue;
+      const list = callerOf.get(e.calleeId) ?? [];
+      list.push(e.callerId);
+      callerOf.set(e.calleeId, list);
+    }
+
+    const seedIds = new Set(rawResults.map(r => r.record.id));
+    const existingIds = new Set(candidates.map(c => `${c.filePath}::${c.name}`));
+
+    for (const seedResult of rawResults) {
+      const callerIds = callerOf.get(seedResult.record.id) ?? [];
+      for (const callerId of callerIds) {
+        const callerNode = nodeById.get(callerId);
+        if (!callerNode) continue;
+        const key = `${callerNode.filePath}::${callerNode.name}`;
+        if (existingIds.has(key) || seedIds.has(callerId)) continue;
+        existingIds.add(key);
+
+        const role     = classifyRole(callerNode.fanIn, callerNode.fanOut, false, false);
+        const strategy = deriveStrategy(role);
+        // Graph-expanded candidates score slightly lower than the semantic seed
+        const score    = compositeScore(seedResult.score + 0.15, role) * 0.85;
+        candidates.push({
+          rank: 0,
+          score,
+          semanticDistance: seedResult.score + 0.15,
+          name: callerNode.name,
+          filePath: callerNode.filePath,
+          className: callerNode.className,
+          language: callerNode.language,
+          signature: undefined,
+          docstring: undefined,
+          role, insertionStrategy: strategy,
+          reason: `${callerNode.name} calls ${seedResult.record.name} (semantically close to your feature). Adding logic here propagates to the domain.`,
+          fanIn: callerNode.fanIn, fanOut: callerNode.fanOut,
+          isHub: false, isEntryPoint: false,
+        });
+      }
+    }
+  }
+
   candidates.sort((a, b) => b.score - a.score);
   const top = candidates.slice(0, limit).map((c, i) => ({ ...c, rank: i + 1 }));
 
@@ -264,6 +318,37 @@ export async function handleSuggestInsertionPoints(
           `After implementing, run check_spec_drift to verify the code matches the spec`,
         ]
       : ['No candidates found. Try a broader description or run "spec-gen analyze --embed" to build the index.'],
+  };
+}
+
+/**
+ * Return the full content of a spec domain's spec.md plus its mapping entries.
+ */
+export async function handleGetSpec(
+  directory: string,
+  domain: string,
+): Promise<unknown> {
+  const { existsSync } = await import('node:fs');
+  const { readFile } = await import('node:fs/promises');
+  const { join: pjoin } = await import('node:path');
+  const absDir = await validateDirectory(directory);
+
+  const specFile = pjoin(absDir, 'openspec', 'specs', domain, 'spec.md');
+  if (!existsSync(specFile)) {
+    return { error: `No spec found for domain "${domain}". Run list_spec_domains to see available domains.` };
+  }
+
+  const [content, mappingIdx] = await Promise.all([
+    readFile(specFile, 'utf-8'),
+    loadMappingIndex(absDir),
+  ]);
+  const linkedFunctions = mappingIdx ? functionsForDomain(mappingIdx, domain) : undefined;
+
+  return {
+    domain,
+    specFile: `openspec/specs/${domain}/spec.md`,
+    content,
+    linkedFunctions,
   };
 }
 

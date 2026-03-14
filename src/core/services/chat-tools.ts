@@ -29,7 +29,15 @@ import {
 import {
   handleGetArchitectureOverview,
   handleGetRefactorReport,
+  handleGetFunctionBody,
+  handleGetDecisions,
 } from './mcp-handlers/analysis.js';
+import {
+  handleGetFileDependencies,
+} from './mcp-handlers/graph.js';
+import {
+  handleGetSpec,
+} from './mcp-handlers/semantic.js';
 
 // ============================================================================
 // TYPES
@@ -364,6 +372,124 @@ export const CHAT_TOOLS: ChatTool[] = [
         }
       }
       return { result, filePaths: [...new Set(paths)] };
+    },
+  },
+
+  // ── Get spec by domain ───────────────────────────────────────────────────
+  {
+    name: 'get_spec',
+    description:
+      'Return the full content of a spec domain\'s specification file plus the functions ' +
+      'that implement it. Use this when the user asks "show me the auth spec" or ' +
+      '"what does the spec say about X domain?".',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+        domain:    { type: 'string', description: 'Domain name, e.g. "auth" or "analyzer"' },
+      },
+      required: ['directory', 'domain'],
+    },
+    async execute(directory, args) {
+      const result = await handleGetSpec(
+        (args.directory as string) ?? directory,
+        args.domain as string,
+      );
+      return { result, filePaths: [] };
+    },
+  },
+
+  // ── Get function body ────────────────────────────────────────────────────
+  {
+    name: 'get_function_body',
+    description:
+      'Return the full source code of a named function. Use this after search_code ' +
+      'or suggest_insertion_points to read the actual implementation before deciding ' +
+      'where to make changes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory:    { type: 'string', description: 'Absolute path to the project directory' },
+        filePath:     { type: 'string', description: 'Relative file path, e.g. "src/auth/jwt.ts"' },
+        functionName: { type: 'string', description: 'Function name, e.g. "verifyToken"' },
+      },
+      required: ['directory', 'filePath', 'functionName'],
+    },
+    async execute(directory, args) {
+      const result = await handleGetFunctionBody(
+        (args.directory as string) ?? directory,
+        args.filePath as string,
+        args.functionName as string,
+      );
+      const paths: string[] = [];
+      if (result && typeof result === 'object') {
+        const r = result as Record<string, unknown>;
+        if (typeof r.filePath === 'string') paths.push(r.filePath);
+      }
+      return { result, filePaths: paths };
+    },
+  },
+
+  // ── Get file dependencies ────────────────────────────────────────────────
+  {
+    name: 'get_file_dependencies',
+    description:
+      'Return the file-level import dependencies for a source file. ' +
+      'Use this when the user asks "what does X depend on?" or "what imports Y?" ' +
+      'to understand coupling or plan a refactor.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+        filePath:  { type: 'string', description: 'Relative file path, e.g. "src/core/analyzer/vector-index.ts"' },
+        direction: {
+          type: 'string',
+          enum: ['imports', 'importedBy', 'both'],
+          description: '"imports", "importedBy", or "both" (default)',
+        },
+      },
+      required: ['directory', 'filePath'],
+    },
+    async execute(directory, args) {
+      const result = await handleGetFileDependencies(
+        (args.directory as string) ?? directory,
+        args.filePath as string,
+        (args.direction as 'imports' | 'importedBy' | 'both') ?? 'both',
+      );
+      const paths: string[] = [];
+      if (result && typeof result === 'object') {
+        const r = result as Record<string, unknown>;
+        for (const dep of (r.imports as Array<{ filePath?: string }>) ?? []) {
+          if (dep.filePath) paths.push(dep.filePath);
+        }
+        for (const dep of (r.importedBy as Array<{ filePath?: string }>) ?? []) {
+          if (dep.filePath) paths.push(dep.filePath);
+        }
+      }
+      return { result, filePaths: [...new Set(paths)] };
+    },
+  },
+
+  // ── Architecture Decision Records ────────────────────────────────────────
+  {
+    name: 'get_decisions',
+    description:
+      'List or search Architecture Decision Records (ADRs). Use this when the user asks ' +
+      '"why was X decided?" or "is there an ADR about Y?" to surface documented decisions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+        query:     { type: 'string', description: 'Optional text filter on title or content' },
+      },
+      required: ['directory'],
+    },
+    async execute(directory, args) {
+      const result = await handleGetDecisions(
+        (args.directory as string) ?? directory,
+        args.query as string | undefined,
+      );
+      return { result, filePaths: [] };
     },
   },
 

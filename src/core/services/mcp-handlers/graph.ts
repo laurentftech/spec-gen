@@ -572,3 +572,82 @@ export async function handleGetGodFunctions(
 
   return { threshold: fanOutThreshold, count: godFunctions.length, godFunctions };
 }
+
+/**
+ * Return the file-level import dependencies for a given file.
+ *
+ * Uses the dependency-graph.json produced by `spec-gen analyze`.
+ * direction:
+ *   "imports"  — files this file depends on (outgoing edges)
+ *   "importedBy" — files that depend on this file (incoming edges)
+ *   "both"     — both directions
+ */
+export async function handleGetFileDependencies(
+  directory: string,
+  filePath: string,
+  direction: 'imports' | 'importedBy' | 'both' = 'both',
+): Promise<unknown> {
+  const absDir = await validateDirectory(directory);
+  const depGraphPath = join(absDir, '.spec-gen', 'analysis', 'dependency-graph.json');
+
+  interface DepEdge {
+    source: string;
+    target: string;
+    importedNames: string[];
+    isTypeOnly: boolean;
+    weight: number;
+  }
+  interface DepNode {
+    id: string;
+    file: { path: string; absolutePath: string };
+  }
+  interface DepGraph { nodes: DepNode[]; edges: DepEdge[] }
+
+  let graph: DepGraph;
+  try {
+    const { readFile } = await import('node:fs/promises');
+    const raw = await readFile(depGraphPath, 'utf-8');
+    graph = JSON.parse(raw) as DepGraph;
+  } catch {
+    return { error: 'No dependency graph found. Run "spec-gen analyze" first.' };
+  }
+
+  // Resolve the file path to the same form used in the graph (relative or absolute)
+  const node = graph.nodes.find(
+    n => n.file.path === filePath || n.file.absolutePath.endsWith('/' + filePath.replace(/^\//, ''))
+  );
+  if (!node) {
+    return { error: `File not found in dependency graph: ${filePath}`, hint: 'Use a relative path from the project root, e.g. "src/core/analyzer/vector-index.ts"' };
+  }
+
+  const nodeIdToPath = new Map(graph.nodes.map(n => [n.id, n.file.path]));
+
+  const imports = (direction === 'imports' || direction === 'both')
+    ? graph.edges
+        .filter(e => e.source === node.id)
+        .map(e => ({
+          filePath: nodeIdToPath.get(e.target) ?? e.target,
+          importedNames: e.importedNames,
+          isTypeOnly: e.isTypeOnly,
+        }))
+    : undefined;
+
+  const importedBy = (direction === 'importedBy' || direction === 'both')
+    ? graph.edges
+        .filter(e => e.target === node.id)
+        .map(e => ({
+          filePath: nodeIdToPath.get(e.source) ?? e.source,
+          importedNames: e.importedNames,
+          isTypeOnly: e.isTypeOnly,
+        }))
+    : undefined;
+
+  return {
+    filePath: node.file.path,
+    direction,
+    importsCount: imports?.length ?? null,
+    importedByCount: importedBy?.length ?? null,
+    imports,
+    importedBy,
+  };
+}
