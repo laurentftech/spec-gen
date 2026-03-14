@@ -339,6 +339,16 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
             logger.info('Domains detected', repoStructure.domains.map((d: { name: string }) => d.name).join(', ') || 'None');
             logger.info('Architecture', repoStructure.architecture.pattern);
             logger.blank();
+
+            // If embed is requested but index is missing, build it from cached llm-context.json
+            if (opts.embed) {
+              const { VectorIndex } = await import('../../core/analyzer/vector-index.js');
+              if (!VectorIndex.exists(outputPath)) {
+                logger.info('Vector index missing', 'Building from cached analysis...');
+                await runEmbedStep(rootPath, outputPath, specGenConfig, opts.force ?? false, null);
+              }
+            }
+
             logger.info('Next step', "Run 'spec-gen generate' to create OpenSpec files");
             return;
           } catch (readErr) {
@@ -581,55 +591,7 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
       // PHASE 5 (optional): BUILD VECTOR INDEX
       // ========================================================================
       if (opts.embed) {
-        console.log('  Building semantic vector index...');
-        try {
-          const { VectorIndex } = await import('../../core/analyzer/vector-index.js');
-
-          // Resolve embedding config: env vars take priority, then .spec-gen/config.json
-          let embedSvc: InstanceType<typeof EmbeddingService>;
-          try {
-            embedSvc = EmbeddingService.fromEnv();
-          } catch {
-            const cfg = await readSpecGenConfig(rootPath);
-            if (!cfg) throw new Error('No embedding config found. Set EMBED_BASE_URL and EMBED_MODEL, or add "embedding" to .spec-gen/config.json');
-            const svcFromConfig = EmbeddingService.fromConfig(cfg);
-            if (!svcFromConfig) throw new Error('No embedding config found. Set EMBED_BASE_URL and EMBED_MODEL, or add "embedding" to .spec-gen/config.json');
-            embedSvc = svcFromConfig;
-          }
-
-          const cg = result.artifacts.llmContext.callGraph;
-          const sigs = result.artifacts.llmContext.signatures ?? [];
-
-          if (!cg || cg.nodes.length === 0) {
-            console.log('    ⚠ No call graph data — function index skipped');
-          } else {
-            const hubIds = new Set(cg.hubFunctions.map(f => f.id));
-            const entryIds = new Set(cg.entryPoints.map(f => f.id));
-
-            // Read source files so buildText() can extract skeleton bodies for richer embeddings
-            const fileContents = new Map<string, string>();
-            const uniquePaths = new Set(cg.nodes.map(n => n.filePath));
-            await Promise.all([...uniquePaths].map(async fp => {
-              try {
-                fileContents.set(fp, await readFile(join(rootPath, fp), 'utf-8'));
-              } catch { /* skip unreadable files */ }
-            }));
-
-            const { embedded, reused } = await VectorIndex.build(
-              outputPath, cg.nodes, sigs, hubIds, entryIds, embedSvc, fileContents,
-              /* incremental */ !opts.force
-            );
-            const cacheNote = reused > 0 ? ` (${embedded} embedded, ${reused} cached)` : '';
-            console.log(`    ✓ Function index built (${cg.nodes.length} functions${cacheNote}, ${fileContents.size} files with skeleton bodies)`);
-            console.log(`    → ${opts.output}vector-index/`);
-          }
-
-          // Also index specs if they exist
-          await runSpecIndexing(rootPath, outputPath, specGenConfig);
-        } catch (embedErr) {
-          console.log(`    ✗ Vector index failed: ${(embedErr as Error).message}`);
-        }
-        console.log('');
+        await runEmbedStep(rootPath, outputPath, specGenConfig, opts.force ?? false, result.artifacts.llmContext);
       }
 
       // Duration
@@ -649,6 +611,84 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
       process.exitCode = 1;
     }
   });
+
+// ============================================================================
+// EMBED STEP HELPER
+// ============================================================================
+
+/**
+ * Build (or incrementally update) the vector index from a LLMContext.
+ * When llmContext is null, reads llm-context.json from outputDir (cache path).
+ * Non-fatal: prints a warning on failure without throwing.
+ */
+async function runEmbedStep(
+  rootPath: string,
+  outputPath: string,
+  specGenConfig: SpecGenConfig | null,
+  force: boolean,
+  llmContext: import('../../core/analyzer/artifact-generator.js').LLMContext | null,
+): Promise<void> {
+  console.log('  Building semantic vector index...');
+  try {
+    const { EmbeddingService } = await import('../../core/analyzer/embedding-service.js');
+    const { VectorIndex } = await import('../../core/analyzer/vector-index.js');
+
+    // Resolve embedding service
+    let embedSvc: InstanceType<typeof EmbeddingService>;
+    try {
+      embedSvc = EmbeddingService.fromEnv();
+    } catch {
+      const cfg = specGenConfig ?? await readSpecGenConfig(rootPath);
+      if (!cfg) throw new Error('No embedding config found. Set EMBED_BASE_URL and EMBED_MODEL, or add "embedding" to .spec-gen/config.json');
+      const svcFromConfig = EmbeddingService.fromConfig(cfg);
+      if (!svcFromConfig) throw new Error('No embedding config found. Set EMBED_BASE_URL and EMBED_MODEL, or add "embedding" to .spec-gen/config.json');
+      embedSvc = svcFromConfig;
+    }
+
+    // Load context from disk if not provided (cache hit path)
+    if (!llmContext) {
+      try {
+        const raw = await readFile(join(outputPath, 'llm-context.json'), 'utf-8');
+        llmContext = JSON.parse(raw);
+      } catch {
+        console.log('    ⚠ Could not read llm-context.json — run spec-gen analyze --force');
+        return;
+      }
+    }
+
+    const cg = llmContext!.callGraph;
+    const sigs = llmContext!.signatures ?? [];
+
+    if (!cg || cg.nodes.length === 0) {
+      console.log('    ⚠ No call graph data — function index skipped');
+    } else {
+      const hubIds = new Set(cg.hubFunctions.map(f => f.id));
+      const entryIds = new Set(cg.entryPoints.map(f => f.id));
+
+      const fileContents = new Map<string, string>();
+      const uniquePaths = new Set(cg.nodes.map(n => n.filePath));
+      await Promise.all([...uniquePaths].map(async fp => {
+        try {
+          fileContents.set(fp, await readFile(join(rootPath, fp), 'utf-8'));
+        } catch { /* skip unreadable files */ }
+      }));
+
+      const { embedded, reused } = await VectorIndex.build(
+        outputPath, cg.nodes, sigs, hubIds, entryIds, embedSvc, fileContents,
+        /* incremental */ !force
+      );
+      const cacheNote = reused > 0 ? ` (${embedded} embedded, ${reused} cached)` : '';
+      console.log(`    ✓ Function index built (${cg.nodes.length} functions${cacheNote}, ${fileContents.size} files with skeleton bodies)`);
+      console.log(`    → ${outputPath.replace(rootPath + '/', '')}vector-index/`);
+    }
+
+    // Also index specs if they exist
+    await runSpecIndexing(rootPath, outputPath, specGenConfig);
+  } catch (embedErr) {
+    console.log(`    ✗ Vector index failed: ${(embedErr as Error).message}`);
+  }
+  console.log('');
+}
 
 // ============================================================================
 // SPEC INDEXING HELPER
