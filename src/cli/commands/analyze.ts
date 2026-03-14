@@ -565,7 +565,11 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
         console.log(`    ├─ ${opts.output}SUMMARY.md`);
       }
       if (digestWritten) {
-        console.log(`    └─ ${opts.output}CODEBASE.md  ← add to CLAUDE.md for agent context`);
+        console.log(`    └─ ${opts.output}CODEBASE.md`);
+        console.log('');
+        console.log('  Agent setup (one-time):');
+        console.log(`    Add to your CLAUDE.md or .clinerules:`);
+        console.log(`    @.spec-gen/analysis/CODEBASE.md`);
       }
       console.log('');
 
