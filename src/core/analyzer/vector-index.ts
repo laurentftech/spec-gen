@@ -21,6 +21,7 @@ import { join } from 'node:path';
 import type { FunctionNode } from './call-graph.js';
 import type { FileSignatureMap } from './signature-extractor.js';
 import type { EmbeddingService } from './embedding-service.js';
+import { getSkeletonContent, isSkeletonWorthIncluding } from './code-shaper.js';
 
 // ============================================================================
 // TYPES
@@ -63,12 +64,13 @@ const TABLE_NAME = 'functions';
 
 /**
  * Build the text to embed for a function.
- * Combines language, path, qualified name, signature, and docstring.
+ * Combines language, path, qualified name, signature, docstring, and skeleton body.
  */
 function buildText(
   node: FunctionNode,
   signature: string,
-  docstring: string
+  docstring: string,
+  fileContents?: Map<string, string>
 ): string {
   const qualifiedName = node.className
     ? `${node.className}.${node.name}`
@@ -77,6 +79,24 @@ function buildText(
   const parts = [`[${node.language}] ${node.filePath} ${qualifiedName}`];
   if (signature) parts.push(signature);
   if (docstring) parts.push(docstring);
+
+  // Append skeleton body when file contents are available.
+  // The skeleton strips noise (logs, comments) while preserving business-logic signals
+  // (variable names, control flow, calls, return/throw). Only included when it provides
+  // meaningful reduction over the raw body (≥20% smaller).
+  if (fileContents && node.startIndex < node.endIndex) {
+    const src = fileContents.get(node.filePath);
+    if (src) {
+      const body = src.slice(node.startIndex, node.endIndex);
+      if (body.trim()) {
+        const skeleton = getSkeletonContent(body, node.language);
+        if (isSkeletonWorthIncluding(body, skeleton)) {
+          parts.push(skeleton);
+        }
+      }
+    }
+  }
+
   return parts.join('\n');
 }
 
@@ -124,7 +144,9 @@ export class VectorIndex {
     signatures: FileSignatureMap[],
     hubIds: Set<string>,
     entryPointIds: Set<string>,
-    embedSvc: EmbeddingService
+    embedSvc: EmbeddingService,
+    /** Optional map of filePath → source content for skeleton-based body indexing */
+    fileContents?: Map<string, string>
   ): Promise<void> {
     const { connect } = await import('@lancedb/lancedb');
 
@@ -150,7 +172,7 @@ export class VectorIndex {
         fanOut: node.fanOut,
         isHub: hubIds.has(node.id),
         isEntryPoint: entryPointIds.has(node.id),
-        text: buildText(node, signature, docstring),
+        text: buildText(node, signature, docstring, fileContents),
       };
     });
 

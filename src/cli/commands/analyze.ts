@@ -6,7 +6,7 @@
  */
 
 import { Command } from 'commander';
-import { stat, writeFile, mkdir } from 'node:fs/promises';
+import { access, stat, writeFile, mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { logger } from '../../utils/logger.js';
 import { fileExists, formatDuration, formatAge } from '../../utils/command-helpers.js';
@@ -587,8 +587,17 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
             const hubIds = new Set(cg.hubFunctions.map(f => f.id));
             const entryIds = new Set(cg.entryPoints.map(f => f.id));
 
-            await VectorIndex.build(outputPath, cg.nodes, sigs, hubIds, entryIds, embedSvc);
-            console.log(`    ✓ Function index built (${cg.nodes.length} functions)`);
+            // Read source files so buildText() can extract skeleton bodies for richer embeddings
+            const fileContents = new Map<string, string>();
+            const uniquePaths = new Set(cg.nodes.map(n => n.filePath));
+            await Promise.all([...uniquePaths].map(async fp => {
+              try {
+                fileContents.set(fp, await readFile(join(rootPath, fp), 'utf-8'));
+              } catch { /* skip unreadable files */ }
+            }));
+
+            await VectorIndex.build(outputPath, cg.nodes, sigs, hubIds, entryIds, embedSvc, fileContents);
+            console.log(`    ✓ Function index built (${cg.nodes.length} functions, ${fileContents.size} files with skeleton bodies)`);
             console.log(`    → ${opts.output}vector-index/`);
           }
 
