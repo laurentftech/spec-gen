@@ -557,6 +557,26 @@ Each spec.md follows OpenSpec conventions:
         return;
       }
 
+      // Wire semantic search if a vector index exists (used by pipeline + mapping)
+      const analysisDir = join(rootPath, '.spec-gen', 'analysis');
+      let semanticSearch: import('./../../core/generator/mapping-generator.js').SemanticSearchFn | undefined;
+      {
+        const { VectorIndex } = await import('../../core/analyzer/vector-index.js');
+        if (VectorIndex.exists(analysisDir)) {
+          const { EmbeddingService } = await import('../../core/analyzer/embedding-service.js');
+          let embedSvc: InstanceType<typeof EmbeddingService> | undefined;
+          try { embedSvc = EmbeddingService.fromEnv(); } catch {
+            const svc = EmbeddingService.fromConfig(specGenConfig);
+            if (svc) embedSvc = svc;
+          }
+          if (embedSvc) {
+            const svc = embedSvc;
+            semanticSearch = (query, limit) => VectorIndex.search(analysisDir, query, svc, { limit });
+            logger.analysis('Vector index found — using semantic search for file selection');
+          }
+        }
+      }
+
       // Run generation pipeline
       const progress = createProgress();
       progress.start('Generating specifications...');
@@ -567,6 +587,7 @@ Each spec.md follows OpenSpec conventions:
         saveIntermediate: true,
         generateADRs: opts.adr || opts.adrOnly,
         progress,
+        semanticSearch,
       });
 
       let pipelineResult: PipelineResult;
@@ -677,24 +698,6 @@ Each spec.md follows OpenSpec conventions:
       // Generate requirement→function mapping artifact if dep graph is available
       if (depGraph) {
         try {
-          // Wire semantic search if a vector index exists for this project
-          let semanticSearch: import('./../../core/generator/mapping-generator.js').SemanticSearchFn | undefined;
-          const analysisDir = join(rootPath, '.spec-gen', 'analysis');
-          const { VectorIndex } = await import('../../core/analyzer/vector-index.js');
-          if (VectorIndex.exists(analysisDir)) {
-            const { EmbeddingService } = await import('../../core/analyzer/embedding-service.js');
-            let embedSvc: InstanceType<typeof EmbeddingService> | undefined;
-            try {
-              embedSvc = EmbeddingService.fromEnv();
-            } catch {
-              const svc = EmbeddingService.fromConfig(specGenConfig);
-              if (svc) embedSvc = svc;
-            }
-            if (embedSvc) {
-              const svc = embedSvc;
-              semanticSearch = (query, limit) => VectorIndex.search(analysisDir, query, svc, { limit });
-            }
-          }
           const mapper = new MappingGenerator(rootPath, specGenConfig.openspecPath, semanticSearch);
           const mapping = await mapper.generate(pipelineResult, depGraph);
           logger.success(

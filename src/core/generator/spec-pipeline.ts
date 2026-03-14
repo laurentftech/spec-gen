@@ -35,6 +35,7 @@ import type {
   PipelineOptions,
   PipelineContext,
   ServiceSubSpec,
+  SemanticSearchFn,
 } from '../../types/pipeline.js';
 
 // Re-export all types for backward compatibility with external consumers
@@ -68,14 +69,16 @@ export type {
  */
 export class SpecGenerationPipeline implements PipelineContext {
   llm: LLMService;
-  options: Required<Omit<PipelineOptions, 'progress'>>;
+  options: Required<Omit<PipelineOptions, 'progress' | 'semanticSearch'>>;
   private progress?: ProgressIndicator;
+  private semanticSearch?: SemanticSearchFn;
   /** Set at the start of run() and used by stage methods for graph-based prompts */
   private currentLLMContext?: LLMContext;
 
   constructor(llm: LLMService, options: PipelineOptions) {
     this.llm = llm;
     this.progress = options.progress;
+    this.semanticSearch = options.semanticSearch;
     this.options = {
       outputDir: options.outputDir,
       skipStages: options.skipStages ?? [],
@@ -171,7 +174,7 @@ export class SpecGenerationPipeline implements PipelineContext {
 
       // Stage 2: Entity Extraction
       let entities: ExtractedEntity[] = [];
-      const schemaFiles = await this.resolveFiles(llmContext, survey.schemaFiles ?? [], this.getSchemaFiles(llmContext));
+      const schemaFiles = await this.resolveFiles(llmContext, survey.schemaFiles ?? [], await this.getSchemaFiles(llmContext));
       if (schemaFiles.length > 0) {
         entities = await executeStage(
           'entities',
@@ -188,7 +191,7 @@ export class SpecGenerationPipeline implements PipelineContext {
 
       // Stage 3: Service Analysis
       let services: ExtractedService[] = [];
-      const serviceFiles = await this.resolveFiles(llmContext, survey.serviceFiles ?? [], this.getServiceFiles(llmContext));
+      const serviceFiles = await this.resolveFiles(llmContext, survey.serviceFiles ?? [], await this.getServiceFiles(llmContext));
       if (serviceFiles.length > 0) {
         services = await executeStage(
           'services',
@@ -205,7 +208,7 @@ export class SpecGenerationPipeline implements PipelineContext {
 
        // Stage 4: API Extraction
        let endpoints: ExtractedEndpoint[] = [];
-       const apiFiles = await this.resolveFiles(llmContext, survey.apiFiles ?? [], this.getApiFiles(llmContext));
+       const apiFiles = await this.resolveFiles(llmContext, survey.apiFiles ?? [], await this.getApiFiles(llmContext));
        if (apiFiles.length > 0) {
          endpoints = await executeStage(
            'api',
@@ -446,9 +449,43 @@ export class SpecGenerationPipeline implements PipelineContext {
   }
 
   /**
-   * Get schema files from LLM context
+   * Resolve file paths from a semantic search query against the vector index.
+   * Returns files found in phase2_deep; reads from disk for others (if rootPath set).
+   * Returns empty array if semanticSearch is not available.
    */
-  private getSchemaFiles(context: LLMContext): Array<{ path: string; content: string }> {
+  private async semanticFiles(
+    query: string,
+    context: LLMContext,
+    limit = 15
+  ): Promise<Array<{ path: string; content: string }>> {
+    if (!this.semanticSearch) return [];
+    try {
+      const results = await this.semanticSearch(query, limit);
+      const seen = new Set<string>();
+      const files: Array<{ path: string; content: string }> = [];
+      for (const r of results) {
+        const fp = r.record.filePath;
+        if (seen.has(fp) || isTestFile(fp)) continue;
+        seen.add(fp);
+        const deep = context.phase2_deep.files.find(f => f.path === fp);
+        if (deep?.content) {
+          files.push({ path: fp, content: deep.content });
+        } else if (this.options.rootPath) {
+          try {
+            const content = await readFile(resolve(this.options.rootPath, fp), 'utf-8');
+            if (content.trim()) files.push({ path: fp, content });
+          } catch { /* file not readable, skip */ }
+        }
+      }
+      return files;
+    } catch (err) {
+      logger.warning(`Semantic file selection failed (${query}): ${(err as Error).message}`);
+      return [];
+    }
+  }
+
+  /** Name-based heuristic fallback for schema/entity/type files. */
+  private heuristicSchemaFiles(context: LLMContext): Array<{ path: string; content: string }> {
     return context.phase2_deep.files
       .filter(f => {
         const name = f.path.toLowerCase();
@@ -464,10 +501,8 @@ export class SpecGenerationPipeline implements PipelineContext {
       .filter(f => f.content.length > 0);
   }
 
-  /**
-   * Get service files from LLM context
-   */
-  private getServiceFiles(context: LLMContext): Array<{ path: string; content: string }> {
+  /** Name-based heuristic fallback for service/business-logic files. */
+  private heuristicServiceFiles(context: LLMContext): Array<{ path: string; content: string }> {
     return context.phase2_deep.files
       .filter(f => {
         const name = f.path.toLowerCase();
@@ -484,10 +519,8 @@ export class SpecGenerationPipeline implements PipelineContext {
       .filter(f => f.content.length > 0);
   }
 
-  /**
-   * Get API files from LLM context
-   */
-  private getApiFiles(context: LLMContext): Array<{ path: string; content: string }> {
+  /** Name-based heuristic fallback for API/route files. */
+  private heuristicApiFiles(context: LLMContext): Array<{ path: string; content: string }> {
     return context.phase2_deep.files
       .filter(f => {
         const name = f.path.toLowerCase();
@@ -501,6 +534,63 @@ export class SpecGenerationPipeline implements PipelineContext {
       })
       .map(f => ({ path: f.path, content: f.content ?? '' }))
       .filter(f => f.content.length > 0);
+  }
+
+  /**
+   * Get schema files — semantic-first, name-heuristic fallback.
+   */
+  private async getSchemaFiles(context: LLMContext): Promise<Array<{ path: string; content: string }>> {
+    const semantic = await this.semanticFiles(
+      'data model entity schema type interface database structure',
+      context
+    );
+    if (semantic.length > 0) {
+      logger.analysis(`Schema files: ${semantic.length} via semantic search`);
+      return semantic;
+    }
+    const fallback = this.heuristicSchemaFiles(context);
+    if (this.semanticSearch && fallback.length > 0) {
+      logger.warning('Schema semantic search returned no results, falling back to name heuristics');
+    }
+    return fallback;
+  }
+
+  /**
+   * Get service files — semantic-first, name-heuristic fallback.
+   */
+  private async getServiceFiles(context: LLMContext): Promise<Array<{ path: string; content: string }>> {
+    const semantic = await this.semanticFiles(
+      'service business logic manager handler use case orchestration',
+      context
+    );
+    if (semantic.length > 0) {
+      logger.analysis(`Service files: ${semantic.length} via semantic search`);
+      return semantic;
+    }
+    const fallback = this.heuristicServiceFiles(context);
+    if (this.semanticSearch && fallback.length > 0) {
+      logger.warning('Service semantic search returned no results, falling back to name heuristics');
+    }
+    return fallback;
+  }
+
+  /**
+   * Get API files — semantic-first, name-heuristic fallback.
+   */
+  private async getApiFiles(context: LLMContext): Promise<Array<{ path: string; content: string }>> {
+    const semantic = await this.semanticFiles(
+      'API route endpoint REST controller HTTP request response',
+      context
+    );
+    if (semantic.length > 0) {
+      logger.analysis(`API files: ${semantic.length} via semantic search`);
+      return semantic;
+    }
+    const fallback = this.heuristicApiFiles(context);
+    if (this.semanticSearch && fallback.length > 0) {
+      logger.warning('API semantic search returned no results, falling back to name heuristics');
+    }
+    return fallback;
   }
 
   /**

@@ -4,6 +4,10 @@
 
 import type { ProgressIndicator } from '../utils/progress.js';
 import type { LLMService } from '../core/services/llm-service.js';
+import type { SearchResult } from '../core/analyzer/vector-index.js';
+
+/** Semantic search function injected into the pipeline to replace name-based heuristics. */
+export type SemanticSearchFn = (query: string, limit: number) => Promise<SearchResult[]>;
 
 // ============================================================================
 // DOMAIN TYPES
@@ -175,6 +179,10 @@ export interface PipelineOptions {
   saveIntermediate?: boolean;
   generateADRs?: boolean;
   progress?: ProgressIndicator;
+  /** Optional semantic search function. When provided, replaces name-based heuristics for
+   *  schema/service/API file selection in stages 2–4. Falls back to heuristics if absent
+   *  or if the search returns no results for a given domain. */
+  semanticSearch?: SemanticSearchFn;
 }
 
 // ============================================================================
