@@ -63,9 +63,24 @@ Le **corps de la fonction** n'est pas indexé. Sans lui, impossible d'inférer l
 règles métier (ex. `calculatePrice()` sans le body ne révèle pas les règles de
 remise, de taxe, de devise).
 
-**Solution recommandée :** Résumé LLM du body pour les fonctions significatives
-(god functions, hubs), body tronqué pour les autres. Évite l'explosion du bruit
-(logging, validation, plumbing).
+**Solution recommandée : skeleton plutôt que body brut.**
+`src/core/analyzer/code-shaper.ts` — `getSkeletonContent()` — est déjà implémenté.
+Il supprime le bruit (logs, commentaires inline, lignes vides) tout en préservant
+exactement les signaux utiles pour l'embedding :
+
+- appels de fonctions → contexte topologique
+- noms de variables → vocabulaire métier (`discount`, `taxRate`, `isVIP`)
+- flux de contrôle → structure de la logique métier
+- return / throw → contrats de sortie
+
+`isSkeletonWorthIncluding()` existe déjà pour ignorer le skeleton quand il n'apporte
+pas au moins 20% de réduction. Le body brut inclurait les logs, validations et
+plomberie qui polluent l'espace d'embedding sans valeur sémantique ajoutée.
+Un résumé LLM serait plus précis mais coûteux et non déterministe — le skeleton est
+le bon compromis pour l'indexation à large échelle.
+
+**Impact concret :** `buildText()` doit appeler `getSkeletonContent(body, node.language)`
+et l'ajouter au texte uniquement si `isSkeletonWorthIncluding(body, skeleton)` est vrai.
 
 ---
 
