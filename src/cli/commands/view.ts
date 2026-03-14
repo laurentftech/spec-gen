@@ -8,8 +8,6 @@
 import { Command } from 'commander';
 import { readFile } from 'node:fs/promises';
 import { fileExists } from '../../utils/command-helpers.js';
-import { createServer } from 'vite';
-import react from '@vitejs/plugin-react';
 import { join, resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -120,6 +118,11 @@ export const viewCommand = new Command('view')
       logger.section('Starting Graph Viewer');
       logger.info('Analysis', analysisDir);
       logger.info('Graph', graphPath);
+
+      // Dynamic imports — vite and @vitejs/plugin-react are only needed for `spec-gen view`,
+      // so we load them at runtime to avoid ERR_MODULE_NOT_FOUND for other commands (#24).
+      const { createServer } = await import('vite');
+      const { default: react } = await import('@vitejs/plugin-react');
 
       const server = await createServer({
         root: viewerRoot,

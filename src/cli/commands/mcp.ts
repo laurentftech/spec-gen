@@ -145,7 +145,7 @@ export const TOOL_DEFINITIONS = [
     description:
       'Return the call graph for a project: hub functions (high fan-in), ' +
       'entry points (no internal callers), and architectural layer violations. ' +
-      'Supports TypeScript, JavaScript, Python, Go, Rust, Ruby, Java. ' +
+      'Supports TypeScript, JavaScript, Python, Go, Rust, Ruby, Java, C++. ' +
       'Run analyze_codebase first.',
     inputSchema: {
       type: 'object',
