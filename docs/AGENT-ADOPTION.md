@@ -46,7 +46,7 @@ Outils qui perdent face à la lecture directe :
 
 ## Propositions
 
-### #A — Générer un CODEBASE.md lisible par les agents (critique)
+### ~~#A — Générer un CODEBASE.md lisible par les agents (critique)~~ ✅
 
 **Principe :** transformer la sortie statique de l'analyse en fichier Markdown
 que les agents lisent passivement via `CLAUDE.md` ou `.clinerules` — sans
@@ -96,7 +96,7 @@ décision, sans friction.
 
 ---
 
-### #B — Fallback BM25 pour `search_code` sans serveur d'embedding (critique)
+### ~~#B — Fallback BM25 pour `search_code` sans serveur d'embedding (critique)~~ ✅
 
 **Problème :** `search_code` retourne une erreur si le serveur d'embedding
 n'est pas démarré. Un agent qui tente l'outil et échoue apprend à ne plus
@@ -126,7 +126,7 @@ les requêtes exactes (noms de fonctions, termes techniques).
 
 ---
 
-### #C — Outil `orient` : point d'entrée unique pour les tâches nouvelles (élevé)
+### ~~#C — Outil `orient` : point d'entrée unique pour les tâches nouvelles (élevé)~~ ✅
 
 **Problème :** avec 26 outils, l'agent doit choisir. Pour une tâche nouvelle
 sur un codebase inconnu, aucun outil ne répond clairement à "par où commencer ?".
@@ -161,7 +161,7 @@ simples et universelles.
 
 ---
 
-### #D — Élaguer les outils redondants avec la lecture directe (moyen)
+### ~~#D — Élaguer les outils redondants avec la lecture directe (moyen)~~ ✅
 
 **Principe :** moins d'outils = meilleure sélection par le LLM. Chaque outil
 superflu dilue l'attention et augmente le risque de mauvais choix.
@@ -181,7 +181,7 @@ opère déjà dans un contexte riche.
 
 ---
 
-### #E — Réécrire les descriptions d'outils comme des conditions de déclenchement (moyen)
+### ~~#E — Réécrire les descriptions d'outils comme des conditions de déclenchement (moyen)~~ ✅
 
 **Problème :** les descriptions actuelles décrivent ce que l'outil fait.
 Les LLMs sélectionnent les outils sur la base de quand les utiliser.
@@ -239,15 +239,11 @@ switcher vers les outils actifs. Les deux ensemble créent le workflow complet.
 
 ## Tableau récapitulatif
 
-| # | Proposition | Impact | Effort |
-|---|-------------|--------|--------|
-| A | Générer CODEBASE.md (push architectural context) | **Critique** | Moyen |
-| B | BM25 fallback sans serveur d'embedding | **Critique** | Faible |
-| C | Outil `orient` composite | **Élevé** | Élevé |
-| D | Élaguer les outils redondants | **Moyen** | Faible |
-| E | Réécrire descriptions comme triggers | **Moyen** | Faible |
-| F | Documentation workflow agent setup | **Moyen** | Faible |
-
-Priorité suggérée : **B** (quick win, supprime la friction majeure) →
-**A** (change fondamentalement l'adoption) → **E + D** (réduction de bruit) →
-**C** (ambitieux mais le plus transformateur à long terme).
+| # | Proposition | Impact | Effort | Statut |
+|---|-------------|--------|--------|--------|
+| A | Générer CODEBASE.md (push architectural context) | **Critique** | Moyen | ✅ |
+| B | BM25 fallback sans serveur d'embedding | **Critique** | Faible | ✅ |
+| C | Outil `orient` composite | **Élevé** | Élevé | ✅ |
+| D | Élaguer les outils redondants | **Moyen** | Faible | ✅ |
+| E | Réécrire descriptions comme triggers | **Moyen** | Faible | ✅ |
+| F | Documentation workflow agent setup | **Moyen** | Faible | — |
