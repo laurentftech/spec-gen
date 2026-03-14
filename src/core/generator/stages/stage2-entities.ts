@@ -7,6 +7,7 @@
 import logger from '../../../utils/logger.js';
 import { PROMPTS } from '../prompts.js';
 import type { ExtractedEntity, StageResult, PipelineContext, ProjectSurveyResult } from '../../../types/pipeline.js';
+import { astChunkContent } from '../../analyzer/ast-chunker.js';
 
 export async function runStage2(
   pipeline: PipelineContext,
@@ -21,7 +22,7 @@ export async function runStage2(
 
   for (const [idx, file] of schemaFiles.entries()) {
     onFile?.(idx + 1, schemaFiles.length, file.path);
-    const chunks = pipeline.chunkContent(file.content, 8000);
+    const chunks = await astChunkContent(file.content, file.path, 8000);
     const isLargeFile = chunks.length > 1;
     const graphSection = pipeline.graphPromptFor(file.path, file.content);
 

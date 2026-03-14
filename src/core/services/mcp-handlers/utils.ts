@@ -65,3 +65,78 @@ export async function isCacheFresh(directory: string): Promise<boolean> {
     return false;
   }
 }
+
+// ============================================================================
+// BIDIRECTIONAL CODE ↔ SPEC LINKING (#4)
+// ============================================================================
+
+export interface MappingEntry {
+  requirement: string;
+  service: string;
+  domain: string;
+  specFile: string;
+  functions: Array<{ name: string; file: string; line: number; kind: string; confidence: string }>;
+}
+
+export interface MappingIndex {
+  /** filePath → list of mapping entries that reference it */
+  byFile: Map<string, MappingEntry[]>;
+  /** domain → list of mapping entries for that domain */
+  byDomain: Map<string, MappingEntry[]>;
+  entries: MappingEntry[];
+}
+
+/** Load and index mapping.json for bidirectional lookup. Returns null if not found. */
+export async function loadMappingIndex(absDir: string): Promise<MappingIndex | null> {
+  try {
+    const raw = await readFile(join(absDir, '.spec-gen', 'analysis', 'mapping.json'), 'utf-8');
+    const data = JSON.parse(raw) as { mappings: MappingEntry[] };
+    const entries = data.mappings ?? [];
+
+    const byFile = new Map<string, MappingEntry[]>();
+    const byDomain = new Map<string, MappingEntry[]>();
+
+    for (const entry of entries) {
+      // index by domain
+      const domainList = byDomain.get(entry.domain) ?? [];
+      domainList.push(entry);
+      byDomain.set(entry.domain, domainList);
+
+      // index by each referenced file
+      for (const fn of entry.functions) {
+        if (!fn.file || fn.file === '*') continue;
+        const fileList = byFile.get(fn.file) ?? [];
+        // avoid duplicates (same requirement may appear multiple times per file)
+        if (!fileList.includes(entry)) fileList.push(entry);
+        byFile.set(fn.file, fileList);
+      }
+    }
+
+    return { byFile, byDomain, entries };
+  } catch {
+    return null;
+  }
+}
+
+/** Summarise which specs cover a given file path (for search_code enrichment). */
+export function specsForFile(index: MappingIndex, filePath: string): Array<{ requirement: string; domain: string; specFile: string }> {
+  const entries = index.byFile.get(filePath) ?? [];
+  // deduplicate by requirement
+  const seen = new Set<string>();
+  return entries
+    .filter(e => { const k = `${e.domain}::${e.requirement}`; if (seen.has(k)) return false; seen.add(k); return true; })
+    .map(e => ({ requirement: e.requirement, domain: e.domain, specFile: e.specFile }));
+}
+
+/** Return functions that implement a given domain/specFile (for search_specs enrichment). */
+export function functionsForDomain(index: MappingIndex, domain: string): Array<{ name: string; file: string; line: number; kind: string; confidence: string; requirement: string }> {
+  const entries = index.byDomain.get(domain) ?? [];
+  const result: Array<{ name: string; file: string; line: number; kind: string; confidence: string; requirement: string }> = [];
+  for (const entry of entries) {
+    for (const fn of entry.functions) {
+      if (fn.name === '*') continue;
+      result.push({ ...fn, requirement: entry.requirement });
+    }
+  }
+  return result;
+}

@@ -449,9 +449,11 @@ export class SpecGenerationPipeline implements PipelineContext {
   }
 
   /**
-   * Resolve file paths from a semantic search query against the vector index.
-   * Returns files found in phase2_deep; reads from disk for others (if rootPath set).
-   * Returns empty array if semanticSearch is not available.
+   * Generation retrieval strategy: semantic-first → graph expansion.
+   *
+   * 1. Semantic search identifies seed files relevant to the query.
+   * 2. Graph expansion (depth-1 callees) adds files called by the seed
+   *    functions, so indirect implementations are not missed.
    */
   private async semanticFiles(
     query: string,
@@ -463,9 +465,9 @@ export class SpecGenerationPipeline implements PipelineContext {
       const results = await this.semanticSearch(query, limit);
       const seen = new Set<string>();
       const files: Array<{ path: string; content: string }> = [];
-      for (const r of results) {
-        const fp = r.record.filePath;
-        if (seen.has(fp) || isTestFile(fp)) continue;
+
+      const resolveFile = async (fp: string): Promise<void> => {
+        if (seen.has(fp) || isTestFile(fp)) return;
         seen.add(fp);
         const deep = context.phase2_deep.files.find(f => f.path === fp);
         if (deep?.content) {
@@ -476,7 +478,35 @@ export class SpecGenerationPipeline implements PipelineContext {
             if (content.trim()) files.push({ path: fp, content });
           } catch { /* file not readable, skip */ }
         }
+      };
+
+      // Step 1: resolve semantic seed files
+      for (const r of results) await resolveFile(r.record.filePath);
+      const seedCount = files.length;
+
+      // Step 2: graph expansion — add depth-1 callee files from the call graph
+      const cg = context.callGraph;
+      if (cg && seedCount > 0) {
+        const calleeMap = new Map<string, string[]>();
+        for (const e of cg.edges) {
+          if (!e.calleeId) continue;
+          const list = calleeMap.get(e.callerId) ?? [];
+          list.push(e.calleeId);
+          calleeMap.set(e.callerId, list);
+        }
+        const nodeFile = new Map(cg.nodes.map(n => [n.id, n.filePath]));
+        const seedPaths = new Set(seen);
+        for (const node of cg.nodes) {
+          if (!seedPaths.has(node.filePath)) continue;
+          for (const calleeId of calleeMap.get(node.id) ?? []) {
+            const calleePath = nodeFile.get(calleeId);
+            if (calleePath) await resolveFile(calleePath);
+          }
+        }
+        const expanded = files.length - seedCount;
+        if (expanded > 0) logger.analysis(`Graph expansion: +${expanded} files via call graph`);
       }
+
       return files;
     } catch (err) {
       logger.warning(`Semantic file selection failed (${query}): ${(err as Error).message}`);

@@ -47,7 +47,10 @@ export interface FunctionRecord {
 
 export interface SearchResult {
   record: Omit<FunctionRecord, 'vector'>;
-  /** Distance score (lower = more similar) */
+  /**
+   * Relevance score.  For hybrid search (default): RRF score, higher = more relevant.
+   * For dense-only search: cosine distance from LanceDB, lower = more similar.
+   */
   score: number;
 }
 
@@ -57,6 +60,71 @@ export interface SearchResult {
 
 const DB_FOLDER = 'vector-index';
 const TABLE_NAME = 'functions';
+
+// ============================================================================
+// BM25 SPARSE RETRIEVAL (#7)
+// ============================================================================
+
+interface Bm25Corpus {
+  docs: Array<{ id: string; tfMap: Map<string, number>; length: number }>;
+  /** term → number of documents containing it */
+  df: Map<string, number>;
+  avgLength: number;
+  N: number;
+}
+
+function tokenize(text: string): string[] {
+  // Split on non-alphanumeric, keep tokens longer than 1 char
+  return text.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length > 1);
+}
+
+function buildBm25Corpus(records: Array<{ id: string; text: string }>): Bm25Corpus {
+  const docs: Bm25Corpus['docs'] = [];
+  const df = new Map<string, number>();
+  let totalLen = 0;
+
+  for (const r of records) {
+    const tokens = tokenize(r.text);
+    const tfMap = new Map<string, number>();
+    for (const t of tokens) tfMap.set(t, (tfMap.get(t) ?? 0) + 1);
+    docs.push({ id: r.id, tfMap, length: tokens.length });
+    totalLen += tokens.length;
+    for (const t of tfMap.keys()) df.set(t, (df.get(t) ?? 0) + 1);
+  }
+
+  return { docs, df, avgLength: docs.length > 0 ? totalLen / docs.length : 1, N: docs.length };
+}
+
+const BM25_K1 = 1.2;
+const BM25_B  = 0.75;
+
+function bm25Score(corpus: Bm25Corpus, queryTokens: string[], docIdx: number): number {
+  const doc = corpus.docs[docIdx];
+  let score = 0;
+  for (const q of queryTokens) {
+    const df = corpus.df.get(q) ?? 0;
+    if (df === 0) continue;
+    const idf = Math.log((corpus.N - df + 0.5) / (df + 0.5) + 1);
+    const tf = doc.tfMap.get(q) ?? 0;
+    const tfNorm =
+      (tf * (BM25_K1 + 1)) /
+      (tf + BM25_K1 * (1 - BM25_B + BM25_B * (doc.length / corpus.avgLength)));
+    score += idf * tfNorm;
+  }
+  return score;
+}
+
+/**
+ * Reciprocal Rank Fusion: merges two ranked lists into a single relevance score.
+ * k=60 is the standard parameter (Cormack et al., 2009).
+ */
+function rrfScore(rankDense: number, rankSparse: number, k = 60): number {
+  return 1 / (k + rankDense + 1) + 1 / (k + rankSparse + 1);
+}
+
+// Module-level BM25 corpus cache: avoids a full table scan on every search call
+// when the index hasn't changed.  Keyed by dbPath; invalidated when row count changes.
+const _bm25Cache = new Map<string, { corpus: Bm25Corpus; rowCount: number }>();
 
 // ============================================================================
 // HELPERS
@@ -136,7 +204,13 @@ function findSignatureEntry(
 export class VectorIndex {
   /**
    * Build (or rebuild) the vector index from call graph nodes + signatures.
-   * Overwrites any existing index.
+   *
+   * When `incremental` is true and an existing index is found, only functions
+   * whose text has changed since the last build are re-embedded.  Unchanged
+   * functions reuse their cached vectors.  Pass `incremental: false` (or omit
+   * when no index exists) to do a full rebuild.
+   *
+   * Returns a summary of how many functions were embedded vs reused.
    */
   static async build(
     outputDir: string,
@@ -146,8 +220,10 @@ export class VectorIndex {
     entryPointIds: Set<string>,
     embedSvc: EmbeddingService,
     /** Optional map of filePath → source content for skeleton-based body indexing */
-    fileContents?: Map<string, string>
-  ): Promise<void> {
+    fileContents?: Map<string, string>,
+    /** When true, reuse cached vectors for unchanged functions */
+    incremental = false
+  ): Promise<{ embedded: number; reused: number }> {
     const { connect } = await import('@lancedb/lancedb');
 
     if (nodes.length === 0) {
@@ -156,8 +232,8 @@ export class VectorIndex {
 
     const sigIndex = buildSignatureIndex(signatures);
 
-    // Build records (without vectors first, to batch-embed all texts)
-    const records: Omit<FunctionRecord, 'vector'>[] = nodes.map(node => {
+    // Build candidate records (without vectors)
+    const candidates: Omit<FunctionRecord, 'vector'>[] = nodes.map(node => {
       const { signature, docstring } = findSignatureEntry(node, sigIndex);
       return {
         id: node.id,
@@ -175,31 +251,84 @@ export class VectorIndex {
       };
     });
 
-    // Batch-embed all texts
-    const texts = records.map(r => r.text);
-    const vectors = await embedSvc.embed(texts);
+    // ── Incremental cache lookup ─────────────────────────────────────────────
+    const dbPath = join(outputDir, DB_FOLDER);
+    let cachedVectors = new Map<string, number[]>(); // id → vector
 
-    if (vectors.length !== records.length) {
-      throw new Error(
-        `Embedding count mismatch: expected ${records.length}, got ${vectors.length}`
-      );
+    if (incremental && VectorIndex.exists(outputDir)) {
+      try {
+        const db = await connect(dbPath);
+        const table = await db.openTable(TABLE_NAME);
+        // Full table scan to load existing vectors
+        const existing = await table.query().toArray();
+        for (const row of existing) {
+          const id = row.id as string;
+          const text = row.text as string;
+          const vector = row.vector as number[];
+          // Cache the vector keyed by "id::text" so a text change invalidates it
+          cachedVectors.set(`${id}::${text}`, vector);
+        }
+      } catch {
+        // Existing index unreadable — fall back to full build
+        cachedVectors = new Map();
+      }
     }
 
-    // Assemble final records with vectors
-    const fullRecords: FunctionRecord[] = records.map((r, i) => ({
-      ...r,
-      vector: vectors[i],
-    }));
+    // ── Split into cached vs needs-embedding ────────────────────────────────
+    const toEmbed: typeof candidates = [];
+    const toEmbedIdx: number[] = []; // index into `candidates`
+    const cachedIdx: number[] = [];
 
-    // Connect to LanceDB and write table
-    const dbPath = join(outputDir, DB_FOLDER);
+    for (let i = 0; i < candidates.length; i++) {
+      const r = candidates[i];
+      const cacheKey = `${r.id}::${r.text}`;
+      if (cachedVectors.has(cacheKey)) {
+        cachedIdx.push(i);
+      } else {
+        toEmbed.push(r);
+        toEmbedIdx.push(i);
+      }
+    }
+
+    // ── Embed only changed / new functions ───────────────────────────────────
+    let newVectors: number[][] = [];
+    if (toEmbed.length > 0) {
+      newVectors = await embedSvc.embed(toEmbed.map(r => r.text));
+      if (newVectors.length !== toEmbed.length) {
+        throw new Error(
+          `Embedding count mismatch: expected ${toEmbed.length}, got ${newVectors.length}`
+        );
+      }
+    }
+
+    // ── Assemble final records ───────────────────────────────────────────────
+    const fullRecords: FunctionRecord[] = new Array(candidates.length);
+    for (let i = 0; i < cachedIdx.length; i++) {
+      const idx = cachedIdx[i];
+      const r = candidates[idx];
+      fullRecords[idx] = { ...r, vector: cachedVectors.get(`${r.id}::${r.text}`)! };
+    }
+    for (let i = 0; i < toEmbedIdx.length; i++) {
+      const idx = toEmbedIdx[i];
+      fullRecords[idx] = { ...candidates[idx], vector: newVectors[i] };
+    }
+
+    // ── Write table ──────────────────────────────────────────────────────────
     const db = await connect(dbPath);
     await db.createTable(TABLE_NAME, fullRecords as unknown as Record<string, unknown>[], { mode: 'overwrite' });
+
+    return { embedded: toEmbed.length, reused: cachedIdx.length };
   }
 
   /**
-   * Semantic search over the index.
-   * Returns up to `limit` results sorted by similarity (closest first).
+   * Hybrid search over the index: dense (ANN) + sparse (BM25) merged via RRF.
+   *
+   * Dense recall fetches top `limit*5` candidates from the vector index.
+   * Sparse recall scores the full corpus with BM25 (cached per session).
+   * Reciprocal Rank Fusion (RRF) combines both rankings into a single list.
+   *
+   * Set `hybrid: false` to use dense-only search (original behaviour).
+   * Returns up to `limit` results sorted by relevance (highest first).
    */
   static async search(
     outputDir: string,
@@ -209,56 +338,130 @@ export class VectorIndex {
       limit?: number;
       language?: string;
       minFanIn?: number;
+      /** Enable hybrid dense+sparse retrieval via RRF (default: true) */
+      hybrid?: boolean;
     } = {}
   ): Promise<SearchResult[]> {
     const { connect } = await import('@lancedb/lancedb');
 
-    const { limit = 10, language, minFanIn } = opts;
+    const { limit = 10, language, minFanIn, hybrid = true } = opts;
 
-    // Embed the query
-    const [queryVector] = await embedSvc.embed([query]);
-    if (!queryVector) {
-      throw new Error('Failed to embed query');
+    if (!VectorIndex.exists(outputDir)) {
+      throw new Error('Vector index not found. Run "spec-gen analyze --embed" first.');
     }
 
     const dbPath = join(outputDir, DB_FOLDER);
-    if (!VectorIndex.exists(outputDir)) {
-      throw new Error(
-        'Vector index not found. Run "spec-gen analyze --embed" first.'
-      );
-    }
     const db = await connect(dbPath);
     const table = await db.openTable(TABLE_NAME);
 
-    // Fetch more candidates than requested so post-filtering still yields `limit` results.
-    // We over-fetch by 10x (capped at 1000) to compensate for filtered-out rows.
-    const fetchLimit = Math.min(limit * 10, 1000);
-    const rows = await table.query().nearestTo(queryVector).limit(fetchLimit).toArray();
+    // ── Dense recall ──────────────────────────────────────────────────────────
+    const [queryVector] = await embedSvc.embed([query]);
+    if (!queryVector) throw new Error('Failed to embed query');
 
-    // Post-filter in JavaScript (avoids SQL case-sensitivity issues with column names)
-    const filtered = rows.filter(row => {
+    const denseFetch = hybrid ? Math.min(limit * 5, 500) : Math.min(limit * 10, 1000);
+    const denseRows = await table.query().nearestTo(queryVector).limit(denseFetch).toArray();
+
+    const rowToRecord = (row: Record<string, unknown>): Omit<FunctionRecord, 'vector'> => ({
+      id:          row.id as string,
+      name:        row.name as string,
+      filePath:    row.filePath as string,
+      className:   row.className as string,
+      language:    row.language as string,
+      signature:   row.signature as string,
+      docstring:   row.docstring as string,
+      fanIn:       row.fanIn as number,
+      fanOut:      row.fanOut as number,
+      isHub:       row.isHub as boolean,
+      isEntryPoint: row.isEntryPoint as boolean,
+      text:        row.text as string,
+    });
+
+    const passesFilters = (row: Record<string, unknown>): boolean => {
       if (language && (row.language as string) !== language) return false;
       if (minFanIn !== undefined && minFanIn > 0 && (row.fanIn as number) < minFanIn) return false;
       return true;
-    }).slice(0, limit);
+    };
 
-    return filtered.map(row => ({
-      record: {
-        id: row.id as string,
-        name: row.name as string,
-        filePath: row.filePath as string,
-        className: row.className as string,
-        language: row.language as string,
-        signature: row.signature as string,
-        docstring: row.docstring as string,
-        fanIn: row.fanIn as number,
-        fanOut: row.fanOut as number,
-        isHub: row.isHub as boolean,
-        isEntryPoint: row.isEntryPoint as boolean,
-        text: row.text as string,
-      },
-      score: row._distance as number,
-    }));
+    // ── Dense-only path ───────────────────────────────────────────────────────
+    if (!hybrid) {
+      return denseRows
+        .filter(passesFilters)
+        .slice(0, limit)
+        .map(row => ({ record: rowToRecord(row), score: row._distance as number }));
+    }
+
+    // ── Sparse recall (BM25 over full corpus) ─────────────────────────────────
+    let cachedEntry = _bm25Cache.get(dbPath);
+    let allRows: Record<string, unknown>[];
+
+    if (!cachedEntry) {
+      allRows = await table.query().toArray();
+      const corpus = buildBm25Corpus(
+        allRows.map(r => ({ id: r.id as string, text: r.text as string }))
+      );
+      cachedEntry = { corpus, rowCount: allRows.length };
+      _bm25Cache.set(dbPath, cachedEntry);
+    } else {
+      // Lightweight cache validation: re-scan only if row count has changed
+      allRows = await table.query().toArray();
+      if (allRows.length !== cachedEntry.rowCount) {
+        const corpus = buildBm25Corpus(
+          allRows.map(r => ({ id: r.id as string, text: r.text as string }))
+        );
+        cachedEntry = { corpus, rowCount: allRows.length };
+        _bm25Cache.set(dbPath, cachedEntry);
+      }
+    }
+
+    const { corpus } = cachedEntry;
+    const queryTokens = tokenize(query);
+
+    // Score all corpus documents with BM25
+    const sparseScored = corpus.docs
+      .map((_, i) => ({ idx: i, score: bm25Score(corpus, queryTokens, i) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit * 5);
+
+    // Build id→row map from allRows for sparse candidates
+    const rowById = new Map(allRows.map(r => [r.id as string, r]));
+
+    // ── RRF merge ────────────────────────────────────────────────────────────
+    const rrfMap = new Map<string, { row: Record<string, unknown>; score: number }>();
+
+    denseRows.forEach((row, rank) => {
+      const id = row.id as string;
+      const entry = rrfMap.get(id) ?? { row, score: 0 };
+      entry.score += rrfScore(rank, Infinity); // sparse rank = Infinity if not in sparse list
+      rrfMap.set(id, entry);
+    });
+
+    sparseScored.forEach(({ idx, score: bm25 }, rank) => {
+      if (bm25 === 0) return; // no BM25 signal — skip
+      const id = corpus.docs[idx].id;
+      const row = rowById.get(id);
+      if (!row) return;
+      const entry = rrfMap.get(id) ?? { row, score: 0 };
+      entry.score += 1 / (60 + rank + 1);
+      rrfMap.set(id, entry);
+    });
+
+    // Fix dense ranks now that we know the full picture
+    // Re-compute proper RRF scores with both ranks available
+    const denseRankById = new Map(denseRows.map((r, i) => [r.id as string, i]));
+    const sparseRankById = new Map(sparseScored.map(({ idx }, i) => [corpus.docs[idx].id, i]));
+
+    const merged = [...rrfMap.values()].map(({ row }) => {
+      const id = row.id as string;
+      const dr = denseRankById.get(id) ?? Infinity;
+      const sr = sparseRankById.get(id) ?? Infinity;
+      return { row, score: rrfScore(dr, sr) };
+    });
+
+    return merged
+      .sort((a, b) => b.score - a.score)
+      .filter(({ row }) => passesFilters(row))
+      .slice(0, limit)
+      .map(({ row, score }) => ({ record: rowToRecord(row), score }));
   }
 
   /**

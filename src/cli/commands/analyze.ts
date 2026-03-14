@@ -597,8 +597,12 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
               } catch { /* skip unreadable files */ }
             }));
 
-            await VectorIndex.build(outputPath, cg.nodes, sigs, hubIds, entryIds, embedSvc, fileContents);
-            console.log(`    ✓ Function index built (${cg.nodes.length} functions, ${fileContents.size} files with skeleton bodies)`);
+            const { embedded, reused } = await VectorIndex.build(
+              outputPath, cg.nodes, sigs, hubIds, entryIds, embedSvc, fileContents,
+              /* incremental */ !opts.force
+            );
+            const cacheNote = reused > 0 ? ` (${embedded} embedded, ${reused} cached)` : '';
+            console.log(`    ✓ Function index built (${cg.nodes.length} functions${cacheNote}, ${fileContents.size} files with skeleton bodies)`);
             console.log(`    → ${opts.output}vector-index/`);
           }
 
