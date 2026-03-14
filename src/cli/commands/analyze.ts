@@ -222,7 +222,11 @@ export const analyzeCommand = new Command('analyze')
   .option(
     '--embed',
     'Build a semantic vector index after analysis (requires EMBED_BASE_URL + EMBED_MODEL)',
-    false
+    true
+  )
+  .option(
+    '--no-embed',
+    'Skip vector index build (overrides default --embed)'
   )
   .option(
     '--reindex-specs',
@@ -243,7 +247,7 @@ Examples:
   $ spec-gen analyze --output ./my-analysis
                                      Custom output location
   $ spec-gen analyze --force         Force re-analysis
-  $ spec-gen analyze --embed         Also build semantic vector index (code + specs)
+  $ spec-gen analyze --no-embed      Skip vector index build
   $ spec-gen analyze --reindex-specs Re-index specs only (no full re-analysis)
 
 Output files:
