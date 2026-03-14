@@ -159,6 +159,88 @@ et lent — inutile si le graph + embedding retrieval est bien conçu.
 
 ---
 
+---
+
+## Phase 4 — Outils MCP manquants
+
+Les 19 outils existants sont bien conçus et bien documentés. `get_subgraph` et
+`analyze_impact` ont déjà un fallback sur la recherche sémantique quand il n'y a
+pas de match exact — c'est la bonne logique graph-first + semantic fallback.
+Il manque cependant cinq outils pour couvrir les cas d'usage courants des agents.
+
+### #11 — Pas de `get_spec(domain)` (élevé)
+
+**Fichiers :** `src/core/services/mcp-handlers/semantic.ts`, `src/cli/commands/mcp.ts`
+
+`search_specs` fait une recherche sémantique et `list_spec_domains` liste les domaines,
+mais aucun outil ne permet de lire directement la spec d'un domaine par son nom.
+Un agent qui veut consulter la spec `auth` doit formuler une requête approximative
+plutôt que d'y accéder directement.
+
+**Objectif :** `get_spec(directory, domain)` — lit et retourne le contenu de
+`openspec/specs/{domain}/spec.md` ainsi que le mapping associé.
+
+---
+
+### #12 — Pas de `get_function_body(filePath, functionName)` (élevé)
+
+**Fichiers :** `src/core/services/mcp-handlers/analysis.ts`, `src/cli/commands/mcp.ts`
+
+`search_code` retourne signature + docstring mais pas le corps de la fonction.
+Après avoir trouvé une fonction pertinente, l'agent n'a aucun outil pour lire son
+implémentation. `get_function_skeleton` existe mais opère sur un fichier entier —
+il n'isole pas une fonction précise.
+
+**Objectif :** `get_function_body(directory, filePath, functionName)` — utilise
+tree-sitter (déjà disponible) pour extraire le corps exact d'une fonction nommée
+dans un fichier. Complète naturellement `search_code`.
+
+---
+
+### #13 — `suggest_insertion_points` n'utilise pas le graphe (élevé)
+
+**Fichier :** `src/core/services/mcp-handlers/semantic.ts` — `handleSuggestInsertionPoints()`
+
+L'outil fait du semantic search puis applique un scoring structurel statique
+(fanIn/fanOut/isHub), mais ne traverse pas le call graph pour étendre les candidats
+aux voisins directs. Ce serait le premier endroit où implémenter le GraphRAG pour
+les agents : semantic search → graph expansion → candidats enrichis.
+
+**Objectif :** Après le top-k sémantique, traverser le call graph (BFS profondeur 1-2)
+pour inclure les orchestrateurs directs des fonctions trouvées.
+
+---
+
+### #14 — Pas de requête de dépendances au niveau fichier (moyen)
+
+**Fichiers :** `src/core/services/mcp-handlers/graph.ts`, `src/cli/commands/mcp.ts`
+
+`get_subgraph` opère au niveau fonction. Il n'existe aucun outil pour répondre à
+"quels fichiers importent ce module ?" ou "de quoi ce fichier dépend-il ?" —
+questions fréquentes lors de la planification d'un refactoring ou d'une nouvelle
+fonctionnalité. Le `dependency-graph.json` produit par l'analyse contient déjà
+cette information.
+
+**Objectif :** `get_file_dependencies(directory, filePath, direction)` — retourne
+les imports entrants et/ou sortants d'un fichier depuis le graphe de dépendances
+mis en cache.
+
+---
+
+### #15 — Pas d'accès aux ADRs via MCP (moyen)
+
+**Fichiers :** `src/core/services/mcp-handlers/`, `src/cli/commands/mcp.ts`
+
+`spec-gen generate --adrs` produit des Architecture Decision Records dans
+`openspec/decisions/`, mais aucun outil MCP ne permet de les lire ni de les
+chercher. Un agent qui veut comprendre pourquoi une décision d'architecture a été
+prise n'a pas accès à cette information.
+
+**Objectif :** `get_decisions(directory, query?)` — liste les ADRs disponibles ou
+retourne ceux correspondant à une requête textuelle simple (filtrage par titre/statut).
+
+---
+
 ## Tableau récapitulatif
 
 | # | Lacune | Phase | Impact |
@@ -173,3 +255,8 @@ et lent — inutile si le graph + embedding retrieval est bien conçu.
 | 8 | Pas de boucle retrieve-then-generate | 3 | **Moyen** |
 | 9 | Context packing non adaptatif | 3 | **Faible** |
 | 10 | Pas de re-ranking | 3 | **Faible** |
+| 11 | Pas de `get_spec(domain)` | 4 | **Élevé** |
+| 12 | Pas de `get_function_body` | 4 | **Élevé** |
+| 13 | `suggest_insertion_points` sans graph expansion | 4 | **Élevé** |
+| 14 | Pas de requête dépendances fichier | 4 | **Moyen** |
+| 15 | Pas d'accès aux ADRs via MCP | 4 | **Moyen** |
