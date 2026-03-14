@@ -43,6 +43,7 @@ import {
   handleListSpecDomains,
   handleGetSpec,
 } from '../../core/services/mcp-handlers/semantic.js';
+import { handleOrient } from '../../core/services/mcp-handlers/orient.js';
 import {
   handleAnalyzeCodebase,
   handleGetArchitectureOverview,
@@ -86,6 +87,33 @@ export {
 // ============================================================================
 
 export const TOOL_DEFINITIONS = [
+  {
+    name: 'orient',
+    description:
+      'START HERE. Call this before any other tool when beginning a new task on an unfamiliar codebase. ' +
+      'Given a natural-language task description, returns in ONE call: relevant functions, source files, ' +
+      'spec domains that cover them, depth-1 call neighbours, top insertion point candidates, ' +
+      'and matching spec sections. Falls back to keyword search if the embedding server is down. ' +
+      'Requires "spec-gen analyze" to have been run at least once.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: {
+          type: 'string',
+          description: 'Absolute path to the project directory',
+        },
+        task: {
+          type: 'string',
+          description: 'Natural language description of the task, e.g. "add rate limiting to the HTTP API"',
+        },
+        limit: {
+          type: 'number',
+          description: 'Number of relevant functions to return (default: 5)',
+        },
+      },
+      required: ['directory', 'task'],
+    },
+  },
   {
     name: 'analyze_codebase',
     description:
@@ -689,7 +717,10 @@ async function startMcpServer(): Promise<void> {
     try {
       let result: unknown;
 
-      if (name === 'analyze_codebase') {
+      if (name === 'orient') {
+        const { directory, task, limit = 5 } = args as { directory: string; task: string; limit?: number };
+        result = await handleOrient(directory, task, limit);
+      } else if (name === 'analyze_codebase') {
         const { directory, force = false } = args as { directory: string; force?: boolean };
         result = await handleAnalyzeCodebase(directory, force);
       } else if (name === 'get_architecture_overview') {

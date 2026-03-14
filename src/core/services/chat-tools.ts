@@ -34,6 +34,8 @@ import {
   handleGetDecisions,
 } from './mcp-handlers/analysis.js';
 
+import { handleOrient } from './mcp-handlers/orient.js';
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -82,6 +84,37 @@ function extractFilePaths(obj: unknown): string[] {
 // ============================================================================
 
 export const CHAT_TOOLS: ChatTool[] = [
+  // ── Orient (start here) ──────────────────────────────────────────────────
+  {
+    name: 'orient',
+    description:
+      'START HERE. USE THIS WHEN: beginning any new task — "add X", "fix Y", "where does Z live?". ' +
+      'Returns relevant functions, files, spec domains, call neighbours, and insertion points in ONE call. ' +
+      'Replaces the need to chain search_code → search_specs → suggest_insertion_points manually.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+        task:      { type: 'string', description: 'Natural language description of the task' },
+        limit:     { type: 'number', description: 'Number of relevant functions to return (default: 5)' },
+      },
+      required: ['directory', 'task'],
+    },
+    async execute(directory, args) {
+      const result = await handleOrient(
+        (args.directory as string) ?? directory,
+        args.task as string,
+        (args.limit as number) ?? 5,
+      );
+      const paths: string[] = [];
+      if (result && typeof result === 'object') {
+        const r = result as Record<string, unknown>;
+        for (const f of (r.relevantFiles as string[]) ?? []) paths.push(f);
+      }
+      return { result, filePaths: [...new Set(paths)] };
+    },
+  },
+
   // ── Architecture overview ────────────────────────────────────────────────
   {
     name: 'get_architecture_overview',
