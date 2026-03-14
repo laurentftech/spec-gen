@@ -1,6 +1,6 @@
 {
   "name": "spec-gen-cli",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Reverse-engineer OpenSpec specifications from existing codebases",
   "type": "module",
   "main": "dist/api/index.js",
