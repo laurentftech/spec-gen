@@ -37,9 +37,9 @@ spec synthesis / agent response
 
 ---
 
-## Phase 1 — Fondations (bloquant)
+## Phase 1 — Fondations (bloquant) ✅
 
-### #1 — Le vector index n'est PAS utilisé pendant la génération (critique)
+### ~~#1 — Le vector index n'est PAS utilisé pendant la génération (critique)~~ ✅
 
 **Fichier :** `src/core/generator/spec-pipeline.ts`
 
@@ -54,7 +54,7 @@ implémentations indirectes.
 
 ---
 
-### #2 — Corps de fonctions absents de l'index (élevé)
+### ~~#2 — Corps de fonctions absents de l'index (élevé)~~ ✅
 
 **Fichier :** `src/core/analyzer/vector-index.ts` — `buildText()`
 
@@ -84,7 +84,7 @@ et l'ajouter au texte uniquement si `isSkeletonWorthIncluding(body, skeleton)` e
 
 ---
 
-### #3 — Chunking par lignes vides plutôt que par frontières AST (moyen)
+### ~~#3 — Chunking par lignes vides plutôt que par frontières AST (moyen)~~ ✅
 
 **Fichier :** `src/core/generator/spec-pipeline.ts` — `chunkContent()`
 
@@ -98,7 +98,7 @@ C'est le standard de tous les code RAG modernes (Sourcegraph Cody, Cursor, Aider
 
 ## Phase 2 — Intelligence (valeur métier)
 
-### #4 — Pas de liaison bidirectionnelle code ↔ spec (critique pour spec-gen)
+### ~~#4 — Pas de liaison bidirectionnelle code ↔ spec (critique pour spec-gen)~~ ✅
 
 Les deux index (fonctions et specs) sont des silos. `mapping.json` lie
 requirements → fichiers source, mais cette liaison n'est pas exploitée lors des
@@ -114,7 +114,7 @@ respectant les specs.
 
 ---
 
-### #5 — Pas de stratégie de retrieval différenciée MCP vs génération (élevé)
+### ~~#5 — Pas de stratégie de retrieval différenciée MCP vs génération (élevé)~~ ✅
 
 Aujourd'hui les outils MCP et le pipeline de génération utilisent le même appel
 `VectorIndex.search()` avec les mêmes paramètres.
@@ -127,7 +127,7 @@ Aujourd'hui les outils MCP et le pipeline de génération utilisent le même app
 
 ## Phase 3 — Optimisations
 
-### #6 — Aucun cache d'embeddings (moyen)
+### ~~#6 — Aucun cache d'embeddings (moyen)~~ ✅
 
 **Fichier :** `src/core/analyzer/vector-index.ts` — `build()`
 
@@ -140,7 +140,7 @@ fichiers modifiés.
 
 ---
 
-### #7 — Retrieval purement dense, pas de retrieval hybride (moyen)
+### ~~#7 — Retrieval purement dense, pas de retrieval hybride (moyen)~~ ✅
 
 Pour du code, les noms de symboles exacts comptent autant que la sémantique.
 Un retrieval hybride dense (embeddings) + sparse (BM25/TF-IDF) surpasse
@@ -176,14 +176,14 @@ et lent — inutile si le graph + embedding retrieval est bien conçu.
 
 ---
 
-## Phase 4 — Outils MCP manquants
+## Phase 4 — Outils MCP manquants ✅
 
 Les 19 outils existants sont bien conçus et bien documentés. `get_subgraph` et
 `analyze_impact` ont déjà un fallback sur la recherche sémantique quand il n'y a
 pas de match exact — c'est la bonne logique graph-first + semantic fallback.
 Il manque cependant cinq outils pour couvrir les cas d'usage courants des agents.
 
-### #11 — Pas de `get_spec(domain)` (élevé)
+### ~~#11 — Pas de `get_spec(domain)` (élevé)~~ ✅
 
 **Fichiers :** `src/core/services/mcp-handlers/semantic.ts`, `src/cli/commands/mcp.ts`
 
@@ -197,7 +197,7 @@ plutôt que d'y accéder directement.
 
 ---
 
-### #12 — Pas de `get_function_body(filePath, functionName)` (élevé)
+### ~~#12 — Pas de `get_function_body(filePath, functionName)` (élevé)~~ ✅
 
 **Fichiers :** `src/core/services/mcp-handlers/analysis.ts`, `src/cli/commands/mcp.ts`
 
@@ -212,7 +212,7 @@ dans un fichier. Complète naturellement `search_code`.
 
 ---
 
-### #13 — `suggest_insertion_points` n'utilise pas le graphe (élevé)
+### ~~#13 — `suggest_insertion_points` n'utilise pas le graphe (élevé)~~ ✅
 
 **Fichier :** `src/core/services/mcp-handlers/semantic.ts` — `handleSuggestInsertionPoints()`
 
@@ -226,7 +226,7 @@ pour inclure les orchestrateurs directs des fonctions trouvées.
 
 ---
 
-### #14 — Pas de requête de dépendances au niveau fichier (moyen)
+### ~~#14 — Pas de requête de dépendances au niveau fichier (moyen)~~ ✅
 
 **Fichiers :** `src/core/services/mcp-handlers/graph.ts`, `src/cli/commands/mcp.ts`
 
@@ -242,7 +242,7 @@ mis en cache.
 
 ---
 
-### #15 — Pas d'accès aux ADRs via MCP (moyen)
+### ~~#15 — Pas d'accès aux ADRs via MCP (moyen)~~ ✅
 
 **Fichiers :** `src/core/services/mcp-handlers/`, `src/cli/commands/mcp.ts`
 
@@ -258,7 +258,7 @@ retourne ceux correspondant à une requête textuelle simple (filtrage par titre
 
 ---
 
-## Phase 5 — Tests d'intégration sur données réelles
+## Phase 5 — Tests d'intégration sur données réelles (en cours)
 
 Les tests d'intégration existants ont un défaut structurel commun : ils utilisent
 des fixtures synthétiques avec des noms de fonctions déjà sémantiquement explicites
@@ -273,7 +273,7 @@ les noms de fonctions seuls sont insuffisants pour valider le comportement.
 
 ---
 
-### #16 — Tests sémantiques avec noms de fonctions ambigus (critique)
+### ~~#16 — Tests sémantiques avec noms de fonctions ambigus (critique)~~ ✅
 
 **Fichier :** `src/core/analyzer/vector-index.integration.test.ts`
 
@@ -310,7 +310,7 @@ Le test doit au minimum :
 
 ---
 
-### #18 — Tests de régression pour chaque bug trouvé en production (élevé)
+### ~~#18 — Tests de régression pour chaque bug trouvé en production (élevé)~~ ✅
 
 Quand un bug est découvert sur du vrai code (comme le bug des docstrings), le
 correctif doit s'accompagner d'un test de régression qui aurait échoué avant le
@@ -338,24 +338,24 @@ réponses (types corrects, pas de champs `undefined`, scores dans les bornes att
 
 ## Tableau récapitulatif
 
-| # | Lacune | Phase | Impact |
-|---|--------|-------|--------|
-| 1 | Vector index non utilisé dans la génération | 1 | **Critique** |
-| 2 | Corps de fonctions absents de l'index | 1 | **Élevé** |
-| 3 | Chunking faible (lignes vides vs AST) | 1 | **Moyen** |
-| 4 | Liaison code↔spec non exploitée | 2 | **Critique pour spec-gen** |
-| 5 | Pas de stratégie retrieval différenciée MCP/génération | 2 | **Élevé** |
-| 6 | Pas de cache d'embeddings | 3 | **Moyen** |
-| 7 | Pas de retrieval hybride (dense+sparse) | 3 | **Moyen** |
-| 8 | Pas de boucle retrieve-then-generate | 3 | **Moyen** |
-| 9 | Context packing non adaptatif | 3 | **Faible** |
-| 10 | Pas de re-ranking | 3 | **Faible** |
-| 11 | Pas de `get_spec(domain)` | 4 | **Élevé** |
-| 12 | Pas de `get_function_body` | 4 | **Élevé** |
-| 13 | `suggest_insertion_points` sans graph expansion | 4 | **Élevé** |
-| 14 | Pas de requête dépendances fichier | 4 | **Moyen** |
-| 15 | Pas d'accès aux ADRs via MCP | 4 | **Moyen** |
-| 16 | Tests sémantiques avec noms ambigus | 5 | **Critique** |
-| 17 | Pipeline e2e sur vrai dépôt open source | 5 | **Élevé** |
-| 18 | Tests de régression formalisés | 5 | **Élevé** |
-| 19 | Tests MCP bout en bout sur données réelles | 5 | **Moyen** |
+| # | Lacune | Phase | Impact | Statut |
+|---|--------|-------|--------|--------|
+| 1 | Vector index non utilisé dans la génération | 1 | **Critique** | ✅ |
+| 2 | Corps de fonctions absents de l'index | 1 | **Élevé** | ✅ |
+| 3 | Chunking faible (lignes vides vs AST) | 1 | **Moyen** | ✅ |
+| 4 | Liaison code↔spec non exploitée | 2 | **Critique pour spec-gen** | ✅ |
+| 5 | Pas de stratégie retrieval différenciée MCP/génération | 2 | **Élevé** | ✅ |
+| 6 | Pas de cache d'embeddings | 3 | **Moyen** | ✅ |
+| 7 | Pas de retrieval hybride (dense+sparse) | 3 | **Moyen** | ✅ |
+| 8 | Pas de boucle retrieve-then-generate | 3 | **Moyen** | — |
+| 9 | Context packing non adaptatif | 3 | **Faible** | — |
+| 10 | Pas de re-ranking | 3 | **Faible** | — |
+| 11 | Pas de `get_spec(domain)` | 4 | **Élevé** | ✅ |
+| 12 | Pas de `get_function_body` | 4 | **Élevé** | ✅ |
+| 13 | `suggest_insertion_points` sans graph expansion | 4 | **Élevé** | ✅ |
+| 14 | Pas de requête dépendances fichier | 4 | **Moyen** | ✅ |
+| 15 | Pas d'accès aux ADRs via MCP | 4 | **Moyen** | ✅ |
+| 16 | Tests sémantiques avec noms ambigus | 5 | **Critique** | ✅ |
+| 17 | Pipeline e2e sur vrai dépôt open source | 5 | **Élevé** | — |
+| 18 | Tests de régression formalisés | 5 | **Élevé** | ✅ |
+| 19 | Tests MCP bout en bout sur données réelles | 5 | **Moyen** | — |
