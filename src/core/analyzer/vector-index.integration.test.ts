@@ -59,6 +59,113 @@ function makeNode(overrides: Partial<FunctionNode> & Pick<FunctionNode, 'id' | '
 // "authentication" queries surface auth functions, not DB functions, etc.
 // ============================================================================
 
+// ============================================================================
+// FIXTURES — OPAQUE NAMES (RIG-16)
+//
+// All functions use generic, semantically meaningless names (process, handle,
+// run, execute, compute).  The correct retrieval target can ONLY be identified
+// via the docstring or signature — not the function name alone.  These fixtures
+// verify that buildText() actually leverages all indexed fields.
+// ============================================================================
+
+const OPAQUE_NODES: FunctionNode[] = [
+  makeNode({ id: 'src/email/validator.ts::process',   name: 'process',   filePath: 'src/email/validator.ts',   fanIn: 2, fanOut: 1 }),
+  makeNode({ id: 'src/http/limiter.ts::handle',       name: 'handle',    filePath: 'src/http/limiter.ts',      fanIn: 5, fanOut: 2 }),
+  makeNode({ id: 'src/media/compress.ts::run',        name: 'run',       filePath: 'src/media/compress.ts',    fanIn: 1, fanOut: 3 }),
+  makeNode({ id: 'src/billing/tax.ts::compute',       name: 'compute',   filePath: 'src/billing/tax.ts',       fanIn: 3, fanOut: 2 }),
+  makeNode({ id: 'src/jobs/scheduler.ts::execute',    name: 'execute',   filePath: 'src/jobs/scheduler.ts',    fanIn: 1, fanOut: 4 }),
+  // Decoys with equally generic names but different domains
+  makeNode({ id: 'src/search/index.ts::process',      name: 'process',   filePath: 'src/search/index.ts',      fanIn: 2, fanOut: 1 }),
+  makeNode({ id: 'src/io/stream.ts::handle',          name: 'handle',    filePath: 'src/io/stream.ts',         fanIn: 3, fanOut: 1 }),
+];
+
+const OPAQUE_SIGNATURES: FileSignatureMap[] = [
+  {
+    path: 'src/email/validator.ts',
+    language: 'TypeScript',
+    entries: [
+      {
+        kind: 'function',
+        name: 'process',
+        signature: 'function process(input: string): ValidationResult',
+        docstring: 'Validates an email address format using RFC 5322 rules',
+      },
+    ],
+  },
+  {
+    path: 'src/http/limiter.ts',
+    language: 'TypeScript',
+    entries: [
+      {
+        kind: 'function',
+        name: 'handle',
+        signature: 'async function handle(req: Request, res: Response, next: NextFunction): Promise<void>',
+        docstring: 'Rate limits incoming HTTP requests using a sliding window algorithm',
+      },
+    ],
+  },
+  {
+    path: 'src/media/compress.ts',
+    language: 'TypeScript',
+    entries: [
+      {
+        kind: 'function',
+        name: 'run',
+        signature: 'async function run(input: Buffer, quality?: number): Promise<Buffer>',
+        docstring: 'Compresses images to WebP format with configurable quality level',
+      },
+    ],
+  },
+  {
+    path: 'src/billing/tax.ts',
+    language: 'TypeScript',
+    entries: [
+      {
+        kind: 'function',
+        name: 'compute',
+        signature: 'function compute(subtotal: number, region: string): TaxBreakdown',
+        docstring: 'Calculates VAT and regional tax rates for e-commerce transactions',
+      },
+    ],
+  },
+  {
+    path: 'src/jobs/scheduler.ts',
+    language: 'TypeScript',
+    entries: [
+      {
+        kind: 'function',
+        name: 'execute',
+        signature: 'async function execute(job: CronJob): Promise<JobResult>',
+        docstring: 'Runs a scheduled background job with retry logic and dead-letter queue support',
+      },
+    ],
+  },
+  {
+    path: 'src/search/index.ts',
+    language: 'TypeScript',
+    entries: [
+      {
+        kind: 'function',
+        name: 'process',
+        signature: 'function process(doc: Document): IndexEntry',
+        docstring: 'Tokenizes and indexes a document for full-text search',
+      },
+    ],
+  },
+  {
+    path: 'src/io/stream.ts',
+    language: 'TypeScript',
+    entries: [
+      {
+        kind: 'function',
+        name: 'handle',
+        signature: 'function handle(chunk: Buffer): void',
+        docstring: 'Processes a binary chunk from a readable stream',
+      },
+    ],
+  },
+];
+
 const NODES: FunctionNode[] = [
   makeNode({ id: 'src/auth/jwt.ts::verifyToken',    name: 'verifyToken',    filePath: 'src/auth/jwt.ts',    fanIn: 8, fanOut: 2 }),
   makeNode({ id: 'src/auth/jwt.ts::signToken',      name: 'signToken',      filePath: 'src/auth/jwt.ts',    fanIn: 4, fanOut: 1 }),
@@ -298,5 +405,139 @@ describe('VectorIndex + EmbeddingService (integration)', () => {
 
     // Vectors should be identical (deterministic model)
     expect(v1).toEqual(v2);
+  });
+});
+
+// ============================================================================
+// RIG-16 — Opaque function names: retrieval must rely on docstring / signature
+//
+// All function names in this suite are generic (`process`, `handle`, `run`…).
+// A correct implementation indexes docstrings and signatures; a broken one
+// would fail to retrieve the right function because the name alone carries no
+// semantic signal.
+// ============================================================================
+
+describe('VectorIndex — opaque names (RIG-16)', () => {
+  let tmpDir: string;
+  let embedSvc: EmbeddingService;
+  let serverAvailable = false;
+
+  beforeAll(async () => {
+    serverAvailable = await isServerUp(EMBED_BASE_URL);
+    if (!serverAvailable) return;
+
+    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-opaque-'));
+    embedSvc = new EmbeddingService({ baseUrl: EMBED_BASE_URL, model: EMBED_MODEL });
+
+    await VectorIndex.build(
+      tmpDir,
+      OPAQUE_NODES,
+      OPAQUE_SIGNATURES,
+      new Set<string>(),
+      new Set<string>(),
+      embedSvc,
+    );
+  });
+
+  afterAll(async () => {
+    if (tmpDir) await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  function skipIfDown() {
+    if (!serverAvailable) {
+      console.warn(`  ⚠ Embedding server not reachable at ${EMBED_BASE_URL} — skipping`);
+    }
+    return !serverAvailable;
+  }
+
+  it('index is built from opaque-name fixtures', () => {
+    if (skipIfDown()) return;
+    expect(VectorIndex.exists(tmpDir)).toBe(true);
+  });
+
+  it('"validate email format RFC" → finds src/email/validator.ts::process via docstring', async () => {
+    if (skipIfDown()) return;
+
+    // The function is named "process" — the name alone carries zero signal.
+    // Only the docstring "Validates an email address format using RFC 5322 rules" disambiguates.
+    const results = await VectorIndex.search(tmpDir, 'validate email format RFC 5322', embedSvc, { limit: 3 });
+
+    expect(results.length).toBeGreaterThan(0);
+    const top = results[0].record;
+    expect(top.filePath).toBe('src/email/validator.ts');
+    expect(top.name).toBe('process');
+    expect(top.docstring).toContain('RFC 5322');
+  });
+
+  it('"rate limiting sliding window HTTP" → finds src/http/limiter.ts::handle via docstring', async () => {
+    if (skipIfDown()) return;
+
+    // Named "handle" — indistinguishable from src/io/stream.ts::handle by name.
+    // Docstring "Rate limits incoming HTTP requests using a sliding window algorithm" is the signal.
+    const results = await VectorIndex.search(tmpDir, 'rate limit HTTP requests sliding window', embedSvc, { limit: 3 });
+
+    expect(results.length).toBeGreaterThan(0);
+    const topFilePaths = results.map(r => r.record.filePath);
+    expect(topFilePaths).toContain('src/http/limiter.ts');
+
+    const limiterResult = results.find(r => r.record.filePath === 'src/http/limiter.ts');
+    expect(limiterResult?.record.docstring).toContain('sliding window');
+  });
+
+  it('"compress images WebP quality" → finds src/media/compress.ts::run via docstring', async () => {
+    if (skipIfDown()) return;
+
+    // Named "run" — no semantic meaning. Docstring mentions WebP and image compression.
+    const results = await VectorIndex.search(tmpDir, 'compress image to WebP format', embedSvc, { limit: 3 });
+
+    expect(results.length).toBeGreaterThan(0);
+    const topFilePaths = results.map(r => r.record.filePath);
+    expect(topFilePaths).toContain('src/media/compress.ts');
+  });
+
+  it('"calculate VAT tax e-commerce" → finds src/billing/tax.ts::compute via docstring', async () => {
+    if (skipIfDown()) return;
+
+    // Named "compute" — generic. Docstring specifies VAT and e-commerce domain.
+    const results = await VectorIndex.search(tmpDir, 'calculate VAT tax for online purchase', embedSvc, { limit: 3 });
+
+    expect(results.length).toBeGreaterThan(0);
+    const topFilePaths = results.map(r => r.record.filePath);
+    expect(topFilePaths).toContain('src/billing/tax.ts');
+  });
+
+  it('"background job retry dead-letter queue" → finds scheduler::execute via docstring', async () => {
+    if (skipIfDown()) return;
+
+    // Named "execute" — but the docstring mentions scheduled background jobs, retry, dead-letter.
+    const results = await VectorIndex.search(tmpDir, 'scheduled background job retry dead-letter', embedSvc, { limit: 3 });
+
+    expect(results.length).toBeGreaterThan(0);
+    const topFilePaths = results.map(r => r.record.filePath);
+    expect(topFilePaths).toContain('src/jobs/scheduler.ts');
+  });
+
+  it('docstring is stored and returned on result records', async () => {
+    if (skipIfDown()) return;
+
+    // All opaque functions have non-empty docstrings.  Verify they survive round-trip.
+    const results = await VectorIndex.search(tmpDir, 'email validation', embedSvc, { limit: 7 });
+
+    expect(results.length).toBeGreaterThan(0);
+    for (const r of results) {
+      expect(r.record.docstring).toBeTruthy();
+      expect(r.record.docstring.length).toBeGreaterThan(10);
+    }
+  });
+
+  it('signature is stored and returned on result records', async () => {
+    if (skipIfDown()) return;
+
+    const results = await VectorIndex.search(tmpDir, 'compress image WebP', embedSvc, { limit: 7 });
+
+    expect(results.length).toBeGreaterThan(0);
+    for (const r of results) {
+      expect(r.record.signature).toBeTruthy();
+    }
   });
 });
