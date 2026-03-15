@@ -704,6 +704,7 @@ export const TOOL_DEFINITIONS = [
 
 interface McpServerOptions {
   watch?: string;
+  watchAuto?: boolean;
   watchEmbed?: boolean;
   watchDebounce?: string;
 }
@@ -718,8 +719,29 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
     tools: TOOL_DEFINITIONS,
   }));
 
+  // --watch-auto: start the watcher on the first tool call that carries a directory
+  let autoWatcher: import('../../core/services/mcp-watcher.js').McpWatcher | undefined;
+
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args = {} } = request.params;
+
+    if (options.watchAuto && !autoWatcher) {
+      const dir = (args as Record<string, unknown>).directory;
+      if (typeof dir === 'string') {
+        const { resolve } = await import('node:path');
+        const { McpWatcher } = await import('../../core/services/mcp-watcher.js');
+        const debounceMs = parseInt(options.watchDebounce ?? '400', 10);
+        autoWatcher = new McpWatcher({
+          rootPath: resolve(dir),
+          debounceMs: isNaN(debounceMs) ? 400 : debounceMs,
+          embed: options.watchEmbed ?? false,
+        });
+        await autoWatcher.start();
+        const cleanup = () => autoWatcher!.stop().then(() => process.exit(0));
+        process.on('SIGINT',  cleanup);
+        process.on('SIGTERM', cleanup);
+      }
+    }
 
     try {
       let result: unknown;
@@ -855,6 +877,7 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
 export const mcpCommand = new Command('mcp')
   .description('Start spec-gen as an MCP server (stdio transport, for Cline/Claude Code)')
   .option('--watch <directory>', 'Watch a project directory and incrementally re-index signatures on file changes')
+  .option('--watch-auto', 'Auto-detect the project directory from the first tool call and start watching (recommended for Cline/Claude Code)', false)
   .option('--watch-embed', 'Also re-embed changed functions into the vector index when watching (requires embedding server)', false)
   .option('--watch-debounce <ms>', 'Debounce delay in ms before re-indexing after a file change (default: 400)', '400')
   .action((options: McpServerOptions) => startMcpServer(options));
