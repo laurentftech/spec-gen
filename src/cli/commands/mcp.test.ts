@@ -114,11 +114,11 @@ function makeCallGraph(): SerializedCallGraph {
   return {
     nodes: [entry, hub, workerA, workerB, leaf, util],
     edges: [
-      { callerId: 'f1', calleeId: 'f2', calleeName: 'hub',     line: 10 },
-      { callerId: 'f2', calleeId: 'f3', calleeName: 'workerA', line: 20 },
-      { callerId: 'f2', calleeId: 'f4', calleeName: 'workerB', line: 21 },
-      { callerId: 'f2', calleeId: 'f6', calleeName: 'util',    line: 22 },
-      { callerId: 'f1', calleeId: 'f6', calleeName: 'util',    line: 11 },
+      { callerId: 'f1', calleeId: 'f2', calleeName: 'hub',     line: 10, confidence: 'name_only' as const },
+      { callerId: 'f2', calleeId: 'f3', calleeName: 'workerA', line: 20, confidence: 'name_only' as const },
+      { callerId: 'f2', calleeId: 'f4', calleeName: 'workerB', line: 21, confidence: 'name_only' as const },
+      { callerId: 'f2', calleeId: 'f6', calleeName: 'util',    line: 22, confidence: 'name_only' as const },
+      { callerId: 'f1', calleeId: 'f6', calleeName: 'util',    line: 11, confidence: 'name_only' as const },
     ],
     hubFunctions:    [hub],
     entryPoints:     [entry],

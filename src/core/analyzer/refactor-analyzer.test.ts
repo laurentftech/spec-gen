@@ -69,8 +69,8 @@ describe('analyzeForRefactoring — unreachable', () => {
     const b = makeNode({ id: 'dead.ts::b', name: 'b', filePath: 'dead.ts', fanIn: 1, fanOut: 1 });
 
     const graph = makeGraph([a, b], [
-      { callerId: 'dead.ts::a', calleeId: 'dead.ts::b', calleeName: 'b' },
-      { callerId: 'dead.ts::b', calleeId: 'dead.ts::a', calleeName: 'a' },
+      { callerId: 'dead.ts::a', calleeId: 'dead.ts::b', calleeName: 'b', confidence: 'name_only' as const },
+      { callerId: 'dead.ts::b', calleeId: 'dead.ts::a', calleeName: 'a', confidence: 'name_only' as const },
     ]);
 
     const report = analyzeForRefactoring(graph);
@@ -93,8 +93,8 @@ describe('analyzeForRefactoring — unreachable', () => {
     const b = makeNode({ id: 'dead.ts::b', name: 'b', filePath: 'dead.ts', fanIn: 1, fanOut: 1 });
 
     const graph = makeGraph([a, b], [
-      { callerId: 'dead.ts::a', calleeId: 'dead.ts::b', calleeName: 'b' },
-      { callerId: 'dead.ts::b', calleeId: 'dead.ts::a', calleeName: 'a' },
+      { callerId: 'dead.ts::a', calleeId: 'dead.ts::b', calleeName: 'b', confidence: 'name_only' as const },
+      { callerId: 'dead.ts::b', calleeId: 'dead.ts::a', calleeName: 'a', confidence: 'name_only' as const },
     ]);
 
     const mappings: MappingEntry[] = [
@@ -111,8 +111,8 @@ describe('analyzeForRefactoring — unreachable', () => {
     const a = makeNode({ id: 'f.ts::a', name: 'a', filePath: 'f.ts', fanIn: 1, fanOut: 1 });
     const b = makeNode({ id: 'f.ts::b', name: 'b', filePath: 'f.ts', fanIn: 1, fanOut: 1 });
     const graph = makeGraph([a, b], [
-      { callerId: 'f.ts::a', calleeId: 'f.ts::b', calleeName: 'b' },
-      { callerId: 'f.ts::b', calleeId: 'f.ts::a', calleeName: 'a' },
+      { callerId: 'f.ts::a', calleeId: 'f.ts::b', calleeName: 'b', confidence: 'name_only' as const },
+      { callerId: 'f.ts::b', calleeId: 'f.ts::a', calleeName: 'a', confidence: 'name_only' as const },
     ]);
     const report = analyzeForRefactoring(graph);
     expect(report.stats.unreachable).toBe(2);
@@ -253,8 +253,8 @@ describe('analyzeForRefactoring — in_cycle', () => {
     const b = makeNode({ id: 'cycle.ts::b', name: 'b', filePath: 'cycle.ts', fanIn: 1, fanOut: 1 });
 
     const graph = makeGraph([a, b], [
-      { callerId: 'cycle.ts::a', calleeId: 'cycle.ts::b', calleeName: 'b' },
-      { callerId: 'cycle.ts::b', calleeId: 'cycle.ts::a', calleeName: 'a' },
+      { callerId: 'cycle.ts::a', calleeId: 'cycle.ts::b', calleeName: 'b', confidence: 'name_only' as const },
+      { callerId: 'cycle.ts::b', calleeId: 'cycle.ts::a', calleeName: 'a', confidence: 'name_only' as const },
     ]);
 
     const report = analyzeForRefactoring(graph);
@@ -270,9 +270,9 @@ describe('analyzeForRefactoring — in_cycle', () => {
     const c = makeNode({ id: 'c.ts::c', name: 'c', filePath: 'c.ts', fanIn: 1, fanOut: 1 });
 
     const graph = makeGraph([a, b, c], [
-      { callerId: 'c.ts::a', calleeId: 'c.ts::b', calleeName: 'b' },
-      { callerId: 'c.ts::b', calleeId: 'c.ts::c', calleeName: 'c' },
-      { callerId: 'c.ts::c', calleeId: 'c.ts::a', calleeName: 'a' },
+      { callerId: 'c.ts::a', calleeId: 'c.ts::b', calleeName: 'b', confidence: 'name_only' as const },
+      { callerId: 'c.ts::b', calleeId: 'c.ts::c', calleeName: 'c', confidence: 'name_only' as const },
+      { callerId: 'c.ts::c', calleeId: 'c.ts::a', calleeName: 'a', confidence: 'name_only' as const },
     ]);
 
     const report = analyzeForRefactoring(graph);
@@ -288,8 +288,8 @@ describe('analyzeForRefactoring — in_cycle', () => {
     const c = makeNode({ id: 'l.ts::c', name: 'c', filePath: 'l.ts', fanIn: 1, fanOut: 0 });
 
     const graph = makeGraph([a, b, c], [
-      { callerId: 'l.ts::a', calleeId: 'l.ts::b', calleeName: 'b' },
-      { callerId: 'l.ts::b', calleeId: 'l.ts::c', calleeName: 'c' },
+      { callerId: 'l.ts::a', calleeId: 'l.ts::b', calleeName: 'b', confidence: 'name_only' as const },
+      { callerId: 'l.ts::b', calleeId: 'l.ts::c', calleeName: 'c', confidence: 'name_only' as const },
     ]);
 
     const report = analyzeForRefactoring(graph);
@@ -310,7 +310,7 @@ describe('analyzeForRefactoring — depth computation', () => {
     const leaf = makeNode({ id: 'app.ts::leaf', name: 'leaf', filePath: 'app.ts', fanIn: 1, fanOut: 0 });
 
     const graph = makeGraph([entry, leaf], [
-      { callerId: 'app.ts::main', calleeId: 'app.ts::leaf', calleeName: 'leaf' },
+      { callerId: 'app.ts::main', calleeId: 'app.ts::leaf', calleeName: 'leaf', confidence: 'name_only' as const },
     ]);
 
     const report = analyzeForRefactoring(graph);
@@ -330,9 +330,9 @@ describe('analyzeForRefactoring — depth computation', () => {
 
     // c↔d is a cycle, but nobody calls c or d from outside
     const graph = makeGraph([a, b, c, d], [
-      { callerId: 'x.ts::a', calleeId: 'x.ts::b', calleeName: 'b' },
-      { callerId: 'x.ts::c', calleeId: 'x.ts::d', calleeName: 'd' },
-      { callerId: 'x.ts::d', calleeId: 'x.ts::c', calleeName: 'c' },
+      { callerId: 'x.ts::a', calleeId: 'x.ts::b', calleeName: 'b', confidence: 'name_only' as const },
+      { callerId: 'x.ts::c', calleeId: 'x.ts::d', calleeName: 'd', confidence: 'name_only' as const },
+      { callerId: 'x.ts::d', calleeId: 'x.ts::c', calleeName: 'c', confidence: 'name_only' as const },
     ]);
 
     const report = analyzeForRefactoring(graph);
@@ -372,7 +372,7 @@ describe('analyzeForRefactoring — priority scoring', () => {
     const dirty = makeNode({ id: 'ok.ts::dirty', name: 'dirty', filePath: 'ok.ts', fanIn: 1, fanOut: 10 });
 
     const report = analyzeForRefactoring(makeGraph([clean, dirty], [
-      { callerId: 'ok.ts::clean', calleeId: 'ok.ts::dirty', calleeName: 'dirty' },
+      { callerId: 'ok.ts::clean', calleeId: 'ok.ts::dirty', calleeName: 'dirty', confidence: 'name_only' as const },
     ]));
 
     expect(report.priorities.map(e => e.function)).not.toContain('clean');

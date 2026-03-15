@@ -13,10 +13,31 @@
  */
 
 import Parser from 'tree-sitter';
+import { FunctionRegistryTrie } from './function-registry-trie.js';
+import type { ImportMap } from './import-resolver-bridge.js';
+import { inferTypesFromSource, resolveViaTypeInference } from './type-inference-engine.js';
+import { extractAllHttpEdges } from './http-route-parser.js';
 
 // ============================================================================
 // TYPES
 // ============================================================================
+
+export type EdgeConfidence =
+  | 'self_cls'       // intra-class call via self/cls
+  | 'type_inference' // receiver type resolved via type inference
+  | 'import'         // callee was imported from a known file
+  | 'http_endpoint'  // cross-language HTTP route match
+  | 'same_file'      // multiple candidates; same-file wins
+  | 'name_only';     // last-resort: pick first candidate by name
+
+/** Internal raw edge before resolution */
+interface RawEdge {
+  callerId: string;
+  calleeName: string;
+  line: number;
+  /** Receiver variable name in `obj.method()` calls */
+  calleeObject?: string;
+}
 
 export interface FunctionNode {
   /** Unique ID: "filepath::ClassName.methodName" or "filepath::functionName" */
@@ -44,6 +65,7 @@ export interface CallEdge {
   /** Raw name as it appears in source */
   calleeName: string;
   line?: number;
+  confidence: EdgeConfidence;
 }
 
 export interface LayerViolation {
@@ -124,6 +146,14 @@ const IGNORED_CALLEES = new Set([
   'make_shared', 'make_unique', 'move', 'forward', 'swap',
   'static_cast', 'dynamic_cast', 'reinterpret_cast', 'const_cast',
 ]);
+
+/** Returns true if the name should be skipped as a call target. */
+function isIgnoredCallee(name: string): boolean {
+  if (IGNORED_CALLEES.has(name)) return true;
+  // ALL_CAPS names (3+ chars) are almost certainly C/C++ macros, not functions
+  if (/^[A-Z][A-Z0-9_]{2,}$/.test(name)) return true;
+  return false;
+}
 
 // ============================================================================
 // PARSER SINGLETONS (lazy init)
@@ -463,13 +493,14 @@ const TS_CALL_QUERY = `
   (call_expression
     function: [(identifier) @call.name
                (member_expression
+                 object: (identifier) @call.object
                  property: (property_identifier) @call.name)]) @call.node
 `;
 
 async function extractTSGraph(
   filePath: string,
   content: string
-): Promise<{ nodes: FunctionNode[]; rawEdges: Array<{ callerId: string; calleeName: string; line: number }> }> {
+): Promise<{ nodes: FunctionNode[]; rawEdges: RawEdge[] }> {
   const { parser, lang } = await getTSParser();
   const tree = (parser as Parser).parse(content);
 
@@ -525,16 +556,17 @@ async function extractTSGraph(
   }
 
   // --- Extract calls ---
-  const rawEdges: Array<{ callerId: string; calleeName: string; line: number }> = [];
+  const rawEdges: RawEdge[] = [];
   const callMatches = callQuery.matches(tree.rootNode);
 
   for (const match of callMatches) {
     const nameCapture = match.captures.find(c => c.name === 'call.name');
     const nodeCapture = match.captures.find(c => c.name === 'call.node');
+    const objectCapture = match.captures.find(c => c.name === 'call.object');
     if (!nameCapture || !nodeCapture) continue;
 
     const calleeName = nameCapture.node.text;
-    if (IGNORED_CALLEES.has(calleeName)) continue;
+    if (isIgnoredCallee(calleeName)) continue;
 
     const callPos = nodeCapture.node.startIndex;
     const caller = findEnclosingFunction(nodes, callPos);
@@ -544,6 +576,7 @@ async function extractTSGraph(
       callerId: caller.id,
       calleeName,
       line: nodeCapture.node.startPosition.row + 1,
+      calleeObject: objectCapture?.node.text,
     });
   }
 
@@ -589,7 +622,7 @@ const PY_METHOD_CALL_QUERY = `
 async function extractPyGraph(
   filePath: string,
   content: string
-): Promise<{ nodes: FunctionNode[]; rawEdges: Array<{ callerId: string; calleeName: string; line: number }> }> {
+): Promise<{ nodes: FunctionNode[]; rawEdges: RawEdge[] }> {
   const { parser, lang } = await getPyParser();
   const tree = (parser as Parser).parse(content);
 
@@ -651,7 +684,7 @@ async function extractPyGraph(
   }
 
   // --- Extract calls ---
-  const rawEdges: Array<{ callerId: string; calleeName: string; line: number }> = [];
+  const rawEdges: RawEdge[] = [];
 
   const directCallQuery = new Parser.Query(lang as unknown as Parser.Language, PY_DIRECT_CALL_QUERY);
   const methodCallQuery = new Parser.Query(lang as unknown as Parser.Language, PY_METHOD_CALL_QUERY);
@@ -663,7 +696,7 @@ async function extractPyGraph(
     if (!nameCapture || !nodeCapture) continue;
 
     const calleeName = nameCapture.node.text;
-    if (IGNORED_CALLEES.has(calleeName)) continue;
+    if (isIgnoredCallee(calleeName)) continue;
 
     const callPos = nodeCapture.node.startIndex;
     const caller = findEnclosingFunction(nodes, callPos);
@@ -676,20 +709,15 @@ async function extractPyGraph(
     });
   }
 
-  // Method calls: obj.method() — only resolve self.* and cls.* (internal object methods)
+  // Method calls: obj.method() — capture receiver for type-inference-based resolution
   for (const match of methodCallQuery.matches(tree.rootNode)) {
     const objectCapture = match.captures.find(c => c.name === 'call.object');
     const nameCapture = match.captures.find(c => c.name === 'call.name');
     const nodeCapture = match.captures.find(c => c.name === 'call.node');
     if (!objectCapture || !nameCapture || !nodeCapture) continue;
 
-    const objectName = objectCapture.node.text;
-    // Only track self.method() and cls.method() — external objects like
-    // redis.get(), dict.get(), os.path.join() would create massive false positives
-    if (objectName !== 'self' && objectName !== 'cls') continue;
-
     const calleeName = nameCapture.node.text;
-    if (IGNORED_CALLEES.has(calleeName)) continue;
+    if (isIgnoredCallee(calleeName)) continue;
 
     const callPos = nodeCapture.node.startIndex;
     const caller = findEnclosingFunction(nodes, callPos);
@@ -699,6 +727,7 @@ async function extractPyGraph(
       callerId: caller.id,
       calleeName,
       line: nodeCapture.node.startPosition.row + 1,
+      calleeObject: objectCapture.node.text,
     });
   }
 
@@ -723,13 +752,14 @@ const GO_CALL_QUERY = `
 
   (call_expression
     function: (selector_expression
+      operand: (identifier) @call.object
       field: (field_identifier) @call.name)) @call.node
 `;
 
 async function extractGoGraph(
   filePath: string,
   content: string
-): Promise<{ nodes: FunctionNode[]; rawEdges: Array<{ callerId: string; calleeName: string; line: number }> }> {
+): Promise<{ nodes: FunctionNode[]; rawEdges: RawEdge[] }> {
   const { parser, lang } = await getGoParser();
   const tree = (parser as Parser).parse(content);
 
@@ -770,19 +800,20 @@ async function extractGoGraph(
     });
   }
 
-  const rawEdges: Array<{ callerId: string; calleeName: string; line: number }> = [];
+  const rawEdges: RawEdge[] = [];
   for (const match of callQuery.matches(tree.rootNode)) {
     const nameCapture = match.captures.find(c => c.name === 'call.name');
     const nodeCapture = match.captures.find(c => c.name === 'call.node');
+    const objectCapture = match.captures.find(c => c.name === 'call.object');
     if (!nameCapture || !nodeCapture) continue;
 
     const calleeName = nameCapture.node.text;
-    if (IGNORED_CALLEES.has(calleeName)) continue;
+    if (isIgnoredCallee(calleeName)) continue;
 
     const caller = findEnclosingFunction(nodes, nodeCapture.node.startIndex);
     if (!caller) continue;
 
-    rawEdges.push({ callerId: caller.id, calleeName, line: nodeCapture.node.startPosition.row + 1 });
+    rawEdges.push({ callerId: caller.id, calleeName, line: nodeCapture.node.startPosition.row + 1, calleeObject: objectCapture?.node.text });
   }
 
   return { nodes, rawEdges };
@@ -803,13 +834,14 @@ const RUST_CALL_QUERY = `
 
   (call_expression
     function: (field_expression
+      value: (identifier) @call.object
       field: (field_identifier) @call.name)) @call.node
 `;
 
 async function extractRustGraph(
   filePath: string,
   content: string
-): Promise<{ nodes: FunctionNode[]; rawEdges: Array<{ callerId: string; calleeName: string; line: number }> }> {
+): Promise<{ nodes: FunctionNode[]; rawEdges: RawEdge[] }> {
   const { parser, lang } = await getRustParser();
   const tree = (parser as Parser).parse(content);
 
@@ -854,19 +886,20 @@ async function extractRustGraph(
     });
   }
 
-  const rawEdges: Array<{ callerId: string; calleeName: string; line: number }> = [];
+  const rawEdges: RawEdge[] = [];
   for (const match of callQuery.matches(tree.rootNode)) {
     const nameCapture = match.captures.find(c => c.name === 'call.name');
     const nodeCapture = match.captures.find(c => c.name === 'call.node');
+    const objectCapture = match.captures.find(c => c.name === 'call.object');
     if (!nameCapture || !nodeCapture) continue;
 
     const calleeName = nameCapture.node.text;
-    if (IGNORED_CALLEES.has(calleeName)) continue;
+    if (isIgnoredCallee(calleeName)) continue;
 
     const caller = findEnclosingFunction(nodes, nodeCapture.node.startIndex);
     if (!caller) continue;
 
-    rawEdges.push({ callerId: caller.id, calleeName, line: nodeCapture.node.startPosition.row + 1 });
+    rawEdges.push({ callerId: caller.id, calleeName, line: nodeCapture.node.startPosition.row + 1, calleeObject: objectCapture?.node.text });
   }
 
   return { nodes, rawEdges };
@@ -887,6 +920,10 @@ const RUBY_FN_QUERY = `
 // Explicit calls: fetch(), obj.method()
 const RUBY_CALL_QUERY = `
   (call
+    receiver: (identifier) @call.object
+    method: (identifier) @call.name) @call.node
+
+  (call
     method: (identifier) @call.name) @call.node
 `;
 
@@ -901,7 +938,7 @@ const RUBY_BAREWORD_QUERY = `
 async function extractRubyGraph(
   filePath: string,
   content: string
-): Promise<{ nodes: FunctionNode[]; rawEdges: Array<{ callerId: string; calleeName: string; line: number }> }> {
+): Promise<{ nodes: FunctionNode[]; rawEdges: RawEdge[] }> {
   const { parser, lang } = await getRubyParser();
   const tree = (parser as Parser).parse(content);
 
@@ -943,21 +980,22 @@ async function extractRubyGraph(
     });
   }
 
-  const rawEdges: Array<{ callerId: string; calleeName: string; line: number }> = [];
+  const rawEdges: RawEdge[] = [];
 
   // Explicit calls: fetch(), obj.method()
   for (const match of callQuery.matches(tree.rootNode)) {
     const nameCapture = match.captures.find(c => c.name === 'call.name');
     const nodeCapture = match.captures.find(c => c.name === 'call.node');
+    const objectCapture = match.captures.find(c => c.name === 'call.object');
     if (!nameCapture || !nodeCapture) continue;
 
     const calleeName = nameCapture.node.text;
-    if (IGNORED_CALLEES.has(calleeName)) continue;
+    if (isIgnoredCallee(calleeName)) continue;
 
     const caller = findEnclosingFunction(nodes, nodeCapture.node.startIndex);
     if (!caller) continue;
 
-    rawEdges.push({ callerId: caller.id, calleeName, line: nodeCapture.node.startPosition.row + 1 });
+    rawEdges.push({ callerId: caller.id, calleeName, line: nodeCapture.node.startPosition.row + 1, calleeObject: objectCapture?.node.text });
   }
 
   // Bareword calls: fetch (no parens) — identifier at statement level
@@ -966,7 +1004,7 @@ async function extractRubyGraph(
     if (!nameCapture) continue;
 
     const calleeName = nameCapture.node.text;
-    if (IGNORED_CALLEES.has(calleeName)) continue;
+    if (isIgnoredCallee(calleeName)) continue;
 
     const caller = findEnclosingFunction(nodes, nameCapture.node.startIndex);
     if (!caller) continue;
@@ -991,13 +1029,17 @@ const JAVA_FN_QUERY = `
 
 const JAVA_CALL_QUERY = `
   (method_invocation
+    object: (identifier) @call.object
+    name: (identifier) @call.name) @call.node
+
+  (method_invocation
     name: (identifier) @call.name) @call.node
 `;
 
 async function extractJavaGraph(
   filePath: string,
   content: string
-): Promise<{ nodes: FunctionNode[]; rawEdges: Array<{ callerId: string; calleeName: string; line: number }> }> {
+): Promise<{ nodes: FunctionNode[]; rawEdges: RawEdge[] }> {
   const { parser, lang } = await getJavaParser();
   const tree = (parser as Parser).parse(content);
 
@@ -1039,19 +1081,20 @@ async function extractJavaGraph(
     });
   }
 
-  const rawEdges: Array<{ callerId: string; calleeName: string; line: number }> = [];
+  const rawEdges: RawEdge[] = [];
   for (const match of callQuery.matches(tree.rootNode)) {
     const nameCapture = match.captures.find(c => c.name === 'call.name');
     const nodeCapture = match.captures.find(c => c.name === 'call.node');
+    const objectCapture = match.captures.find(c => c.name === 'call.object');
     if (!nameCapture || !nodeCapture) continue;
 
     const calleeName = nameCapture.node.text;
-    if (IGNORED_CALLEES.has(calleeName)) continue;
+    if (isIgnoredCallee(calleeName)) continue;
 
     const caller = findEnclosingFunction(nodes, nodeCapture.node.startIndex);
     if (!caller) continue;
 
-    rawEdges.push({ callerId: caller.id, calleeName, line: nodeCapture.node.startPosition.row + 1 });
+    rawEdges.push({ callerId: caller.id, calleeName, line: nodeCapture.node.startPosition.row + 1, calleeObject: objectCapture?.node.text });
   }
 
   return { nodes, rawEdges };
@@ -1098,20 +1141,24 @@ const CPP_FN_QUALIFIED_QUERY = `
         name: (identifier) @fn.name))) @fn.node
 `;
 
-/** Function calls: foo() and obj.method() / ptr->method() */
-const CPP_CALL_QUERY = `
+/** Plain function calls: foo() */
+const CPP_CALL_DIRECT_QUERY = `
   (call_expression
     function: (identifier) @call.name) @call.node
+`;
 
+/** Member calls: obj.method() and ptr->method() — captures receiver */
+const CPP_CALL_MEMBER_QUERY = `
   (call_expression
     function: (field_expression
+      argument: (identifier) @call.object
       field: (field_identifier) @call.name)) @call.node
 `;
 
 async function extractCppGraph(
   filePath: string,
   content: string
-): Promise<{ nodes: FunctionNode[]; rawEdges: Array<{ callerId: string; calleeName: string; line: number }> }> {
+): Promise<{ nodes: FunctionNode[]; rawEdges: RawEdge[] }> {
   const { parser, lang } = await getCppParser();
   const tree = (parser as Parser).parse(content);
 
@@ -1128,6 +1175,8 @@ async function extractCppGraph(
       seen.add(nameCapture.node.startIndex);
 
       const name = nameCapture.node.text;
+      // Skip ALL_CAPS names — these are almost certainly macros, not functions
+      if (/^[A-Z][A-Z0-9_]{2,}$/.test(name)) continue;
       const fnNode = nodeCapture.node;
 
       // Find enclosing class (inline method defined inside class body)
@@ -1170,19 +1219,37 @@ async function extractCppGraph(
     }
   }
 
-  const rawEdges: Array<{ callerId: string; calleeName: string; line: number }> = [];
-  for (const match of safeQuery(lang, CPP_CALL_QUERY, tree.rootNode)) {
+  const rawEdges: RawEdge[] = [];
+
+  // Plain calls: foo()
+  for (const match of safeQuery(lang, CPP_CALL_DIRECT_QUERY, tree.rootNode)) {
     const nameCapture = match.captures.find(c => c.name === 'call.name');
     const nodeCapture = match.captures.find(c => c.name === 'call.node');
     if (!nameCapture || !nodeCapture) continue;
 
     const calleeName = nameCapture.node.text;
-    if (IGNORED_CALLEES.has(calleeName)) continue;
+    if (isIgnoredCallee(calleeName)) continue;
 
     const caller = findEnclosingFunction(nodes, nodeCapture.node.startIndex);
     if (!caller) continue;
 
     rawEdges.push({ callerId: caller.id, calleeName, line: nodeCapture.node.startPosition.row + 1 });
+  }
+
+  // Member calls: obj.method() / ptr->method()
+  for (const match of safeQuery(lang, CPP_CALL_MEMBER_QUERY, tree.rootNode)) {
+    const nameCapture = match.captures.find(c => c.name === 'call.name');
+    const nodeCapture = match.captures.find(c => c.name === 'call.node');
+    const objectCapture = match.captures.find(c => c.name === 'call.object');
+    if (!nameCapture || !nodeCapture) continue;
+
+    const calleeName = nameCapture.node.text;
+    if (isIgnoredCallee(calleeName)) continue;
+
+    const caller = findEnclosingFunction(nodes, nodeCapture.node.startIndex);
+    if (!caller) continue;
+
+    rawEdges.push({ callerId: caller.id, calleeName, line: nodeCapture.node.startPosition.row + 1, calleeObject: objectCapture?.node.text });
   }
 
   return { nodes, rawEdges };
@@ -1196,21 +1263,22 @@ export class CallGraphBuilder {
   /**
    * Build a call graph from a list of source files.
    *
-   * @param files     Source files with path, content, and language
-   * @param layers    Optional layer map { layerName: [path prefix, ...] }
-   *                  e.g. { api: ['routes/', 'controllers/'], storage: ['models/'] }
+   * @param files       Source files with path, content, and language
+   * @param layers      Optional layer map { layerName: [path prefix, ...] }
+   * @param importMap   Optional per-file import map (from ImportResolverBridge)
    */
   async build(
     files: Array<{ path: string; content: string; language: string }>,
-    layers?: Record<string, string[]>
+    layers?: Record<string, string[]>,
+    importMap?: ImportMap,
   ): Promise<CallGraphResult> {
     const allNodes = new Map<string, FunctionNode>();
-    const allRawEdges: Array<{ callerId: string; calleeName: string; line: number }> = [];
+    const allRawEdges: RawEdge[] = [];
 
     // Pass 1: Extract nodes and raw edges from each file
     for (const file of files) {
       try {
-        let result: { nodes: FunctionNode[]; rawEdges: Array<{ callerId: string; calleeName: string; line: number }> };
+        let result: { nodes: FunctionNode[]; rawEdges: RawEdge[] };
 
         if (file.language === 'Python') {
           result = await extractPyGraph(file.path, file.content);
@@ -1242,35 +1310,109 @@ export class CallGraphBuilder {
       }
     }
 
-    // Pass 2: Resolve raw edges — find callee FunctionNode by name
-    const nodesByName = new Map<string, FunctionNode[]>();
-    for (const node of allNodes.values()) {
-      const list = nodesByName.get(node.name) ?? [];
-      list.push(node);
-      nodesByName.set(node.name, list);
-    }
+    // Pass 2: Resolve raw edges — multi-strategy resolution
+    const trie = new FunctionRegistryTrie();
+    for (const node of allNodes.values()) trie.insert(node);
+
+    // Build per-function-body content slices for type inference (keyed by functionId)
+    const fileContents = new Map<string, string>();
+    for (const file of files) fileContents.set(file.path, file.content);
 
     const edges: CallEdge[] = [];
     for (const raw of allRawEdges) {
-      const candidates = nodesByName.get(raw.calleeName);
-      if (!candidates || candidates.length === 0) continue; // external call
+      const callerNode = allNodes.get(raw.callerId);
+      if (!callerNode) continue;
 
-      let calleeNode: FunctionNode;
-      if (candidates.length === 1) {
-        calleeNode = candidates[0];
-      } else {
-        // Prefer same file as caller
-        const callerNode = allNodes.get(raw.callerId);
-        const sameFile = candidates.find(c => c.filePath === callerNode?.filePath);
-        calleeNode = sameFile ?? candidates[0];
+      let calleeNode: FunctionNode | undefined;
+      let confidence: EdgeConfidence = 'name_only';
+
+      // Strategy 1 — self/cls intra-class (Python self.*, cls.* or same-class method)
+      if (raw.calleeObject === 'self' || raw.calleeObject === 'cls') {
+        if (callerNode.className) {
+          const candidates = trie.findByQualifiedName(callerNode.className, raw.calleeName);
+          if (candidates.length > 0) { calleeNode = candidates[0]; confidence = 'self_cls'; }
+        }
       }
+
+      // Strategy 2 — type inference on receiver variable
+      if (!calleeNode && raw.calleeObject) {
+        const fileContent = fileContents.get(callerNode.filePath);
+        if (fileContent) {
+          const bodySlice = fileContent.slice(callerNode.startIndex, callerNode.endIndex);
+          const inferredTypes = inferTypesFromSource(bodySlice, callerNode.language);
+          const resolved = resolveViaTypeInference(raw.calleeObject, raw.calleeName, inferredTypes, trie);
+          if (resolved) { calleeNode = resolved; confidence = 'type_inference'; }
+        }
+      }
+
+      // Strategy 3 — import resolution (TS/JS/Python/Go/Rust/Ruby/Java)
+      if (!calleeNode && importMap) {
+        const importedFile = importMap.get(callerNode.filePath)?.get(raw.calleeName)
+          ?? (raw.calleeObject ? importMap.get(callerNode.filePath)?.get(raw.calleeObject) : undefined);
+        if (importedFile) {
+          const candidates = trie.findBySimpleName(raw.calleeName).filter(n => n.filePath.startsWith(importedFile));
+          if (candidates.length > 0) { calleeNode = candidates[0]; confidence = 'import'; }
+        }
+      }
+
+      // Strategy 4 — same-file preference (only for calls without a typed receiver)
+      // When a receiver is explicitly present but unresolvable (e.g. redis_client.get()),
+      // skip name_only fallback to avoid false-positive edges.
+      if (!calleeNode && !raw.calleeObject) {
+        const candidates = trie.findBySimpleName(raw.calleeName);
+        if (candidates.length === 0) continue; // external call, skip
+        const sameFile = candidates.find(c => c.filePath === callerNode.filePath);
+        if (sameFile) { calleeNode = sameFile; confidence = 'same_file'; }
+        else { calleeNode = candidates[0]; confidence = 'name_only'; }
+      }
+
+      if (!calleeNode) continue;
 
       edges.push({
         callerId: raw.callerId,
         calleeId: calleeNode.id,
         calleeName: raw.calleeName,
         line: raw.line,
+        confidence,
       });
+    }
+
+    // Pass 2b: HTTP cross-language edges (JS/TS caller → Python handler)
+    try {
+      const filePaths = files.map(f => f.path);
+      const { edges: httpEdges } = await extractAllHttpEdges(filePaths);
+      for (const he of httpEdges) {
+        // Find callee: handler function by name in handlerFile
+        const calleeNode = trie.findBySimpleName(he.route.handlerName)
+          .find(n => n.filePath === he.handlerFile);
+        if (!calleeNode) continue;
+
+        // Find caller: any function in callerFile that encloses the HTTP call's line
+        const callerContent = fileContents.get(he.callerFile);
+        const callerNode = callerContent
+          ? (() => {
+              let offset = 0;
+              const lines = callerContent.split('\n');
+              for (let i = 0; i < he.call.line - 1 && i < lines.length; i++) {
+                offset += lines[i].length + 1;
+              }
+              const candidates = Array.from(allNodes.values())
+                .filter(n => n.filePath === he.callerFile);
+              return findEnclosingFunction(candidates, offset);
+            })()
+          : undefined;
+        if (!callerNode) continue;
+
+        edges.push({
+          callerId: callerNode.id,
+          calleeId: calleeNode.id,
+          calleeName: he.route.handlerName,
+          line: he.call.line,
+          confidence: 'http_endpoint',
+        });
+      }
+    } catch {
+      // HTTP edge extraction is best-effort; don't fail the whole build
     }
 
     // Pass 3: Calculate fanIn / fanOut (count unique caller→callee pairs, not call sites)

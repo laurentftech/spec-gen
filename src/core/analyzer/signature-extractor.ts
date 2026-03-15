@@ -49,7 +49,7 @@ export function detectLanguage(filePath: string): string {
     case 'kt':           return 'Kotlin';
     case 'php':          return 'PHP';
     case 'cs':           return 'C#';
-    case 'cpp': case 'cc': case 'cxx': case 'hpp': return 'C++';
+    case 'cpp': case 'cc': case 'cxx': case 'h': case 'hpp': return 'C++';
     case 'c':            return 'C';
     default:             return 'unknown';
   }

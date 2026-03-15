@@ -142,6 +142,11 @@ const EXT_TO_LANGUAGE: Record<string, string> = {
   rs: 'Rust',
   rb: 'Ruby',
   java: 'Java',
+  cpp: 'C++',
+  cc: 'C++',
+  cxx: 'C++',
+  h: 'C++',
+  hpp: 'C++',
 };
 
 export function detectLanguage(filePath: string): string {

@@ -15,9 +15,28 @@ import type { FileSignatureMap } from './signature-extractor.js';
 // Fan-out threshold for god-function detection (matches refactor-analyzer.ts)
 const GOD_FANOUT_THRESHOLD = 8;
 
-// Max graph depth and nodes per subgraph to avoid prompt explosion
-const MAX_DEPTH = 2;
-const MAX_NODES = 30;
+// Default max graph depth and nodes per subgraph
+const DEFAULT_MAX_DEPTH = 2;
+const DEFAULT_MAX_NODES = 30;
+
+/** Approx tokens per node in the prompt section (name + file + stats) */
+const TOKENS_PER_NODE = 20;
+
+export interface SubgraphOptions {
+  maxDepth?: number;
+  maxNodes?: number;
+  /** If provided, derive maxDepth/maxNodes from the token budget */
+  tokenBudget?: number;
+}
+
+/** Derive a reasonable maxDepth from a token budget (rough heuristic). */
+export function depthFromBudget(tokenBudget: number): number {
+  // At depth=1: ~10 nodes avg, depth=2: ~30, depth=3: ~90
+  const maxNodes = Math.floor(tokenBudget / TOKENS_PER_NODE);
+  if (maxNodes <= 10) return 1;
+  if (maxNodes <= 30) return 2;
+  return 3;
+}
 
 // ============================================================================
 // TYPES
@@ -64,14 +83,22 @@ export function getFileGodFunctions(
 export function extractSubgraph(
   callGraph: SerializedCallGraph,
   root: FunctionNode,
+  options: SubgraphOptions = {},
 ): SubGraph {
+  const maxDepth = options.tokenBudget !== undefined
+    ? depthFromBudget(options.tokenBudget)
+    : (options.maxDepth ?? DEFAULT_MAX_DEPTH);
+  const maxNodes = options.tokenBudget !== undefined
+    ? Math.floor(options.tokenBudget / TOKENS_PER_NODE)
+    : (options.maxNodes ?? DEFAULT_MAX_NODES);
+
   const nodeMap = new Map<string, FunctionNode>(callGraph.nodes.map(n => [n.id, n]));
   const visited = new Set<string>();
   const resultNodes: SubGraphNode[] = [];
   const edges: Array<[string, string]> = [];
 
   function visit(nodeId: string, depth: number): void {
-    if (visited.has(nodeId) || depth > MAX_DEPTH || visited.size >= MAX_NODES) return;
+    if (visited.has(nodeId) || depth > maxDepth || visited.size >= maxNodes) return;
     visited.add(nodeId);
 
     const outgoing = callGraph.edges.filter(e => e.callerId === nodeId && e.calleeId);
@@ -147,6 +174,7 @@ export function buildGraphPromptSection(
   callGraph: SerializedCallGraph | undefined,
   signatures: FileSignatureMap[] | undefined,
   filePath: string,
+  tokenBudget?: number,
 ): string | null {
   if (!callGraph) return null;
   const godFunctions = getFileGodFunctions(callGraph, filePath);
@@ -175,7 +203,7 @@ export function buildGraphPromptSection(
   // Subgraphs for each god function
   lines.push(`High-complexity functions (fanOut >= ${GOD_FANOUT_THRESHOLD}):`);
   for (const godFn of godFunctions) {
-    const sub = extractSubgraph(callGraph, godFn);
+    const sub = extractSubgraph(callGraph, godFn, tokenBudget !== undefined ? { tokenBudget } : {});
     lines.push(formatSubgraph(sub));
   }
 

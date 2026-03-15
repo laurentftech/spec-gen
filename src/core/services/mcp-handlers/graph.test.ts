@@ -32,7 +32,7 @@ function makeNode(overrides: Partial<FunctionNode> & { id: string }): FunctionNo
 }
 
 function makeEdge(callerId: string, calleeId: string): CallEdge {
-  return { callerId, calleeId, calleeName: calleeId.split('::')[1] ?? calleeId };
+  return { callerId, calleeId, calleeName: calleeId.split('::')[1] ?? calleeId, confidence: 'name_only' };
 }
 
 function makeGraph(nodes: FunctionNode[], edges: CallEdge[]): SerializedCallGraph {
@@ -85,7 +85,7 @@ describe('buildAdjacency', () => {
 
   it('should skip edges with empty calleeId', () => {
     const a = makeNode({ id: 'a.ts::foo' });
-    const cg = makeGraph([a], [{ callerId: a.id, calleeId: '', calleeName: 'external' }]);
+    const cg = makeGraph([a], [{ callerId: a.id, calleeId: '', calleeName: 'external', confidence: 'name_only' }]);
 
     const { forward } = buildAdjacency(cg);
     expect(forward.get(a.id)!.size).toBe(0);
