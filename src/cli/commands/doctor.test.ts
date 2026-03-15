@@ -260,6 +260,20 @@ describe('doctor command', () => {
       }
     });
 
+    it('should warn when SPEC_GEN_API_BASE is set but no API key', async () => {
+      const saved = clearLLMKeys();
+      process.env.SPEC_GEN_API_BASE = 'http://localhost:11434/v1';
+      mockExecFail(); // no claude CLI
+      try {
+        const checks = await runDoctorJson();
+        const llmCheck = checks.find(c => c.name === 'LLM provider')!;
+        expect(llmCheck.status).toBe('warn');
+        expect(llmCheck.detail).toContain('SPEC_GEN_API_BASE');
+      } finally {
+        restoreLLMKeys(saved);
+      }
+    });
+
     it('should include a fix suggestion when failing', async () => {
       const saved = clearLLMKeys();
       mockExecFail();
@@ -375,6 +389,88 @@ describe('doctor command', () => {
         if (saved['ANTHROPIC_API_KEY'] === undefined) delete process.env.ANTHROPIC_API_KEY;
         else process.env.ANTHROPIC_API_KEY = saved['ANTHROPIC_API_KEY'];
       }
+    });
+
+    it('non-JSON: logger.success is called when all checks pass', async () => {
+      // Commander.js v12 does not reset option values between parseAsync calls,
+      // so we must manually reset --json to false before running in non-JSON mode.
+      doctorCommand.setOptionValue('json', false);
+
+      // Re-mock fs functions (clearAllMocks may reset mockResolvedValue)
+      const { stat, access } = await import('node:fs/promises');
+      vi.mocked(stat).mockResolvedValue({ mtime: new Date() } as ReturnType<typeof stat> extends Promise<infer T> ? T : never);
+      vi.mocked(access).mockResolvedValue(undefined);
+      const configManager = await import('../../core/services/config-manager.js');
+      vi.mocked(configManager.readSpecGenConfig).mockResolvedValue({
+        projectType: 'nodejs', createdAt: '2024-01-01T00:00:00Z', openspecPath: './openspec', maxFiles: 500,
+      } as never);
+
+      const saved = process.env.ANTHROPIC_API_KEY;
+      process.env.ANTHROPIC_API_KEY = 'sk-test-key';
+
+      const loggerModule = await import('../../utils/logger.js');
+      vi.mocked(loggerModule.logger.success).mockClear();
+
+      try {
+        await doctorCommand.parseAsync(['node', 'doctor'], { from: 'user' });
+        expect(vi.mocked(loggerModule.logger.success)).toHaveBeenCalledWith('All checks passed!');
+      } finally {
+        if (saved === undefined) delete process.env.ANTHROPIC_API_KEY;
+        else process.env.ANTHROPIC_API_KEY = saved;
+      }
+    });
+
+    it('non-JSON: logger.error called and exitCode=1 when a check fails', async () => {
+      doctorCommand.setOptionValue('json', false);
+
+      const keyVars = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'SPEC_GEN_API_BASE'];
+      const saved: Record<string, string | undefined> = {};
+      for (const k of keyVars) { saved[k] = process.env[k]; delete process.env[k]; }
+      mockExecFail();
+
+      const loggerModule = await import('../../utils/logger.js');
+      vi.mocked(loggerModule.logger.error).mockClear();
+
+      try {
+        await doctorCommand.parseAsync(['node', 'doctor'], { from: 'user' });
+        expect(vi.mocked(loggerModule.logger.error)).toHaveBeenCalled();
+        expect(process.exitCode).toBe(1);
+      } finally {
+        for (const k of keyVars) { if (saved[k] !== undefined) process.env[k] = saved[k]; }
+      }
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  describe('disk space check', () => {
+    it('should show fail when available disk is critically low', async () => {
+      // df -k output: header + data line with low available (col 3 = 100 KB = ~0 MB)
+      mockExecSuccess('Filesystem 1K-blocks Used Available Use% Mounted\n/dev/disk1 100000000 99999900 100 0% /');
+
+      const checks = await runDoctorJson();
+      const diskCheck = checks.find(c => c.name === 'Disk space')!;
+      expect(diskCheck.status).toBe('fail');
+      expect(diskCheck.detail).toContain('MB available');
+    });
+
+    it('should show warn when available disk is low', async () => {
+      // ~400 MB available (between FAIL and WARN thresholds)
+      mockExecSuccess('Filesystem 1K-blocks Used Available Use% Mounted\n/dev/disk1 100000000 99590000 410000 0% /');
+
+      const checks = await runDoctorJson();
+      const diskCheck = checks.find(c => c.name === 'Disk space')!;
+      expect(diskCheck.status).toBe('warn');
+      expect(diskCheck.detail).toContain('MB available');
+    });
+
+    it('should show ok when disk has plenty of space', async () => {
+      // 50 GB available
+      mockExecSuccess('Filesystem 1K-blocks Used Available Use% Mounted\n/dev/disk1 200000000 100000000 52428800 0% /');
+
+      const checks = await runDoctorJson();
+      const diskCheck = checks.find(c => c.name === 'Disk space')!;
+      expect(diskCheck.status).toBe('ok');
+      expect(diskCheck.detail).toContain('MB available');
     });
   });
 });
