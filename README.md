@@ -557,7 +557,9 @@ This is structural signal, not prose. It complements `openspec/specs/overview/sp
 
 ### Setup
 
-After running `spec-gen analyze`, add this to your project's `CLAUDE.md` or `.clinerules`:
+After running `spec-gen analyze`, wire the generated digest into your agent's context:
+
+**Claude Code** — add to `CLAUDE.md`:
 
 ```markdown
 @.spec-gen/analysis/CODEBASE.md
@@ -578,9 +580,41 @@ After running `spec-gen analyze`, add this to your project's `CLAUDE.md` or `.cl
 For all other cases (reading a file, grepping, listing files) use native tools directly.
 ```
 
+**Cline / Roo Code / Kilocode** — create `.clinerules/spec-gen.md`:
+
+```markdown
+# spec-gen
+
+spec-gen provides static analysis artifacts and MCP tools to help you navigate this codebase.
+Always use these before writing or modifying code.
+
+## Before starting any task
+
+- Read `.spec-gen/analysis/CODEBASE.md` — architectural digest: entry points, critical hubs,
+  god functions, most-coupled files, and available spec domains. Generated locally by `spec-gen analyze`.
+- Read `openspec/specs/overview/spec.md` — functional domain map: what the system does,
+  which domains exist, data-flow requirements.
+
+## MCP tools — use these instead of grep/read when exploring
+
+- **Orient first**: call `orient` at the start of every task — it returns relevant functions,
+  files, specs, call paths, and insertion points in one shot.
+- **Finding code**: use `search_code` when you don't know which file or function handles a concept.
+- **Call topology**: use `get_subgraph` or `analyze_impact` when you need to understand
+  how calls flow across multiple files (not just a single file).
+- **Adding a feature**: call `suggest_insertion_points` before deciding where to add code —
+  it accounts for the dependency graph, not just filenames.
+- **Reading specs**: call `get_spec <domain>` before writing code in that domain;
+  use `search_specs` to find requirements by meaning when you don't know the domain name.
+- **Checking drift**: call `check_spec_drift` after modifying a file to verify it still
+  matches its spec — do not skip this step before opening a PR.
+
+Use native tools (Read, Grep, Glob) only for cases not covered above.
+```
+
 `CODEBASE.md` gives the agent passive architectural context. `overview/spec.md` gives the functional domain map. The table tells it when the passive context isn't enough and an active MCP tool call is warranted.
 
-> **Tip:** `spec-gen analyze` prints this snippet after every run as a reminder.
+> **Tip:** `spec-gen analyze` prints these snippets after every run as a reminder.
 
 > **Note:** `.spec-gen/analysis/` is git-ignored — each developer generates it locally. Re-run `spec-gen analyze` after significant structural changes to keep the digest current.
 
