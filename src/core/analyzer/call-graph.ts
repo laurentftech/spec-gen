@@ -1789,6 +1789,7 @@ export class CallGraphBuilder {
 
       const callerIdx = layerOrder.indexOf(callerLayer);
       const calleeIdx = layerOrder.indexOf(calleeLayer);
+      if (callerIdx === -1 || calleeIdx === -1) continue;
       if (callerIdx > calleeIdx) {
         // Lower layer calling upper layer — violation
         violations.push({

@@ -61,6 +61,24 @@ export interface SearchResult {
 const DB_FOLDER = 'vector-index';
 const TABLE_NAME = 'functions';
 
+/** Convert a raw LanceDB row to a FunctionRecord (without the vector field). */
+function rowToRecord(row: Record<string, unknown>): Omit<FunctionRecord, 'vector'> {
+  return {
+    id:          row.id as string,
+    name:        row.name as string,
+    filePath:    row.filePath as string,
+    className:   row.className as string,
+    language:    row.language as string,
+    signature:   row.signature as string,
+    docstring:   row.docstring as string,
+    fanIn:       row.fanIn as number,
+    fanOut:      row.fanOut as number,
+    isHub:       row.isHub as boolean,
+    isEntryPoint: row.isEntryPoint as boolean,
+    text:        row.text as string,
+  };
+}
+
 // ============================================================================
 // BM25 SPARSE RETRIEVAL (#7)
 // ============================================================================
@@ -409,21 +427,6 @@ export class VectorIndex {
     const denseFetch = hybrid ? Math.min(limit * 5, 500) : Math.min(limit * 10, 1000);
     const denseRows = await table.query().nearestTo(queryVector).limit(denseFetch).toArray();
 
-    const rowToRecord = (row: Record<string, unknown>): Omit<FunctionRecord, 'vector'> => ({
-      id:          row.id as string,
-      name:        row.name as string,
-      filePath:    row.filePath as string,
-      className:   row.className as string,
-      language:    row.language as string,
-      signature:   row.signature as string,
-      docstring:   row.docstring as string,
-      fanIn:       row.fanIn as number,
-      fanOut:      row.fanOut as number,
-      isHub:       row.isHub as boolean,
-      isEntryPoint: row.isEntryPoint as boolean,
-      text:        row.text as string,
-    });
-
     const passesFilters = (row: Record<string, unknown>): boolean => {
       if (language && (row.language as string) !== language) return false;
       if (minFanIn !== undefined && minFanIn > 0 && (row.fanIn as number) < minFanIn) return false;
@@ -548,21 +551,6 @@ export class VectorIndex {
     const { corpus } = cachedEntry;
     const queryTokens = tokenize(query);
     const rowById = new Map(allRows.map(r => [r.id as string, r]));
-
-    const rowToRecord = (row: Record<string, unknown>): Omit<FunctionRecord, 'vector'> => ({
-      id:          row.id as string,
-      name:        row.name as string,
-      filePath:    row.filePath as string,
-      className:   row.className as string,
-      language:    row.language as string,
-      signature:   row.signature as string,
-      docstring:   row.docstring as string,
-      fanIn:       row.fanIn as number,
-      fanOut:      row.fanOut as number,
-      isHub:       row.isHub as boolean,
-      isEntryPoint: row.isEntryPoint as boolean,
-      text:        row.text as string,
-    });
 
     return corpus.docs
       .map((_, i) => ({ idx: i, score: bm25Score(corpus, queryTokens, i) }))

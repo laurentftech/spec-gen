@@ -195,8 +195,8 @@ export class McpWatcher {
       }
 
       const cg = context.callGraph!;
-      const hubIds    = new Set(cg.hubFunctions.map(f => f.id));
-      const entryIds  = new Set(cg.entryPoints.map(f => f.id));
+      const hubIds    = new Set((cg.hubFunctions ?? []).map(f => f.id));
+      const entryIds  = new Set((cg.entryPoints ?? []).map(f => f.id));
       const fileContents = new Map([[rel, content]]);
 
       const { embedded, reused } = await VectorIndex.build(

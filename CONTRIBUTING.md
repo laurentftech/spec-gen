@@ -142,7 +142,7 @@ For each `beforeEach`, reset `process.exitCode = undefined` and call `vi.clearAl
 2. Make your changes — keep PRs focused on a single concern
 3. Ensure `npm run typecheck`, `npm run lint`, and `npm run test:run` all pass
 4. If touching `src/core/analyzer/`, `src/core/generator/stages/`, or `src/core/services/mcp-handlers/`: run `npm run test:e2e` (requires `npm run embed:up` and a fresh index)
-4. Open a pull request with a clear description of the change and why
+5. Open a pull request with a clear description of the change and why
 
 ## Reporting Bugs
 
