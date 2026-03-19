@@ -237,9 +237,11 @@ export const TOOL_DEFINITIONS = [
   {
     name: 'get_subgraph',
     description:
-      'Extract a subgraph of the call graph centred on a specific function. ' +
+      'Extract a subgraph of the call graph centred on ONE specific function. ' +
+      'Call once per function — do not combine multiple function names in a single call. ' +
       'Useful for impact analysis ("what does X call?"), dependency tracing ' +
       '("who calls X?"), or understanding a change\'s blast radius. ' +
+      'Prefer maxDepth 1 or 2; depth ≥ 3 on large projects may timeout. ' +
       'Run analyze_codebase first.',
     inputSchema: {
       type: 'object',
@@ -250,7 +252,7 @@ export const TOOL_DEFINITIONS = [
         },
         functionName: {
           type: 'string',
-          description: 'Name of the function to centre the subgraph on (exact or partial match)',
+          description: 'Name of a single function to centre the subgraph on (exact name preferred; partial substring also accepted)',
         },
         direction: {
           type: 'string',
@@ -262,7 +264,7 @@ export const TOOL_DEFINITIONS = [
         },
         maxDepth: {
           type: 'number',
-          description: 'Maximum traversal depth (default: 3)',
+          description: 'Maximum traversal depth (default: 3, recommended: 1–2 to avoid timeout)',
         },
         format: {
           type: 'string',
