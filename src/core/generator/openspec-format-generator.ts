@@ -14,6 +14,8 @@ import type {
   ArchitectureSynthesis,
   Scenario,
 } from './spec-pipeline.js';
+import type { DependencyGraphResult } from '../analyzer/dependency-graph.js';
+import type { MappingArtifact } from './mapping-generator.js';
 
 // ============================================================================
 // TYPES
@@ -43,6 +45,8 @@ export interface GeneratorOptions {
   includeTechnicalNotes?: boolean;
   /** Maximum line width for wrapping */
   maxLineWidth?: number;
+  /** Dependency graph for cross-domain dependency sections */
+  depGraph?: DependencyGraphResult;
 }
 
 /**
@@ -61,7 +65,9 @@ interface DomainGroup {
 // CONSTANTS
 // ============================================================================
 
-const DEFAULT_OPTIONS: Required<GeneratorOptions> = {
+type ResolvedOptions = Required<Omit<GeneratorOptions, 'depGraph'>> & { depGraph?: DependencyGraphResult };
+
+const DEFAULT_OPTIONS: Omit<ResolvedOptions, 'depGraph'> = {
   version: '1.0.0',
   style: 'detailed',
   includeConfidence: true,
@@ -77,16 +83,18 @@ const DEFAULT_OPTIONS: Required<GeneratorOptions> = {
  * OpenSpec Format Generator
  */
 export class OpenSpecFormatGenerator {
-  private options: Required<GeneratorOptions>;
+  private options: ResolvedOptions;
 
   constructor(options: GeneratorOptions = {}) {
-    this.options = { ...DEFAULT_OPTIONS, ...options };
+    const { depGraph, ...rest } = options;
+    this.options = { ...DEFAULT_OPTIONS, ...rest, depGraph };
   }
 
   /**
-   * Generate all spec files from pipeline result
+   * Generate all spec files from pipeline result.
+   * Pass mappingArtifact to annotate each Requirement with `> Implementation: file:line`.
    */
-  generateSpecs(result: PipelineResult): GeneratedSpec[] {
+  generateSpecs(result: PipelineResult, mappingArtifact?: MappingArtifact): GeneratedSpec[] {
     const specs: GeneratedSpec[] = [];
     const domains = this.groupByDomain(result);
 
@@ -95,7 +103,7 @@ export class OpenSpecFormatGenerator {
 
     // 2. Domain specs
     for (const domain of domains) {
-      specs.push(this.generateDomainSpec(domain, result.survey));
+      specs.push(this.generateDomainSpec(domain, result.survey, mappingArtifact));
     }
 
     // 3. Architecture spec
@@ -342,7 +350,7 @@ export class OpenSpecFormatGenerator {
   /**
    * Generate a domain spec
    */
-  private generateDomainSpec(domain: DomainGroup, _survey: ProjectSurveyResult): GeneratedSpec {
+  private generateDomainSpec(domain: DomainGroup, _survey: ProjectSurveyResult, mappingArtifact?: MappingArtifact): GeneratedSpec {
     const lines: string[] = [];
     const now = new Date();
     const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -433,8 +441,10 @@ export class OpenSpecFormatGenerator {
     // Service operation requirements
     for (const service of domain.services) {
       for (const operation of (service.operations ?? [])) {
-        lines.push(`### Requirement: ${this.formatRequirementName(operation.name)}`);
+        const reqName = this.formatRequirementName(operation.name);
+        lines.push(`### Requirement: ${reqName}`);
         lines.push('');
+        this.emitImplementationHint(lines, reqName, domain.name, mappingArtifact);
         const opDesc = (operation.description ?? '').replace(/^\s*(shall|must|should|may)\s+/i, '');
         lines.push(`The system SHALL ${opDesc.toLowerCase()}`);
         lines.push('');
@@ -487,6 +497,7 @@ export class OpenSpecFormatGenerator {
           );
           lines.push(`### Requirement: ${reqName}`);
           lines.push('');
+          this.emitImplementationHint(lines, reqName, domain.name, mappingArtifact);
           const epPurpose = (endpoint.purpose ?? 'handle this endpoint').replace(/^\s*(shall|must|should|may)\s+/i, '');
           lines.push(`The system SHALL ${epPurpose.toLowerCase()}`);
           lines.push('');
@@ -500,6 +511,7 @@ export class OpenSpecFormatGenerator {
         const reqName = this.formatRequirementName(`${domain.name}Overview`);
         lines.push(`### Requirement: ${reqName}`);
         lines.push('');
+        this.emitImplementationHint(lines, reqName, domain.name, mappingArtifact);
         lines.push(`The ${domain.name} domain SHALL provide its documented functionality.`);
         lines.push('');
         lines.push(`#### Scenario: ${reqName}Works`);
@@ -531,6 +543,12 @@ export class OpenSpecFormatGenerator {
         lines.push(`- **Dependencies**: ${Array.from(allDeps).join(', ')}`);
       }
       lines.push('');
+    }
+
+    // Cross-domain dependency section (requires depGraph)
+    const depSection = this.buildDependencySection(domain.name, domain.files);
+    if (depSection.length > 0) {
+      lines.push(...depSection);
     }
 
     return {
@@ -795,6 +813,108 @@ export class OpenSpecFormatGenerator {
   }
 
   /**
+   * Emit `> Implementation: \`file:line\`` after a Requirement header when a
+   * high-confidence mapping entry exists.  Mutates `lines` in-place.
+   */
+  private emitImplementationHint(
+    lines: string[],
+    reqName: string,
+    domainName: string,
+    mappingArtifact?: MappingArtifact,
+  ): void {
+    if (!mappingArtifact) return;
+    const normReq = reqName.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const match = mappingArtifact.mappings.find(m => {
+      const normM = m.requirement.toLowerCase().replace(/[^a-z0-9]/g, '');
+      return normM === normReq && m.domain.toLowerCase() === domainName.toLowerCase();
+    });
+    if (!match || match.functions.length === 0) return;
+    const best = [...match.functions].sort((a, b) => {
+      const order = { llm: 0, semantic: 1, heuristic: 2 };
+      return (order[a.confidence] ?? 3) - (order[b.confidence] ?? 3);
+    })[0];
+    lines.push(`> Implementation: \`${best.file}:${best.line}\` · confidence: ${best.confidence}`);
+    lines.push('');
+  }
+
+  /**
+   * Build `## Dependencies` section for a domain spec using depGraph edges.
+   * Returns an empty array if no depGraph or no cross-domain edges found.
+   */
+  private buildDependencySection(domainName: string, _domainFiles: string[]): string[] {
+    const depGraph = this.options.depGraph;
+    if (!depGraph) return [];
+
+    // Resolve the cluster for this domain from depGraph
+    const cluster = depGraph.clusters.find(
+      c => c.suggestedDomain.toLowerCase() === domainName.toLowerCase(),
+    );
+    if (!cluster || cluster.files.length === 0) return [];
+
+    const domainFileSet = new Set(cluster.files);
+
+    // Build file → cluster mapping
+    const clusterByFile = new Map<string, { id: string; suggestedDomain: string }>();
+    for (const c of depGraph.clusters) {
+      for (const f of c.files) {
+        if (!clusterByFile.has(f)) {
+          clusterByFile.set(f, { id: c.id, suggestedDomain: c.suggestedDomain });
+        }
+      }
+    }
+
+    // Scan edges for cross-domain calls
+    const callsInto = new Map<string, Set<string>>(); // target domain → imported names
+    const calledBy = new Map<string, Set<string>>();  // source domain → imported names
+
+    for (const edge of depGraph.edges) {
+      const srcInDomain = domainFileSet.has(edge.source);
+      const tgtInDomain = domainFileSet.has(edge.target);
+      if (srcInDomain === tgtInDomain) continue; // intra-domain or unrelated
+
+      if (srcInDomain) {
+        const tgtCluster = clusterByFile.get(edge.target);
+        const tgtDomain = tgtCluster?.suggestedDomain.toLowerCase();
+        if (tgtDomain && tgtDomain !== domainName.toLowerCase()) {
+          if (!callsInto.has(tgtDomain)) callsInto.set(tgtDomain, new Set());
+          for (const name of (edge.importedNames ?? [])) callsInto.get(tgtDomain)!.add(name);
+        }
+      } else {
+        const srcCluster = clusterByFile.get(edge.source);
+        const srcDomain = srcCluster?.suggestedDomain.toLowerCase();
+        if (srcDomain && srcDomain !== domainName.toLowerCase()) {
+          if (!calledBy.has(srcDomain)) calledBy.set(srcDomain, new Set());
+          for (const name of (edge.importedNames ?? [])) calledBy.get(srcDomain)!.add(name);
+        }
+      }
+    }
+
+    if (callsInto.size === 0 && calledBy.size === 0) return [];
+
+    const lines: string[] = ['## Dependencies', ''];
+
+    if (calledBy.size > 0) {
+      lines.push('### Called by this domain');
+      for (const [srcDomain, names] of [...calledBy.entries()].sort()) {
+        const nameList = [...names].slice(0, 3).map(n => `\`${n}\``).join(', ');
+        lines.push(`- \`${srcDomain}\`${nameList ? ` → ${nameList}` : ''}`);
+      }
+      lines.push('');
+    }
+
+    if (callsInto.size > 0) {
+      lines.push('### Calls into');
+      for (const [tgtDomain, names] of [...callsInto.entries()].sort()) {
+        const nameList = [...names].slice(0, 3).map(n => `\`${n}\``).join(', ');
+        lines.push(`- \`${tgtDomain}\`${nameList ? ` → ${nameList}` : ''}`);
+      }
+      lines.push('');
+    }
+
+    return lines;
+  }
+
+  /**
    * Add a scenario to the lines array
    */
   private addScenario(lines: string[], scenario: Scenario): void {
@@ -818,7 +938,7 @@ export class OpenSpecFormatGenerator {
     if (!name) return 'Unnamed';
     return name
       .split(/[\s_-]+/)
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join('');
   }
 

@@ -16,6 +16,8 @@ import type {
   ExtractedEndpoint,
   ArchitectureSynthesis,
 } from './spec-pipeline.js';
+import type { MappingArtifact } from './mapping-generator.js';
+import type { DependencyGraphResult } from '../analyzer/dependency-graph.js';
 
 // ============================================================================
 // TEST HELPERS
@@ -354,7 +356,7 @@ describe('OpenSpecFormatGenerator', () => {
       const specs = generator.generateSpecs(result);
       const userSpec = specs.find(s => s.domain === 'user' && s.type === 'domain')!;
 
-      expect(userSpec.content).toContain('### Requirement: Getuser');
+      expect(userSpec.content).toContain('### Requirement: GetUser');
       expect(userSpec.content).toContain('SHALL retrieves a user by id');
     });
 
@@ -476,7 +478,7 @@ describe('OpenSpecFormatGenerator', () => {
       const apiSpec = specs.find(s => s.type === 'api')!;
 
       expect(apiSpec.content).toContain('## Requirements');
-      expect(apiSpec.content).toContain('### Requirement: Getuser');
+      expect(apiSpec.content).toContain('### Requirement: GETUser');
       expect(apiSpec.content).toContain('`GET /users/:id`');
     });
 
@@ -511,7 +513,7 @@ describe('OpenSpecFormatGenerator', () => {
       const apiSpec = specs.find(s => s.type === 'api')!;
 
       // POST /users has no scenarios, should get default
-      expect(apiSpec.content).toContain('#### Scenario: PostuserSuccess');
+      expect(apiSpec.content).toContain('#### Scenario: POSTUserSuccess');
       expect(apiSpec.content).toContain('**GIVEN** an authenticated user');
     });
   });
@@ -761,5 +763,189 @@ describe('Edge Cases', () => {
     const specs = generator.generateSpecs(result);
 
     expect(specs.some(s => s.content.includes('User_Profile'))).toBe(true);
+  });
+});
+
+// ============================================================================
+// ## Dependencies section (Piste 4)
+// ============================================================================
+
+function makeMinimalDepGraph(overrides: Partial<DependencyGraphResult> = {}): DependencyGraphResult {
+  return {
+    nodes: [], edges: [], clusters: [], structuralClusters: [], cycles: [],
+    rankings: { byImportance: [], byConnectivity: [], clusterCenters: [], leafNodes: [], bridgeNodes: [], orphanNodes: [] },
+    statistics: {
+      nodeCount: 0, edgeCount: 0, httpEdgeCount: 0, importEdgeCount: 0,
+      avgDegree: 0, density: 0, clusterCount: 0, structuralClusterCount: 0, cycleCount: 0,
+    },
+    ...overrides,
+  };
+}
+
+describe('OpenSpecFormatGenerator — ## Dependencies section', () => {
+  it('emits ## Dependencies with calledBy and Calls into when cross-cluster edges exist', () => {
+    const depGraph = makeMinimalDepGraph({
+      clusters: [
+        {
+          id: 'c-gen', name: 'generator', files: ['src/gen.ts'],
+          internalEdges: 1, cohesion: 0.5, isStructural: true,
+          suggestedDomain: 'generator', color: '#0f0',
+          externalEdges: 1, coupling: 0.5,
+        },
+        {
+          id: 'c-ana', name: 'analyzer', files: ['src/ana.ts'],
+          internalEdges: 1, cohesion: 0.5, isStructural: true,
+          suggestedDomain: 'analyzer', color: '#f00',
+          externalEdges: 1, coupling: 0.5,
+        },
+      ],
+      edges: [
+        { source: 'src/ana.ts', target: 'src/gen.ts', importedNames: ['GenHelper'], isTypeOnly: false, weight: 1 },
+      ],
+    });
+
+    const result = createMockPipelineResult();
+    // Ensure a service lives in the 'user' domain with file matching cluster
+    result.survey.suggestedDomains = ['generator', 'analyzer'];
+    result.services = [
+      {
+        name: 'GeneratorService', domain: 'generator', purpose: 'gen',
+        operations: [{ name: 'doGen', description: 'generate', scenarios: [] }],
+        dependencies: [], sideEffects: [],
+      } as unknown as ExtractedService,
+      {
+        name: 'AnalyzerService', domain: 'analyzer', purpose: 'ana',
+        operations: [{ name: 'doAna', description: 'analyze', scenarios: [] }],
+        dependencies: [], sideEffects: [],
+      } as unknown as ExtractedService,
+    ];
+    result.entities = [];
+    result.endpoints = [];
+
+    const gen = new OpenSpecFormatGenerator({ depGraph });
+    const specs = gen.generateSpecs(result);
+
+    const generatorSpec = specs.find(s => s.domain === 'generator')!;
+    const analyzerSpec = specs.find(s => s.domain === 'analyzer')!;
+
+    expect(generatorSpec.content).toContain('## Dependencies');
+    expect(generatorSpec.content).toContain('### Called by this domain');
+    expect(generatorSpec.content).toContain('`analyzer`');
+
+    expect(analyzerSpec.content).toContain('## Dependencies');
+    expect(analyzerSpec.content).toContain('### Calls into');
+    expect(analyzerSpec.content).toContain('`generator`');
+  });
+
+  it('does not emit ## Dependencies when no cross-cluster edges', () => {
+    const depGraph = makeMinimalDepGraph({
+      clusters: [
+        {
+          id: 'c1', name: 'user', files: ['src/user.ts'],
+          internalEdges: 1, cohesion: 1, isStructural: true,
+          suggestedDomain: 'user', color: '#000',
+          externalEdges: 0, coupling: 0,
+        },
+      ],
+      edges: [],
+    });
+
+    const result = createMockPipelineResult();
+    const gen = new OpenSpecFormatGenerator({ depGraph });
+    const specs = gen.generateSpecs(result);
+    const userSpec = specs.find(s => s.domain === 'user')!;
+
+    expect(userSpec?.content ?? '').not.toContain('## Dependencies');
+  });
+
+  it('does not emit ## Dependencies when no depGraph provided', () => {
+    const gen = new OpenSpecFormatGenerator();
+    const specs = gen.generateSpecs(createMockPipelineResult());
+    for (const spec of specs.filter(s => s.type === 'domain')) {
+      expect(spec.content).not.toContain('## Dependencies');
+    }
+  });
+});
+
+// ============================================================================
+// > Implementation: file:line annotations (Piste 2)
+// ============================================================================
+
+function makeMappingArtifact(domain: string, requirement: string, file: string, line: number): MappingArtifact {
+  return {
+    generatedAt: new Date().toISOString(),
+    mappings: [
+      {
+        requirement,
+        service: 'SomeService',
+        domain,
+        specFile: `openspec/specs/${domain}/spec.md`,
+        functions: [
+          { name: 'doSomething', file, line, kind: 'function', confidence: 'llm' },
+        ],
+      },
+    ],
+    orphanFunctions: [],
+    stats: { totalRequirements: 1, mappedRequirements: 1, totalExportedFunctions: 5, orphanCount: 0 },
+  };
+}
+
+describe('OpenSpecFormatGenerator — > Implementation annotations', () => {
+  it('emits > Implementation after matching Requirement header', () => {
+    const result = createMockPipelineResult();
+    const mapping = makeMappingArtifact('user', 'Getuser', 'src/services/user.ts', 42);
+    const gen = new OpenSpecFormatGenerator();
+    const specs = gen.generateSpecs(result, mapping);
+    const userSpec = specs.find(s => s.domain === 'user')!;
+
+    expect(userSpec.content).toContain('> Implementation: `src/services/user.ts:42` · confidence: llm');
+  });
+
+  it('does not emit > Implementation when no matching mapping', () => {
+    const result = createMockPipelineResult();
+    const mapping = makeMappingArtifact('auth', 'Login', 'src/auth.ts', 10);
+    const gen = new OpenSpecFormatGenerator();
+    const specs = gen.generateSpecs(result, mapping);
+    const userSpec = specs.find(s => s.domain === 'user')!;
+
+    expect(userSpec.content).not.toContain('> Implementation:');
+  });
+
+  it('does not emit > Implementation when no mappingArtifact passed', () => {
+    const result = createMockPipelineResult();
+    const gen = new OpenSpecFormatGenerator();
+    const specs = gen.generateSpecs(result);
+    for (const spec of specs.filter(s => s.type === 'domain')) {
+      expect(spec.content).not.toContain('> Implementation:');
+    }
+  });
+
+  it('prefers llm confidence over semantic over heuristic', () => {
+    const result = createMockPipelineResult();
+    const mapping: MappingArtifact = {
+      generatedAt: new Date().toISOString(),
+      mappings: [
+        {
+          requirement: 'Getuser',
+          service: 'UserService',
+          domain: 'user',
+          specFile: 'openspec/specs/user/spec.md',
+          functions: [
+            { name: 'getUserHeuristic', file: 'src/h.ts', line: 1, kind: 'function', confidence: 'heuristic' },
+            { name: 'getUserLlm', file: 'src/llm.ts', line: 2, kind: 'function', confidence: 'llm' },
+            { name: 'getUserSemantic', file: 'src/sem.ts', line: 3, kind: 'function', confidence: 'semantic' },
+          ],
+        },
+      ],
+      orphanFunctions: [],
+      stats: { totalRequirements: 1, mappedRequirements: 1, totalExportedFunctions: 3, orphanCount: 0 },
+    };
+    const gen = new OpenSpecFormatGenerator();
+    const specs = gen.generateSpecs(result, mapping);
+    const userSpec = specs.find(s => s.domain === 'user')!;
+
+    expect(userSpec.content).toContain('src/llm.ts:2');
+    expect(userSpec.content).not.toContain('src/h.ts');
+    expect(userSpec.content).not.toContain('src/sem.ts');
   });
 });

@@ -33,6 +33,7 @@ import {
   ARTIFACT_DEPENDENCY_GRAPH,
   ARTIFACT_GENERATION_REPORT,
   ARTIFACT_MAPPING,
+  ARTIFACT_RAG_MANIFEST,
 } from '../../constants.js';
 import type { GenerateOptions } from '../../types/index.js';
 import {
@@ -60,6 +61,8 @@ import { ADRGenerator } from '../../core/generator/adr-generator.js';
 import type { RepoStructure, LLMContext } from '../../core/analyzer/artifact-generator.js';
 import type { DependencyGraphResult } from '../../core/analyzer/dependency-graph.js';
 import { MappingGenerator } from '../../core/generator/mapping-generator.js';
+import type { MappingArtifact } from '../../core/generator/mapping-generator.js';
+import { RagManifestGenerator } from '../../core/generator/rag-manifest-generator.js';
 import { createProgress } from '../../utils/progress.js';
 
 // ============================================================================
@@ -598,14 +601,29 @@ Each spec.md follows OpenSpec conventions:
       // ========================================================================
       logger.section('Writing OpenSpec Files');
 
+      // Generate requirement→function mapping first so formatGenerator can annotate file:line
+      let mappingArtifact: MappingArtifact | undefined;
+      if (depGraph) {
+        try {
+          const mapper = new MappingGenerator(rootPath, specGenConfig.openspecPath, semanticSearch);
+          mappingArtifact = await mapper.generate(pipelineResult, depGraph);
+          logger.success(
+            `Requirement mapping: ${mappingArtifact.stats.mappedRequirements}/${mappingArtifact.stats.totalRequirements} requirements mapped, ${mappingArtifact.stats.orphanCount} orphan functions → ${SPEC_GEN_ANALYSIS_REL_PATH}/${ARTIFACT_MAPPING}`
+          );
+        } catch (error) {
+          logger.warning(`Could not generate mapping artifact: ${(error as Error).message}`);
+        }
+      }
+
       // Generate formatted specs
       const formatGenerator = new OpenSpecFormatGenerator({
         version: specGenConfig.version,
         includeConfidence: true,
         includeTechnicalNotes: true,
+        depGraph,
       });
 
-      let generatedSpecs = opts.adrOnly ? [] : formatGenerator.generateSpecs(pipelineResult);
+      let generatedSpecs = opts.adrOnly ? [] : formatGenerator.generateSpecs(pipelineResult, mappingArtifact);
 
       // Filter by domains if specified
       if (!opts.adrOnly && opts.domains.length > 0) {
@@ -666,17 +684,19 @@ Each spec.md follows OpenSpec conventions:
         return;
       }
 
-      // Generate requirement→function mapping artifact if dep graph is available
-      if (depGraph) {
-        try {
-          const mapper = new MappingGenerator(rootPath, specGenConfig.openspecPath, semanticSearch);
-          const mapping = await mapper.generate(pipelineResult, depGraph);
-          logger.success(
-            `Requirement mapping: ${mapping.stats.mappedRequirements}/${mapping.stats.totalRequirements} requirements mapped, ${mapping.stats.orphanCount} orphan functions → ${SPEC_GEN_ANALYSIS_REL_PATH}/${ARTIFACT_MAPPING}`
-          );
-        } catch (error) {
-          logger.warning(`Could not generate mapping artifact: ${(error as Error).message}`);
-        }
+      // Generate RAG manifest
+      try {
+        const manifestGen = new RagManifestGenerator();
+        const manifest = manifestGen.generate(generatedSpecs, depGraph);
+        const { writeFile } = await import('node:fs/promises');
+        await writeFile(
+          join(fullOpenspecPath, ARTIFACT_RAG_MANIFEST),
+          JSON.stringify(manifest, null, 2),
+          'utf-8',
+        );
+        logger.success(`RAG manifest: ${manifest.domains.length} domains → ${specGenConfig.openspecPath ?? OPENSPEC_DIR}/${ARTIFACT_RAG_MANIFEST}`);
+      } catch (error) {
+        logger.warning(`Could not generate RAG manifest: ${(error as Error).message}`);
       }
 
       // ========================================================================

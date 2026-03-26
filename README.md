@@ -1068,8 +1068,9 @@ spec-gen view --spec <path>        # custom spec dir (default: ./openspec/specs/
 
 | View | Description |
 |------|-------------|
-| **Clusters** | Colour-coded architectural clusters with expandable member nodes |
-| **Flat** | Force-directed dependency graph (all nodes); call edges shown as cyan dashes |
+| **Clusters** | Colour-coded architectural clusters with expandable member nodes. Falls back to directory clusters for languages without import edges (Swift, C++) |
+| **Flat** | Force-directed dependency graph (all nodes). Import edges are solid; call edges (Swift/C++ synthesised, or HTTP cross-language) are cyan dashed |
+| **Classes** | Class/struct inheritance and call graph. Nodes coloured by language or connected component; isolated nodes hidden. Component-aware force layout keeps related classes together |
 | **Architecture** | High-level cluster map: role-coloured boxes, inter-cluster dependency arrows |
 | **Classes** | Component-aware force layout of class/struct relationships with coloured groupings |
 
@@ -1158,11 +1159,11 @@ Static analysis output is stored in `.spec-gen/analysis/`:
 | File | Description |
 |------|-------------|
 | `repo-structure.json` | Project structure and metadata |
-| `dependency-graph.json` | Import/export relationships and HTTP cross-language edges (JS/TS → Python) |
+| `dependency-graph.json` | Import/export relationships, HTTP cross-language edges (JS/TS → Python), and synthesised call edges for Swift/C++ |
 | `llm-context.json` | Context prepared for LLM (signatures, call graph) |
 | `dependencies.mermaid` | Visual dependency graph |
 | `SUMMARY.md` | Human-readable analysis summary |
-| `call-graph.json` | Function-level call graph (7 languages) |
+| `call-graph.json` | Function-level call graph (8 languages: TS/JS, Python, Go, Rust, Ruby, Java, C++, Swift) |
 | `refactor-priorities.json` | Refactoring issues by file and function |
 | `mapping.json` | Requirement->function mapping (produced by `generate`) |
 | `vector-index/` | LanceDB semantic index (produced by `--embed`) |
@@ -1267,18 +1268,16 @@ The index is stored in `.spec-gen/analysis/vector-index/` and is automatically u
 
 ## Supported Languages
 
-| Language | Signatures | Call Graph | Import Parsing |
-|----------|-----------|------------|----------------|
-| TypeScript / JavaScript | Full | Full | Full |
-| Python | Full | Full | Full |
-| Go | Full | Full | Full |
-| Rust | Full | Full | Full |
-| Ruby | Full | Full | Full |
-| Java | Full | Full | Full |
-| C++ | Full | Full | Cross-file edges synthesized from call graph |
-| Swift | Full | Full | Cross-file edges synthesized from call graph |
-
-TypeScript projects get the best results due to richer type information. Swift and C++ projects use call-graph-based edge synthesis instead of import parsing, since these languages have no file-level imports within a module.
+| Language | Signatures | Call Graph | Notes |
+|----------|-----------|------------|-------|
+| TypeScript / JavaScript | Full | Full | Best results — rich type info |
+| Python | Full | Full | `self`/`cls` intra-class + import resolution |
+| Go | Full | Full | |
+| Rust | Full | Full | |
+| Ruby | Full | Full | |
+| Java | Full | Full | |
+| C++ | Full | Full | No intra-module imports — cross-file edges synthesised from call graph |
+| Swift | Full | Full | No intra-module imports — cross-file edges synthesised from call graph |
 
 ## Usage Options
 
@@ -1393,7 +1392,7 @@ for (const [key, req] of Object.entries(requirements)) {
 npm install          # Install dependencies
 npm run dev          # Development mode (watch)
 npm run build        # Build
-npm run test:run     # Run tests (2050+ unit tests)
+npm run test:run     # Run tests (2059 unit tests)
 npm run typecheck    # Type check
 ```
 

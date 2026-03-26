@@ -18,6 +18,8 @@ import { OpenSpecFormatGenerator } from '../core/generator/openspec-format-gener
 import { OpenSpecWriter, type WriteMode } from '../core/generator/openspec-writer.js';
 import { ADRGenerator } from '../core/generator/adr-generator.js';
 import { MappingGenerator } from '../core/generator/mapping-generator.js';
+import type { MappingArtifact } from '../core/generator/mapping-generator.js';
+import { RagManifestGenerator } from '../core/generator/rag-manifest-generator.js';
 import type { RepoStructure, LLMContext } from '../core/analyzer/artifact-generator.js';
 import type { DependencyGraphResult } from '../core/analyzer/dependency-graph.js';
 import type { RefactorReport } from '../core/analyzer/refactor-analyzer.js';
@@ -38,6 +40,7 @@ import {
   ARTIFACT_LLM_CONTEXT,
   ARTIFACT_DEPENDENCY_GRAPH,
   ARTIFACT_REFACTOR_PRIORITIES,
+  ARTIFACT_RAG_MANIFEST,
 } from '../constants.js';
 
 function progress(onProgress: ProgressCallback | undefined, step: string, status: 'start' | 'progress' | 'complete' | 'skip', detail?: string): void {
@@ -220,15 +223,44 @@ export async function specGenGenerate(options: GenerateApiOptions = {}): Promise
   }
   progress(onProgress, 'Running LLM generation pipeline', 'complete');
 
+  // Generate mapping artifact early so formatGenerator can annotate file:line per requirement
+  let mappingArtifact: MappingArtifact | undefined;
+  if ((options.mapping ?? true) && depGraph) {
+    try {
+      let semanticSearch: import('../core/generator/mapping-generator.js').SemanticSearchFn | undefined;
+      const analysisDir = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+      const { VectorIndex } = await import('../core/analyzer/vector-index.js');
+      if (VectorIndex.exists(analysisDir)) {
+        const { EmbeddingService } = await import('../core/analyzer/embedding-service.js');
+        let embedSvc: InstanceType<typeof EmbeddingService> | undefined;
+        try { embedSvc = EmbeddingService.fromEnv(); } catch { /* no env config */ }
+        if (!embedSvc) {
+          const svc = EmbeddingService.fromConfig(specGenConfig);
+          if (svc) embedSvc = svc;
+        }
+        if (embedSvc) {
+          const svc = embedSvc;
+          semanticSearch = (query, limit) => VectorIndex.search(analysisDir, query, svc, { limit });
+        }
+      }
+      const mapper = new MappingGenerator(rootPath, openspecRelPath, semanticSearch);
+      mappingArtifact = await mapper.generate(pipelineResult, depGraph);
+      progress(onProgress, 'Generating mapping artifact', 'complete');
+    } catch {
+      // Non-fatal
+    }
+  }
+
   // Format specs
   progress(onProgress, 'Formatting specifications', 'start');
   const formatGenerator = new OpenSpecFormatGenerator({
     version: specGenConfig.version,
     includeConfidence: true,
     includeTechnicalNotes: true,
+    depGraph,
   });
 
-  let generatedSpecs = adrOnly ? [] : formatGenerator.generateSpecs(pipelineResult);
+  let generatedSpecs = adrOnly ? [] : formatGenerator.generateSpecs(pipelineResult, mappingArtifact);
 
   // Filter by domains
   if (!adrOnly && options.domains && options.domains.length > 0) {
@@ -265,31 +297,19 @@ export async function specGenGenerate(options: GenerateApiOptions = {}): Promise
   const report = await writer.writeSpecs(generatedSpecs, pipelineResult.survey);
   progress(onProgress, 'Writing OpenSpec files', 'complete', `${report.filesWritten.length} written`);
 
-  // Generate mapping artifact
-  if ((options.mapping ?? true) && depGraph) {
-    try {
-      let semanticSearch: import('../core/generator/mapping-generator.js').SemanticSearchFn | undefined;
-      const analysisDir = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
-      const { VectorIndex } = await import('../core/analyzer/vector-index.js');
-      if (VectorIndex.exists(analysisDir)) {
-        const { EmbeddingService } = await import('../core/analyzer/embedding-service.js');
-        let embedSvc: InstanceType<typeof EmbeddingService> | undefined;
-        try { embedSvc = EmbeddingService.fromEnv(); } catch { /* no env config */ }
-        if (!embedSvc) {
-          const svc = EmbeddingService.fromConfig(specGenConfig);
-          if (svc) embedSvc = svc;
-        }
-        if (embedSvc) {
-          const svc = embedSvc;
-          semanticSearch = (query, limit) => VectorIndex.search(analysisDir, query, svc, { limit });
-        }
-      }
-      const mapper = new MappingGenerator(rootPath, openspecRelPath, semanticSearch);
-      await mapper.generate(pipelineResult, depGraph);
-      progress(onProgress, 'Generating mapping artifact', 'complete');
-    } catch {
-      // Non-fatal
-    }
+  // Generate RAG manifest
+  try {
+    const manifestGen = new RagManifestGenerator();
+    const manifest = manifestGen.generate(generatedSpecs, depGraph);
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(
+      join(fullOpenspecPath, ARTIFACT_RAG_MANIFEST),
+      JSON.stringify(manifest, null, 2),
+      'utf-8',
+    );
+    progress(onProgress, 'Generating RAG manifest', 'complete', `${manifest.domains.length} domains`);
+  } catch {
+    // Non-fatal
   }
 
   // Save LLM logs

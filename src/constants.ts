@@ -83,6 +83,7 @@ export const ARTIFACT_GENERATION_REPORT = 'generation-report.json';
 
 /** Filename for the shutdown state file */
 export const ARTIFACT_SHUTDOWN_STATE = 'shutdown-state.json';
+export const ARTIFACT_RAG_MANIFEST = 'rag-manifest.json';
 
 // ============================================================================
 // LLM / PROVIDER LIMITS
