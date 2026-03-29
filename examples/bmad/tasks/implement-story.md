@@ -139,6 +139,19 @@ Read the skeleton of the target file:
 
 Confirm the approach with the user before writing code.
 
+### Step 4b — Adversarial self-check
+
+Before writing any code, state explicitly what could break with this approach.
+If `.claude/antipatterns.md` exists, read it and include any applicable patterns.
+
+> "Risk check on `$INSERTION_POINT`:
+> - `$CALLER_A` and `$CALLER_B` depend on this function — verify their assumptions hold after the change.
+> - `$EDGE_CASE` is not covered by the current test suite — add it in Step 6.
+> - [if antipatterns apply] AP-NNN (`$PATTERN_NAME`) — `$RULE` — applies here because `$REASON`."
+
+This is not a gate — do not wait for user input. It is a mandatory self-check
+that must appear in the output before the first line of code is written.
+
 ---
 
 ## Step 5 — Implement
@@ -210,6 +223,7 @@ Include:
 ## Absolute constraints
 
 - Do not write code before Step 4 confirmation
+- Step 4b adversarial self-check is mandatory — never skip it
 - If riskScore ≥ 70 was not caught at planning — stop, do not work around it
 - Do not run `check_spec_drift` before tests are green
 - Do not propose a spec update on untested code

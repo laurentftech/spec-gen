@@ -16,9 +16,22 @@ so that **{benefit}**.
 
 ## Acceptance Criteria
 
+> Each criterion must be testable: describe a specific observable outcome, not a vague quality.
+> ✗ "The UX should be responsive" — not a criterion
+> ✓ "Submitting the form with an empty email field shows a validation error" — testable
+
 - [ ] AC1: {criterion}
 - [ ] AC2: {criterion}
 - [ ] AC3: {criterion}
+
+---
+
+## Won't Do
+
+> What this story explicitly does NOT cover. Minimum 1 item.
+> Prevents scope creep and removes ambiguity for the Dev Agent.
+
+- {out-of-scope item}
 
 ---
 
