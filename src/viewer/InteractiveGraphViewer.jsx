@@ -882,6 +882,13 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
             onHighlight={(ids) => setFocusedIds(ids)}
             onHighlightPaths={(paths) => setFocusedPaths(paths)}
             onClose={() => { setChatOpen(false); setFocusedIds([]); setFocusedPaths([]); }}
+            onClearGraph={() => {
+              setFocusedIds([]);
+              setFocusedPaths([]);
+              setExpandedClusters(new Set());
+              setSelectedId(null);
+              setAffectedIds([]);
+            }}
           />
         )}
 
