@@ -96,6 +96,25 @@ export function ClusterGraph({
     });
   }, [edges, nodes]);
 
+  // Focused cluster IDs (clusters containing a chat-highlighted node)
+  const focusedClusterIds = useMemo(() => {
+    if (!focusedIds?.length) return null;
+    return new Set(nodes.filter((n) => focusedIds.includes(n.id)).map((n) => n.cluster.id));
+  }, [focusedIds, nodes]);
+
+  // Neighbor cluster IDs (non-focused clusters directly connected to a focused cluster)
+  const neighborClusterIds = useMemo(() => {
+    if (!focusedClusterIds) return null;
+    const neighbors = new Set();
+    clusterEdges.forEach((e) => {
+      if (focusedClusterIds.has(e.source) && !focusedClusterIds.has(e.target))
+        neighbors.add(e.target);
+      if (focusedClusterIds.has(e.target) && !focusedClusterIds.has(e.source))
+        neighbors.add(e.source);
+    });
+    return neighbors;
+  }, [focusedClusterIds, clusterEdges]);
+
   return (
     <svg
       viewBox="0 0 900 540"
@@ -141,9 +160,6 @@ export function ClusterGraph({
         {/* Inter-cluster edges */}
         {!selectedId &&
           (() => {
-            const focusedClusterIds = focusedIds?.length > 0
-              ? new Set(nodes.filter((n) => focusedIds.includes(n.id)).map((n) => n.cluster.id))
-              : null;
             return clusterEdges.map((e) => {
             const s = clusterPos[e.source],
               t = clusterPos[e.target];
@@ -156,10 +172,11 @@ export function ClusterGraph({
             const rs = 38,
               rt = 38;
             const w = Math.min(1 + e.count * 0.15, 4);
+            // dim edge only when BOTH endpoints are non-focused (OR logic)
             const isDimEdge = focusedClusterIds &&
               !focusedClusterIds.has(e.source) && !focusedClusterIds.has(e.target);
             return (
-              <g key={e.id}>
+              <g key={e.id} opacity={isDimEdge ? 0.06 : 0.5}>
                 <line
                   x1={s.x + nx * rs}
                   y1={s.y + ny * rs}
@@ -167,7 +184,6 @@ export function ClusterGraph({
                   y2={t.y - ny * (rt + 5)}
                   stroke="var(--ac-arrow)"
                   strokeWidth={w}
-                  strokeOpacity={isDimEdge ? 0.06 : 0.5}
                   markerEnd="url(#carr)"
                 />
                 <text
@@ -302,7 +318,7 @@ export function ClusterGraph({
                     filter={
                       noGlow ? undefined : isExpanded ? 'url(#cglow)' : isLinkedCollapsed ? 'url(#cglow)' : undefined
                     }
-                    opacity={isClusterGreyed ? 0.18 : 1}
+                    opacity={isClusterGreyed ? (neighborClusterIds?.has(cl.id) ? 0.4 : 0.18) : 1}
                   >
                     <title>{cl.name} — {allMembers.length} file{allMembers.length !== 1 ? 's' : ''}</title>
                     <circle

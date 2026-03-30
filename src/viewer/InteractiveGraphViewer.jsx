@@ -289,10 +289,27 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
     return () => window.removeEventListener('keydown', onKey);
   }, [clearSelection]);
 
+  // Track which clusters were auto-expanded by the chatbot (so we can collapse them on clear)
+  const chatExpandedClusters = useRef(new Set());
+
   // Auto-expand clusters when their nodes are highlighted by the chatbot
   useEffect(() => {
-    if (!graph || focusedIds.length === 0) return;
-    
+    if (!graph) return;
+
+    if (focusedIds.length === 0) {
+      // focusedIds cleared — collapse clusters that were auto-expanded by chat
+      if (chatExpandedClusters.current.size > 0) {
+        const toCollapse = new Set(chatExpandedClusters.current);
+        chatExpandedClusters.current = new Set();
+        setExpandedClusters((prev) => {
+          const next = new Set(prev);
+          toCollapse.forEach((cid) => next.delete(cid));
+          return next;
+        });
+      }
+      return;
+    }
+
     const clusterIdsToExpand = new Set();
     const validNodeIds = [];
     focusedIds.forEach((fid) => {
@@ -302,11 +319,16 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
         validNodeIds.push(fid);
       }
     });
-    
+
     if (clusterIdsToExpand.size > 0) {
       setExpandedClusters((prev) => {
         const next = new Set(prev);
-        clusterIdsToExpand.forEach((cid) => next.add(cid));
+        clusterIdsToExpand.forEach((cid) => {
+          if (!prev.has(cid)) {
+            next.add(cid);
+            chatExpandedClusters.current.add(cid);
+          }
+        });
         return next;
       });
     }
