@@ -291,6 +291,8 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
 
   // Track which clusters were auto-expanded by the chatbot (so we can collapse them on clear)
   const chatExpandedClusters = useRef(new Set());
+  // Track whether selectedId was set by the chatbot (so we can clear it on clear)
+  const chatSelectedId = useRef(null);
 
   // Auto-expand clusters when their nodes are highlighted by the chatbot
   useEffect(() => {
@@ -306,7 +308,17 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
           toCollapse.forEach((cid) => next.delete(cid));
           return next;
         });
+        // If the selected node is inside a collapsing cluster, clear selection
+        // to avoid ghost edges rendering from cluster centers
+        if (selectedId) {
+          const selNode = graph.nodes.find((n) => n.id === selectedId);
+          if (selNode && toCollapse.has(selNode.cluster?.id)) {
+            setSelectedId(null);
+            setAffectedIds([]);
+          }
+        }
       }
+      chatSelectedId.current = null;
       return;
     }
 
@@ -339,6 +351,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
       setSelectedId(validNodeIds[0]);
       setAffectedIds([]);
       setTab(mapping ? 'spec' : 'node');
+      chatSelectedId.current = validNodeIds[0];
     }
   }, [focusedIds, graph, mapping]);
 
