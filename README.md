@@ -416,10 +416,12 @@ Priority: CLI flags > environment variables > config file > provider defaults.
 | `spec-gen verify` | Verify spec accuracy | Yes |
 | `spec-gen drift` | Detect spec drift (static) | No |
 | `spec-gen drift --use-llm` | Detect spec drift (LLM-enhanced) | Yes |
+| `spec-gen audit` | Report spec coverage gaps: uncovered functions, hub gaps, stale domains | No |
 | `spec-gen run` | Full pipeline: init, analyze, generate | Yes |
 | `spec-gen view` | Launch interactive graph & spec viewer in the browser | No |
 | `spec-gen mcp` | Start MCP server (stdio, for Cline / Claude Code) | No |
 | `spec-gen doctor` | Check environment and configuration for common issues | No |
+| `spec-gen refresh-stories` | Refresh story files with latest structural context after each commit | No |
 
 ### Global Options
 
@@ -576,6 +578,7 @@ After running `spec-gen analyze`, wire the generated digest into your agent's co
 | Reading a spec before writing code | `get_spec` |
 | Checking if code still matches spec | `check_spec_drift` |
 | Finding spec requirements by meaning | `search_specs` |
+| Checking spec coverage before starting a feature | `audit_spec_coverage` |
 
 For all other cases (reading a file, grepping, listing files) use native tools directly.
 ```
@@ -774,6 +777,14 @@ All tools run on **pure static analysis** -- no LLM quota consumed.
 | `check_spec_drift` | Detect code changes not reflected in OpenSpec specs. Compares git-changed files against spec coverage maps. Issues: gap / stale / uncovered / orphaned-spec / adr-gap. | Yes (generate) |
 | `search_specs` | Semantic search over OpenSpec specifications to find requirements, design notes, and architecture decisions by meaning. Returns linked source files for graph highlighting. Use this when asked "which spec covers X?" or "where should we implement Z?". Requires a spec index built with `spec-gen analyze` or `--reindex-specs`. | Yes (generate) |
 | `list_spec_domains` | List all OpenSpec domains available in this project. Use this to discover what domains exist before doing a targeted `search_specs` call. | Yes (generate) |
+| `audit_spec_coverage` | Parity audit: uncovered functions (in call graph, no spec), hub gaps (high fan-in + no spec), orphan requirements (spec with no implementation found), and stale domains (source changed after spec). Run before starting a feature to understand coverage health. No LLM required. | Yes (analyze) |
+
+**Story Management**
+
+| Tool | Description | Requires prior analysis |
+|------|-------------|:---:|
+| `generate_change_proposal` | Generate a structured change proposal for a feature: affected functions, risk score, insertion points, spec impact, and a ready-to-use story file. Use during sprint planning or before implementing a non-trivial change. | Yes |
+| `annotate_story` | Annotate an existing story file with structural context: risk score, affected functions, recommended insertion point, and spec domain links. Prepares a story for the dev agent so it can skip the orientation step. | Yes |
 
 ### Parameters
 
@@ -989,6 +1000,31 @@ section    string   Filter by section type: "requirements" | "purpose" | "design
 3. check_spec_drift({ directory })                    # verify after implementation
 ```
 
+**Scenario E -- Coverage audit before implementing**
+```
+1. audit_spec_coverage({ directory })
+   # Before writing code: surfaces stale domains, uncovered hub functions,
+   # orphan requirements. 0 LLM calls, ~200ms.
+2. If staleDomains includes your target: spec-gen generate --domains $DOMAIN
+3. If hubGaps includes a function you'll touch: flag it in your risk check
+```
+
+---
+
+## Agentic Workflows
+
+spec-gen integrates with structured agentic workflows so AI agents follow a consistent process: orient → risk check → spec check → implement → drift verify.
+
+| Integration | Description | Location |
+|-------------|-------------|----------|
+| **BMAD** | Brownfield agent workflow with architect + dev agents. Architect annotates stories with risk context at planning time; dev agent uses it to skip orientation on low-risk stories. | `examples/bmad/` |
+| **Mistral Vibe** | Skills for Mistral-powered agents (brainstorm, implement story, debug, plan/execute refactor). Includes small-model constraints (≤50-line edits). | `examples/mistral-vibe/` |
+| **GSD** | Minimal slash commands for `spec-gen orient` and `spec-gen drift` — drop into any agent that supports custom commands. | `examples/gsd/` |
+| **spec-kit** | Extension layer adding structural risk analysis to any existing agent setup. | `examples/spec-kit/` |
+| **Cline** | Workflow markdown files for Cline / Roo Code / Kilocode. Copy to `.clinerules/workflows/`. | `examples/cline-workflows/` |
+
+Each integration ships with a README explaining setup and the step-by-step workflow.
+
 ## Interactive Graph Viewer
 
 `spec-gen view` launches a local React app that visualises your codebase analysis and lets you explore spec requirements side-by-side with the dependency graph.
@@ -1108,6 +1144,8 @@ Static analysis output is stored in `.spec-gen/analysis/`:
 | `call-graph.json` | Function-level call graph (7 languages) |
 | `refactor-priorities.json` | Refactoring issues by file and function |
 | `mapping.json` | Requirement->function mapping (produced by `generate`) |
+| `spec-snapshot.json` | Compact coverage summary: git state, per-domain coverage %, uncovered hub functions (auto-updated after `analyze` and `generate`) |
+| `audit-report.json` | Latest parity audit report (produced by `spec-gen audit`) |
 | `vector-index/` | LanceDB semantic index (produced by `--embed`) |
 
 `spec-gen analyze` also writes **`ARCHITECTURE.md`** to your project root -- a Markdown overview of module clusters, entry points, and critical hubs, refreshed on every run.
