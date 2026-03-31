@@ -47,6 +47,7 @@ import {
   handleUnifiedSearch,
 } from '../../core/services/mcp-handlers/semantic.js';
 import { handleOrient } from '../../core/services/mcp-handlers/orient.js';
+import { handleGenerateChangeProposal, handleAnnotateStory } from '../../core/services/mcp-handlers/change.js';
 import {
   handleAnalyzeCodebase,
   handleGetArchitectureOverview,
@@ -759,6 +760,76 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: 'generate_change_proposal',
+    description:
+      'USE THIS WHEN: you have a BMAD story, a feature description, or a spec delta request, ' +
+      'and want to create a structured OpenSpec change proposal before writing any code. ' +
+      'Combines orient + search_specs + analyze_impact to produce a pre-filled ' +
+      'openspec/changes/{slug}/proposal.md — no LLM required. ' +
+      'Output includes affected domains, touched requirements, risk scores, and insertion points. ' +
+      'Run analyze_codebase first; spec index optional (degrades gracefully).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: {
+          type: 'string',
+          description: 'Absolute path to the project directory',
+        },
+        description: {
+          type: 'string',
+          description:
+            'Intent of the change — story title + primary AC, or a free-form feature description. ' +
+            'e.g. "add retry logic to payment processing — must retry up to 3 times on timeout"',
+        },
+        slug: {
+          type: 'string',
+          description:
+            'Change identifier used as the directory name, e.g. "add-payment-retry". ' +
+            'Will be lowercased and hyphenated automatically.',
+        },
+        storyContent: {
+          type: 'string',
+          description:
+            'Optional: full BMAD story content (markdown). If provided, it is embedded verbatim ' +
+            'in the proposal for traceability.',
+        },
+      },
+      required: ['directory', 'description', 'slug'],
+    },
+  },
+  {
+    name: 'annotate_story',
+    description:
+      'USE THIS WHEN: you have a BMAD story file and want to auto-populate its risk_context ' +
+      'section with structural analysis from the codebase. ' +
+      'Reads the story file, runs orient + analyze_impact, writes the risk_context block ' +
+      'directly into the file (replaces existing section or inserts it). ' +
+      'Run by the Architect Agent after writing stories — eliminates manual copy-paste of ' +
+      'generate_change_proposal output. Run analyze_codebase first.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: {
+          type: 'string',
+          description: 'Absolute path to the project directory',
+        },
+        storyFilePath: {
+          type: 'string',
+          description:
+            'Path to the BMAD story markdown file — relative to the project directory ' +
+            'or absolute. e.g. ".bmad-method/stories/001-add-payment-retry.md"',
+        },
+        description: {
+          type: 'string',
+          description:
+            'Story intent for structural analysis — use story title + primary AC. ' +
+            'e.g. "add payment retry — must retry up to 3 times on timeout"',
+        },
+      },
+      required: ['directory', 'storyFilePath', 'description'],
+    },
+  },
+  {
     name: 'get_decisions',
     description:
       'List or search Architecture Decision Records (ADRs) stored in openspec/decisions/. ' +
@@ -914,6 +985,14 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
         const { directory, filePath, direction = 'both' } =
           args as { directory: string; filePath: string; direction?: 'imports' | 'importedBy' | 'both' };
         result = await handleGetFileDependencies(directory, filePath, direction);
+      } else if (name === 'generate_change_proposal') {
+        const { directory, description, slug, storyContent } =
+          args as { directory: string; description: string; slug: string; storyContent?: string };
+        result = await handleGenerateChangeProposal(directory, description, slug, storyContent);
+      } else if (name === 'annotate_story') {
+        const { directory, storyFilePath, description } =
+          args as { directory: string; storyFilePath: string; description: string };
+        result = await handleAnnotateStory(directory, storyFilePath, description);
       } else if (name === 'get_decisions') {
         const { directory, query } = args as { directory: string; query?: string };
         result = await handleGetDecisions(directory, query);

@@ -93,6 +93,8 @@ Based on the analysis, guide the user through the natural next steps in order:
    - Call `search_specs` to find requirements by intent — this enables spec-first reasoning
      (question → requirements → linked source files) rather than code-first exploration
    - Suggest `/spec-gen-implement-feature` for any new feature work
-     (integrates specs + insertion points + drift check)
+     (integrates specs + insertion points + adversarial self-check + drift check)
    - To enable `search_specs`, run `spec-gen analyze --embed` or `spec-gen analyze --reindex-specs`
      (requires the embedding server)
+7. If `.claude/antipatterns.md` exists, mention that it is checked automatically
+   by `/spec-gen-implement-feature` during the adversarial self-check step

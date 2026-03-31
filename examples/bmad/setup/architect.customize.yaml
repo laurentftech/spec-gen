@@ -1,0 +1,14 @@
+# spec-gen extension for the BMAD Architect agent
+#
+# Drop this file at: _bmad/_config/customizations/architect.customize.yaml
+# Then re-run: npx bmad-method install
+#
+# What it does: instructs the Architect agent to load the spec-gen structural
+# analysis instructions as a sidecar before starting any design work.
+
+customize:
+  metadata:
+    hasSidecar: true
+  critical-actions:
+    Appends:
+      - "Load COMPLETE file {project-root}/_bmad/_memory/architect-sidecar/spec-gen.md"

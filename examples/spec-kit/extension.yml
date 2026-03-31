@@ -1,0 +1,54 @@
+schema_version: "1.0"
+
+extension:
+  id: "spec-gen"
+  name: "spec-gen structural analysis"
+  version: "1.0.0"
+  description: "Pre-flight structural risk check and post-implementation spec drift verification via spec-gen MCP."
+  author: "spec-gen contributors"
+  repository: "https://github.com/clay-good/spec-gen"
+  license: "MIT"
+  homepage: "https://github.com/clay-good/spec-gen"
+
+requires:
+  speckit_version: ">=0.1.0"
+  tools:
+    - name: "spec-gen"
+      version: ">=1.2.0"
+      required: true
+
+provides:
+  commands:
+    - name: "speckit.spec-gen.orient"
+      file: "commands/orient.md"
+      description: "Pre-flight check — orient + analyze_impact before implementation. Gates on riskScore ≥ 70."
+
+    - name: "speckit.spec-gen.drift"
+      file: "commands/drift.md"
+      description: "Post-implementation spec drift check. Run after tests are green."
+
+hooks:
+  before_implement:
+    command: "speckit.spec-gen.orient"
+    optional: true
+    prompt: "Run spec-gen structural risk check before implementing?"
+    description: "Identifies high-risk functions and spec requirements relevant to the planned tasks."
+
+  after_implement:
+    command: "speckit.spec-gen.drift"
+    optional: true
+    prompt: "Run spec-gen drift check to verify implementation matches specs?"
+    description: "Detects gaps between the implementation and existing OpenSpec specifications."
+
+tags:
+  - "static-analysis"
+  - "risk-management"
+  - "spec-driven"
+  - "brownfield"
+  - "mcp"
+
+defaults:
+  analysis:
+    orient_limit: 7
+    impact_depth: 2
+    risk_threshold: 70

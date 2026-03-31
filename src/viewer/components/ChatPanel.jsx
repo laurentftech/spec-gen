@@ -159,7 +159,7 @@ function ToolSpinner() {
  *   onHighlightPaths(paths: string[])-- called with raw file paths (for class graph)
  *   onClose()                        -- called when the panel is closed
  */
-export function ChatPanel({ onHighlight, onHighlightPaths, onClose }) {
+export function ChatPanel({ onHighlight, onHighlightPaths, onClose, onClearGraph }) {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -265,8 +265,7 @@ export function ChatPanel({ onHighlight, onHighlightPaths, onClose }) {
   const clear = () => {
     setMessages([{ role: 'assistant', content: 'Conversation cleared. What would you like to know?' }]);
     setError(null);
-    onHighlight([]);
-    onHighlightPaths?.([]);
+    onClearGraph?.();
   };
 
   return (

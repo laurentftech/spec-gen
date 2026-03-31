@@ -289,10 +289,39 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
     return () => window.removeEventListener('keydown', onKey);
   }, [clearSelection]);
 
+  // Track which clusters were auto-expanded by the chatbot (so we can collapse them on clear)
+  const chatExpandedClusters = useRef(new Set());
+  // Track whether selectedId was set by the chatbot (so we can clear it on clear)
+  const chatSelectedId = useRef(null);
+
   // Auto-expand clusters when their nodes are highlighted by the chatbot
   useEffect(() => {
-    if (!graph || focusedIds.length === 0) return;
-    
+    if (!graph) return;
+
+    if (focusedIds.length === 0) {
+      // focusedIds cleared — collapse clusters that were auto-expanded by chat
+      if (chatExpandedClusters.current.size > 0) {
+        const toCollapse = new Set(chatExpandedClusters.current);
+        chatExpandedClusters.current = new Set();
+        setExpandedClusters((prev) => {
+          const next = new Set(prev);
+          toCollapse.forEach((cid) => next.delete(cid));
+          return next;
+        });
+        // If the selected node is inside a collapsing cluster, clear selection
+        // to avoid ghost edges rendering from cluster centers
+        if (selectedId) {
+          const selNode = graph.nodes.find((n) => n.id === selectedId);
+          if (selNode && toCollapse.has(selNode.cluster?.id)) {
+            setSelectedId(null);
+            setAffectedIds([]);
+          }
+        }
+      }
+      chatSelectedId.current = null;
+      return;
+    }
+
     const clusterIdsToExpand = new Set();
     const validNodeIds = [];
     focusedIds.forEach((fid) => {
@@ -302,11 +331,16 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
         validNodeIds.push(fid);
       }
     });
-    
+
     if (clusterIdsToExpand.size > 0) {
       setExpandedClusters((prev) => {
         const next = new Set(prev);
-        clusterIdsToExpand.forEach((cid) => next.add(cid));
+        clusterIdsToExpand.forEach((cid) => {
+          if (!prev.has(cid)) {
+            next.add(cid);
+            chatExpandedClusters.current.add(cid);
+          }
+        });
         return next;
       });
     }
@@ -317,6 +351,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
       setSelectedId(validNodeIds[0]);
       setAffectedIds([]);
       setTab(mapping ? 'spec' : 'node');
+      chatSelectedId.current = validNodeIds[0];
     }
   }, [focusedIds, graph, mapping]);
 
@@ -851,6 +886,13 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
             onHighlight={(ids) => setFocusedIds(ids)}
             onHighlightPaths={(paths) => setFocusedPaths(paths)}
             onClose={() => { setChatOpen(false); setFocusedIds([]); setFocusedPaths([]); }}
+            onClearGraph={() => {
+              setFocusedIds([]);
+              setFocusedPaths([]);
+              setExpandedClusters(new Set());
+              setSelectedId(null);
+              setAffectedIds([]);
+            }}
           />
         )}
 

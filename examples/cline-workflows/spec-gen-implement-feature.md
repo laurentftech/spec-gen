@@ -17,6 +17,9 @@ Ask the user:
 Also ask for a brief description of the feature if not already provided (1–3 sentences).
 Store it as `$FEATURE_DESCRIPTION`.
 
+If `.claude/antipatterns.md` exists in the project, read it and store as `$ANTIPATTERNS`.
+This list will be cross-checked at Step 5b.
+
 ## Step 2: Get the architecture overview
 
 Orient yourself before touching any code.
@@ -117,6 +120,19 @@ Ask the user to confirm the implementation approach before writing any code:
 > "I plan to [extend / add / hook into] `$TOP_CANDIDATE` in `$TARGET_FILE` by [brief description].
 > Does this match your intent?"
 
+## Step 5b: Adversarial self-check
+
+Before writing any code, state explicitly what could break with this approach.
+If `$ANTIPATTERNS` was loaded in Step 1, include any applicable patterns.
+
+> "Risk check on `$TOP_CANDIDATE`:
+> - `$CALLER_A` and `$CALLER_B` depend on this function — verify their assumptions hold after the change.
+> - `$EDGE_CASE` is not covered by the current test suite — add it in Step 6.
+> - [if antipatterns apply] AP-NNN (`$PATTERN_NAME`) — `$RULE` — applies here because `$REASON`."
+
+This is not a gate — do not wait for user input. It is a mandatory self-check
+that must appear in the output before the first line of code is written.
+
 ## Step 6: Implement the feature
 
 Apply the changes incrementally:
@@ -173,3 +189,11 @@ Suggest follow-up actions if applicable:
 - Re-run analysis to update call graph (`analyze_codebase`)
 - If the feature touches a hub function, suggest `/spec-gen-plan-refactor` to
   track growing complexity
+
+## Absolute constraints
+
+- **No code written before Step 6** — analysis and user confirmation come first
+- Always confirm the insertion point with the user before implementing
+- Step 5b adversarial self-check is mandatory — never skip it
+- Run tests after implementation — never skip
+- Run `check_spec_drift` as the final verification step

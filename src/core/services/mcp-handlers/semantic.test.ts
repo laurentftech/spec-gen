@@ -4,6 +4,28 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+// ── helpers ────────────────────────────────────────────────────────────────
+
+function makeRecord(overrides: Partial<{
+  id: string; name: string; filePath: string; language: string;
+  fanIn: number; fanOut: number; isHub: boolean; isEntryPoint: boolean;
+  signature: string; docstring: string; className: string | null;
+}> = {}) {
+  return {
+    id: 'src/a.ts::doA', name: 'doA', filePath: 'src/a.ts',
+    language: 'TypeScript', fanIn: 1, fanOut: 1,
+    isHub: false, isEntryPoint: false,
+    signature: 'function doA()', docstring: '', className: null,
+    ...overrides,
+  };
+}
+
+async function writeAnalysisFile(dir: string, filename: string, content: object) {
+  const analysisDir = join(dir, '.spec-gen', 'analysis');
+  await mkdir(analysisDir, { recursive: true });
+  await writeFile(join(analysisDir, filename), JSON.stringify(content), 'utf-8');
+}
+
 // ============================================================================
 // MOCK validateDirectory
 // ============================================================================
@@ -355,5 +377,316 @@ describe('handleSearchSpecs — success path', () => {
     const { handleSearchSpecs } = await import('./semantic.js');
     const result = await handleSearchSpecs(tmpDir, 'auth') as { error: string };
     expect(result.error).toContain('No embedding configuration');
+  });
+});
+
+// ============================================================================
+// TESTS — handleSearchCode (success paths)
+// ============================================================================
+
+describe('handleSearchCode — success paths', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-search-code-success-'));
+  });
+
+  it('returns results with hybrid searchMode when embedding service available', async () => {
+    vi.doMock('../../analyzer/vector-index.js', () => ({
+      VectorIndex: {
+        exists: vi.fn().mockReturnValue(true),
+        search: vi.fn().mockResolvedValue([{ score: 0.8, record: makeRecord() }]),
+      },
+    }));
+    vi.doMock('../../analyzer/embedding-service.js', () => ({
+      EmbeddingService: { fromEnv: vi.fn().mockReturnValue({}), fromConfig: vi.fn() },
+    }));
+
+    const { handleSearchCode } = await import('./semantic.js');
+    const result = await handleSearchCode(tmpDir, 'auth handler') as Record<string, unknown>;
+    expect(result.searchMode).toBe('hybrid');
+    expect(result.count).toBe(1);
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].name).toBe('doA');
+    expect(results[0].fanIn).toBe(1);
+  });
+
+  it('clamps limit to [1, 100]', async () => {
+    const searchMock = vi.fn().mockResolvedValue([]);
+    vi.doMock('../../analyzer/vector-index.js', () => ({
+      VectorIndex: { exists: vi.fn().mockReturnValue(true), search: searchMock },
+    }));
+    vi.doMock('../../analyzer/embedding-service.js', () => ({
+      EmbeddingService: { fromEnv: vi.fn().mockReturnValue({}), fromConfig: vi.fn() },
+    }));
+
+    const { handleSearchCode } = await import('./semantic.js');
+    await handleSearchCode(tmpDir, 'query', 200);
+    expect((searchMock.mock.calls[0][3] as { limit: number }).limit).toBe(100);
+
+    await handleSearchCode(tmpDir, 'query', 0);
+    expect((searchMock.mock.calls[1][3] as { limit: number }).limit).toBe(1);
+  });
+
+  it('enriches results with callers and callees from call graph', async () => {
+    const record = makeRecord({ id: 'src/a.ts::doA' });
+    vi.doMock('../../analyzer/vector-index.js', () => ({
+      VectorIndex: {
+        exists: vi.fn().mockReturnValue(true),
+        search: vi.fn().mockResolvedValue([{ score: 0.7, record }]),
+      },
+    }));
+    vi.doMock('../../analyzer/embedding-service.js', () => ({
+      EmbeddingService: { fromEnv: vi.fn().mockReturnValue({}), fromConfig: vi.fn() },
+    }));
+    await writeAnalysisFile(tmpDir, 'llm-context.json', {
+      callGraph: {
+        nodes: [
+          { id: 'src/a.ts::doA', name: 'doA', filePath: 'src/a.ts', language: 'TypeScript', fanIn: 1, fanOut: 0 },
+          { id: 'src/b.ts::doB', name: 'doB', filePath: 'src/b.ts', language: 'TypeScript', fanIn: 0, fanOut: 1 },
+        ],
+        edges: [{ callerId: 'src/b.ts::doB', calleeId: 'src/a.ts::doA' }],
+      },
+    });
+
+    const { handleSearchCode } = await import('./semantic.js');
+    const result = await handleSearchCode(tmpDir, 'do A') as Record<string, unknown>;
+    const results = result.results as Array<Record<string, unknown>>;
+    const callers = results[0].callers as Array<{ name: string }> | undefined;
+    expect(callers).toBeDefined();
+    expect(callers?.some(c => c.name === 'doB')).toBe(true);
+  });
+
+  it('includes specPeers for files that share a domain via mapping.json', async () => {
+    const record = makeRecord({ id: 'src/a.ts::doA', filePath: 'src/a.ts' });
+    vi.doMock('../../analyzer/vector-index.js', () => ({
+      VectorIndex: {
+        exists: vi.fn().mockReturnValue(true),
+        search: vi.fn().mockResolvedValue([{ score: 0.6, record }]),
+      },
+    }));
+    vi.doMock('../../analyzer/embedding-service.js', () => ({
+      EmbeddingService: { fromEnv: vi.fn().mockReturnValue({}), fromConfig: vi.fn() },
+    }));
+    // mapping.json: doA in src/a.ts → domain 'auth'; peerFn in src/c.ts also in 'auth'
+    await writeAnalysisFile(tmpDir, 'mapping.json', {
+      mappings: [
+        {
+          requirement: 'AuthReq', service: 'auth', domain: 'auth', specFile: 'openspec/specs/auth/spec.md',
+          functions: [{ name: 'doA', file: 'src/a.ts', line: 1, kind: 'function', confidence: 'high' }],
+        },
+        {
+          requirement: 'AuthReq2', service: 'auth', domain: 'auth', specFile: 'openspec/specs/auth/spec.md',
+          functions: [{ name: 'peerFn', file: 'src/c.ts', line: 5, kind: 'function', confidence: 'medium' }],
+        },
+      ],
+    });
+
+    const { handleSearchCode } = await import('./semantic.js');
+    const result = await handleSearchCode(tmpDir, 'auth') as Record<string, unknown>;
+    expect(result).toHaveProperty('specLinkedFunctions');
+    const peers = result.specLinkedFunctions as Array<{ name: string }>;
+    expect(peers.some(p => p.name === 'peerFn')).toBe(true);
+  });
+});
+
+// ============================================================================
+// TESTS — handleSuggestInsertionPoints (success paths)
+// ============================================================================
+
+describe('handleSuggestInsertionPoints — success paths', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-insertion-success-'));
+  });
+
+  it('returns ranked candidates with correct roles and strategies', async () => {
+    const results = [
+      { score: 0.9, record: makeRecord({ id: 'a', name: 'processAuth', filePath: 'src/auth.ts', isEntryPoint: true }) },
+      { score: 0.5, record: makeRecord({ id: 'b', name: 'validateToken', filePath: 'src/token.ts', fanIn: 8, isHub: true }) },
+    ];
+    vi.doMock('../../analyzer/vector-index.js', () => ({
+      VectorIndex: { exists: vi.fn().mockReturnValue(true), search: vi.fn().mockResolvedValue(results) },
+    }));
+    vi.doMock('../../analyzer/embedding-service.js', () => ({
+      EmbeddingService: { fromEnv: vi.fn().mockReturnValue({}), fromConfig: vi.fn() },
+    }));
+
+    const { handleSuggestInsertionPoints } = await import('./semantic.js');
+    const result = await handleSuggestInsertionPoints(tmpDir, 'add auth check') as Record<string, unknown>;
+    expect(result.count).toBeGreaterThan(0);
+    const candidates = result.candidates as Array<Record<string, unknown>>;
+    expect(candidates[0].rank).toBe(1);
+    expect(candidates.every(c => typeof c.score === 'number')).toBe(true);
+    expect(candidates.every(c => typeof c.insertionStrategy === 'string')).toBe(true);
+    expect(candidates.every(c => typeof c.reason === 'string')).toBe(true);
+  });
+
+  it('returns three nextSteps when candidates found', async () => {
+    vi.doMock('../../analyzer/vector-index.js', () => ({
+      VectorIndex: {
+        exists: vi.fn().mockReturnValue(true),
+        search: vi.fn().mockResolvedValue([{ score: 0.8, record: makeRecord() }]),
+      },
+    }));
+    vi.doMock('../../analyzer/embedding-service.js', () => ({
+      EmbeddingService: { fromEnv: vi.fn().mockReturnValue({}), fromConfig: vi.fn() },
+    }));
+
+    const { handleSuggestInsertionPoints } = await import('./semantic.js');
+    const result = await handleSuggestInsertionPoints(tmpDir, 'some feature') as Record<string, unknown>;
+    const nextSteps = result.nextSteps as string[];
+    expect(nextSteps).toHaveLength(3);
+    expect(nextSteps.some(s => s.includes('get_function_skeleton'))).toBe(true);
+  });
+
+  it('returns fallback nextSteps when no candidates found', async () => {
+    vi.doMock('../../analyzer/vector-index.js', () => ({
+      VectorIndex: { exists: vi.fn().mockReturnValue(true), search: vi.fn().mockResolvedValue([]) },
+    }));
+    vi.doMock('../../analyzer/embedding-service.js', () => ({
+      EmbeddingService: { fromEnv: vi.fn().mockReturnValue({}), fromConfig: vi.fn() },
+    }));
+
+    const { handleSuggestInsertionPoints } = await import('./semantic.js');
+    const result = await handleSuggestInsertionPoints(tmpDir, 'some feature') as Record<string, unknown>;
+    expect(result.count).toBe(0);
+    const nextSteps = result.nextSteps as string[];
+    expect(nextSteps[0]).toContain('No candidates');
+  });
+
+  it('adds caller graph-expansion candidates (RIG-13)', async () => {
+    const seedRecord = makeRecord({ id: 'seed::fn', name: 'seedFn', filePath: 'src/seed.ts' });
+    vi.doMock('../../analyzer/vector-index.js', () => ({
+      VectorIndex: {
+        exists: vi.fn().mockReturnValue(true),
+        search: vi.fn().mockResolvedValue([{ score: 0.7, record: seedRecord }]),
+      },
+    }));
+    vi.doMock('../../analyzer/embedding-service.js', () => ({
+      EmbeddingService: { fromEnv: vi.fn().mockReturnValue({}), fromConfig: vi.fn() },
+    }));
+    // callerNode calls seedFn — should be added via RIG-13
+    await writeAnalysisFile(tmpDir, 'llm-context.json', {
+      callGraph: {
+        nodes: [
+          { id: 'seed::fn', name: 'seedFn', filePath: 'src/seed.ts', language: 'TypeScript', fanIn: 1, fanOut: 0 },
+          { id: 'caller::fn', name: 'callerFn', filePath: 'src/caller.ts', language: 'TypeScript', fanIn: 0, fanOut: 1 },
+        ],
+        edges: [{ callerId: 'caller::fn', calleeId: 'seed::fn' }],
+      },
+    });
+
+    const { handleSuggestInsertionPoints } = await import('./semantic.js');
+    const result = await handleSuggestInsertionPoints(tmpDir, 'add feature', 10) as Record<string, unknown>;
+    const candidates = result.candidates as Array<Record<string, unknown>>;
+    expect(candidates.some(c => c.name === 'callerFn')).toBe(true);
+  });
+
+  it('clamps limit to [1, 20]', async () => {
+    const searchMock = vi.fn().mockResolvedValue([]);
+    vi.doMock('../../analyzer/vector-index.js', () => ({
+      VectorIndex: { exists: vi.fn().mockReturnValue(true), search: searchMock },
+    }));
+    vi.doMock('../../analyzer/embedding-service.js', () => ({
+      EmbeddingService: { fromEnv: vi.fn().mockReturnValue({}), fromConfig: vi.fn() },
+    }));
+
+    const { handleSuggestInsertionPoints } = await import('./semantic.js');
+    await handleSuggestInsertionPoints(tmpDir, 'query', 50);
+    // search is called with limit * 4 — clamped limit=20 → 80
+    const callLimit = (searchMock.mock.calls[0][3] as { limit: number }).limit;
+    expect(callLimit).toBe(20 * 4);
+  });
+});
+
+// ============================================================================
+// TESTS — handleSearchSpecs (success path)
+// ============================================================================
+
+describe('handleSearchSpecs — success path', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-search-specs-ok-'));
+  });
+
+  it('returns formatted spec results', async () => {
+    const mockResults = [{
+      score: 0.9,
+      record: {
+        id: 'auth::requirements::auth1', domain: 'auth',
+        section: 'requirements', title: 'Auth requirement',
+        text: 'User must authenticate before accessing the system',
+        linkedFiles: ['src/auth.ts'],
+      },
+    }];
+    vi.doMock('../../analyzer/spec-vector-index.js', () => ({
+      SpecVectorIndex: {
+        exists: vi.fn().mockReturnValue(true),
+        search: vi.fn().mockResolvedValue(mockResults),
+      },
+    }));
+    vi.doMock('../../analyzer/embedding-service.js', () => ({
+      EmbeddingService: { fromEnv: vi.fn().mockReturnValue({}), fromConfig: vi.fn() },
+    }));
+
+    const { handleSearchSpecs } = await import('./semantic.js');
+    const result = await handleSearchSpecs(tmpDir, 'authentication') as Record<string, unknown>;
+    expect(result.query).toBe('authentication');
+    expect(result.count).toBe(1);
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].domain).toBe('auth');
+    expect(results[0].score).toBe(0.9);
+    expect(results[0].text).toContain('authenticate');
+    expect(results[0].linkedFiles).toEqual(['src/auth.ts']);
+  });
+
+  it('clamps limit to [1, 50]', async () => {
+    const searchMock = vi.fn().mockResolvedValue([]);
+    vi.doMock('../../analyzer/spec-vector-index.js', () => ({
+      SpecVectorIndex: { exists: vi.fn().mockReturnValue(true), search: searchMock },
+    }));
+    vi.doMock('../../analyzer/embedding-service.js', () => ({
+      EmbeddingService: { fromEnv: vi.fn().mockReturnValue({}), fromConfig: vi.fn() },
+    }));
+
+    const { handleSearchSpecs } = await import('./semantic.js');
+    await handleSearchSpecs(tmpDir, 'query', 100);
+    const callLimit = (searchMock.mock.calls[0][3] as { limit: number }).limit;
+    expect(callLimit).toBe(50);
+  });
+});
+
+// ============================================================================
+// TESTS — handleGetSpec with mapping
+// ============================================================================
+
+describe('handleGetSpec — with mapping', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-get-spec-mapping-'));
+  });
+
+  it('returns linkedFunctions when mapping.json covers the domain', async () => {
+    const specsDir = join(tmpDir, 'openspec', 'specs', 'auth');
+    await mkdir(specsDir, { recursive: true });
+    await writeFile(join(specsDir, 'spec.md'), '# Auth Spec', 'utf-8');
+    await writeAnalysisFile(tmpDir, 'mapping.json', {
+      mappings: [{
+        requirement: 'AuthReq', service: 'auth', domain: 'auth',
+        specFile: 'openspec/specs/auth/spec.md',
+        functions: [{ name: 'checkAuth', file: 'src/auth.ts', line: 10, kind: 'function', confidence: 'high' }],
+      }],
+    });
+
+    const { handleGetSpec } = await import('./semantic.js');
+    const result = await handleGetSpec(tmpDir, 'auth') as { domain: string; linkedFunctions?: unknown[] };
+    expect(result.linkedFunctions).toBeDefined();
+    expect(Array.isArray(result.linkedFunctions)).toBe(true);
+    const fns = result.linkedFunctions as Array<{ name: string }>;
+    expect(fns.some(f => f.name === 'checkAuth')).toBe(true);
   });
 });
