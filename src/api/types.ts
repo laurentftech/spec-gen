@@ -230,3 +230,18 @@ export interface RunResult {
   generation: GenerateResult;
   duration: number;
 }
+
+// ============================================================================
+// AUDIT
+// ============================================================================
+
+export interface AuditApiOptions extends BaseOptions {
+  /** Maximum uncovered functions to include in the report. Default: 50 */
+  maxUncovered?: number;
+  /** Minimum fanIn to flag a hub as a gap. Default: 5 */
+  hubThreshold?: number;
+  /** Save audit report to .spec-gen/analysis/audit-report.json. Default: true */
+  save?: boolean;
+}
+
+export type { AuditReport } from '../types/index.js';

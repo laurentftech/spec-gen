@@ -7,7 +7,7 @@
 
 import { join } from 'node:path';
 import { readFile, stat, mkdir, writeFile } from 'node:fs/promises';
-import { ANALYSIS_STALE_THRESHOLD_MS, DEFAULT_MAX_FILES, SPEC_GEN_ANALYSIS_REL_PATH, ARTIFACT_REPO_STRUCTURE, ARTIFACT_DEPENDENCY_GRAPH, ARTIFACT_LLM_CONTEXT } from '../constants.js';
+import { ANALYSIS_STALE_THRESHOLD_MS, DEFAULT_MAX_FILES, SPEC_GEN_ANALYSIS_REL_PATH, ARTIFACT_REPO_STRUCTURE, ARTIFACT_DEPENDENCY_GRAPH, ARTIFACT_LLM_CONTEXT, OPENSPEC_DIR } from '../constants.js';
 import { fileExists, readJsonFile } from '../utils/command-helpers.js';
 import { readSpecGenConfig } from '../core/services/config-manager.js';
 import { RepositoryMapper } from '../core/analyzer/repository-mapper.js';
@@ -17,6 +17,7 @@ import {
 } from '../core/analyzer/dependency-graph.js';
 import { AnalysisArtifactGenerator, repoStructureToRepoMap, type RepoStructure, type LLMContext } from '../core/analyzer/artifact-generator.js';
 import type { AnalyzeApiOptions, AnalyzeResult, ProgressCallback } from './types.js';
+import { SpecSnapshotGenerator } from '../core/analyzer/spec-snapshot-generator.js';
 
 function progress(
   onProgress: ProgressCallback | undefined,
@@ -178,6 +179,11 @@ export async function specGenAnalyze(options: AnalyzeApiOptions = {}): Promise<A
   // Save dependency graph
   await writeFile(join(outputPath, ARTIFACT_DEPENDENCY_GRAPH), JSON.stringify(depGraph, null, 2));
   progress(onProgress, 'Generating analysis artifacts', 'complete');
+
+  // Generate spec snapshot (non-fatal — snapshot is a derived artifact)
+  const openspecRelPath = specGenConfig.openspecPath ?? OPENSPEC_DIR;
+  const snapshotGenerator = new SpecSnapshotGenerator(rootPath, openspecRelPath);
+  await snapshotGenerator.generate().catch(() => {});
 
   const duration = Date.now() - startTime;
   return { repoMap, depGraph, artifacts, duration };

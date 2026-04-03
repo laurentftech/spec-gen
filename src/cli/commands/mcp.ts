@@ -59,6 +59,7 @@ import {
   handleGetFunctionSkeleton,
   handleGetFunctionBody,
   handleGetDecisions,
+  handleAuditSpecCoverage,
 } from '../../core/services/mcp-handlers/analysis.js';
 
 // Re-export utilities for tests
@@ -86,6 +87,7 @@ export {
   handleGetMapping,
   handleCheckSpecDrift,
   handleGetFunctionSkeleton,
+  handleAuditSpecCoverage,
 };
 
 // ============================================================================
@@ -848,6 +850,32 @@ export const TOOL_DEFINITIONS = [
       required: ['directory'],
     },
   },
+  {
+    name: 'audit_spec_coverage',
+    description:
+      'Parity audit: report spec coverage gaps without any LLM call. ' +
+      'Returns uncovered functions (exist in call graph but have no spec), ' +
+      'hub gaps (high fan-in functions with no spec), ' +
+      'orphan requirements (spec requirements with no mapped implementation), ' +
+      'and stale domains (source files changed after spec was last written). ' +
+      'Use this before starting a new feature to understand what needs specs, ' +
+      'or to audit coverage health. Requires "spec-gen analyze" to have been run.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+        maxUncovered: {
+          type: 'number',
+          description: 'Maximum uncovered functions to return (default: 50)',
+        },
+        hubThreshold: {
+          type: 'number',
+          description: 'Minimum fanIn to flag a function as a hub gap (default: 5)',
+        },
+      },
+      required: ['directory'],
+    },
+  },
 ];
 
 // ============================================================================
@@ -996,6 +1024,10 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
       } else if (name === 'get_decisions') {
         const { directory, query } = args as { directory: string; query?: string };
         result = await handleGetDecisions(directory, query);
+      } else if (name === 'audit_spec_coverage') {
+        const { directory, maxUncovered = 50, hubThreshold = 5 } =
+          args as { directory: string; maxUncovered?: number; hubThreshold?: number };
+        result = await handleAuditSpecCoverage(directory, maxUncovered, hubThreshold);
       } else {
         return {
           content: [{ type: 'text', text: `Unknown tool: ${name}` }],

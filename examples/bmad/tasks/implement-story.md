@@ -73,6 +73,28 @@ Create a blocking refactor story and do not implement until it's resolved.
 
 ---
 
+## Step 2.5 — Audit spec coverage of the target domain
+
+Run a parity audit to check if the domain you're about to touch has spec gaps.
+
+```xml
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>audit_spec_coverage</tool_name>
+  <arguments>{"directory": "$PROJECT_ROOT"}</arguments>
+</use_mcp_tool>
+```
+
+From the result, check:
+- `staleDomains` — if the target domain appears here, its spec is outdated.
+  Recommend running `spec-gen generate --domains $DOMAIN` before implementing.
+- `hubGaps` — uncovered hub functions. If the feature touches one of these,
+  add it to the adversarial check in Step 4b (high blast radius + no spec = risk).
+
+If both are clean, continue to Step 3 without action.
+
+---
+
 ## Step 3 — Check the spec
 
 First verify that OpenSpec specs exist for this project:

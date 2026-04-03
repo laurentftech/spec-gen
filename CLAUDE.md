@@ -12,5 +12,6 @@
 | Reading a spec before writing code | `get_spec` |
 | Checking if code still matches spec | `check_spec_drift` |
 | Finding spec requirements by meaning | `search_specs` |
+| Checking spec coverage before starting a feature | `audit_spec_coverage` |
 
 For all other cases (reading a file, grepping, listing files) use native tools directly.

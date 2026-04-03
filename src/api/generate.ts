@@ -24,6 +24,7 @@ import type { RepoStructure, LLMContext } from '../core/analyzer/artifact-genera
 import type { DependencyGraphResult } from '../core/analyzer/dependency-graph.js';
 import type { RefactorReport } from '../core/analyzer/refactor-analyzer.js';
 import type { GenerateApiOptions, GenerateResult, ProgressCallback } from './types.js';
+import { SpecSnapshotGenerator } from '../core/analyzer/spec-snapshot-generator.js';
 import {
   DEFAULT_ANTHROPIC_MODEL,
   DEFAULT_OPENAI_MODEL,
@@ -311,6 +312,10 @@ export async function specGenGenerate(options: GenerateApiOptions = {}): Promise
   } catch {
     // Non-fatal
   }
+
+  // Update spec snapshot with richer post-generate coverage (non-fatal)
+  const snapshotGenerator = new SpecSnapshotGenerator(rootPath, openspecRelPath);
+  await snapshotGenerator.generate().catch(() => {});
 
   // Save LLM logs
   await llm.saveLogs().catch(() => {});

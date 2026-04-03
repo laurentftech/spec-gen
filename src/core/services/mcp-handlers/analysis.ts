@@ -35,6 +35,7 @@ import { readSpecGenConfig } from '../config-manager.js';
 import { validateDirectory, readCachedContext, isCacheFresh, safeJoin } from './utils.js';
 import type { SerializedCallGraph } from '../../analyzer/call-graph.js';
 import type { MappingArtifact } from '../../generator/mapping-generator.js';
+import { specGenAudit } from '../../../api/audit.js';
 import type { DriftResult } from '../../../types/index.js';
 
 // ============================================================================
@@ -534,4 +535,27 @@ export async function handleGetDecisions(
       content: a.content,
     })),
   };
+}
+
+/**
+ * Parity audit: report spec coverage gaps without any LLM call.
+ * Returns uncovered functions, hub gaps, orphan requirements, and stale domains.
+ */
+export async function handleAuditSpecCoverage(
+  directory: string,
+  maxUncovered = 50,
+  hubThreshold = 5,
+): Promise<unknown> {
+  const absDir = await validateDirectory(directory);
+  try {
+    const report = await specGenAudit({
+      rootPath: absDir,
+      maxUncovered,
+      hubThreshold,
+      save: true,
+    });
+    return report;
+  } catch (err) {
+    return { error: `Audit failed: ${err instanceof Error ? err.message : String(err)}` };
+  }
 }

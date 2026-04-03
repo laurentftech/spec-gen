@@ -85,6 +85,12 @@ export const ARTIFACT_GENERATION_REPORT = 'generation-report.json';
 export const ARTIFACT_SHUTDOWN_STATE = 'shutdown-state.json';
 export const ARTIFACT_RAG_MANIFEST = 'rag-manifest.json';
 
+/** Filename for the spec coverage snapshot artifact */
+export const ARTIFACT_SPEC_SNAPSHOT = 'spec-snapshot.json';
+
+/** Filename for the parity audit report artifact */
+export const ARTIFACT_AUDIT_REPORT = 'audit-report.json';
+
 // ============================================================================
 // LLM / PROVIDER LIMITS
 // ============================================================================

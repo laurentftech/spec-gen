@@ -295,3 +295,83 @@ export interface SpecMap {
   domainCount: number;
   totalMappedFiles: number;
 }
+
+// ============================================================================
+// SPEC SNAPSHOT
+// ============================================================================
+
+export interface SpecSnapshotDomain {
+  name: string;
+  specFile: string;
+  sourceFiles: string[];
+  requirementCount: number;
+  mappedFunctionCount: number;
+  coveragePct: number;
+  specModifiedAt: string;
+  sourcesModifiedAt: string;
+}
+
+export interface SpecSnapshotHub {
+  name: string;
+  file: string;
+  fanIn: number;
+  covered: boolean;
+}
+
+export interface SpecSnapshot {
+  version: '1';
+  generatedAt: string;
+  git: { commit: string; branch: string; dirty: boolean };
+  coverage: {
+    totalFunctions: number;
+    coveredFunctions: number;
+    orphanFunctions: number;
+    coveragePct: number;
+  };
+  domains: SpecSnapshotDomain[];
+  hubs: SpecSnapshotHub[];
+}
+
+// ============================================================================
+// AUDIT REPORT
+// ============================================================================
+
+export interface AuditUncoveredFunction {
+  name: string;
+  file: string;
+  kind: string;
+  fanIn: number;
+  fanOut: number;
+  isHub: boolean;
+}
+
+export interface AuditOrphanRequirement {
+  requirement: string;
+  domain: string;
+  specFile: string;
+}
+
+export interface AuditStaleDomain {
+  name: string;
+  specFile: string;
+  specModifiedAt: string;
+  sourcesModifiedAt: string;
+  staleSince: string;
+}
+
+export interface AuditReport {
+  generatedAt: string;
+  summary: {
+    totalFunctions: number;
+    coveredFunctions: number;
+    coveragePct: number;
+    uncoveredCount: number;
+    hubGapCount: number;
+    orphanRequirementCount: number;
+    staleDomainCount: number;
+  };
+  uncoveredFunctions: AuditUncoveredFunction[];
+  hubGaps: AuditUncoveredFunction[];
+  orphanRequirements: AuditOrphanRequirement[];
+  staleDomains: AuditStaleDomain[];
+}
