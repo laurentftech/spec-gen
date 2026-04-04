@@ -430,6 +430,82 @@ export class PaymentService {}`;
     });
   });
 
+  describe('analyzeImportCoverage', () => {
+    it('should detect imports mentioned in spec', async () => {
+      const engine = new SpecVerificationEngine(llmService, {
+        rootPath: testDir,
+        openspecPath: openspecDir,
+        outputDir,
+      });
+      await (engine as any).loadSpecs();
+
+      // The 'user' spec mentions "authentication" and "profile"
+      // Use module names that appear literally in the spec text
+      const result = (engine as any).analyzeImportCoverage(
+        ['./authentication.js', './utils/crypto.js', './totally-unknown-xyz.js'],
+        'user'
+      );
+
+      // 'authentication' appears in the user spec (purpose + requirement description)
+      // 'crypto' and 'totally-unknown-xyz' don't appear in the spec
+      expect(result.actual).toEqual(['authentication', 'crypto', 'totally-unknown-xyz']);
+      expect(result.f1Score).toBeGreaterThanOrEqual(0);
+      expect(result.f1Score).toBeLessThanOrEqual(1);
+      // 'authentication' should be covered (spec mentions "authentication")
+      expect(result.predicted).toContain('authentication');
+      // non-matching modules should not be covered
+      expect(result.predicted).not.toContain('totally-unknown-xyz');
+    });
+
+    it('should return zero coverage when no imports match spec', async () => {
+      const engine = new SpecVerificationEngine(llmService, {
+        rootPath: testDir,
+        openspecPath: openspecDir,
+        outputDir,
+      });
+      await (engine as any).loadSpecs();
+
+      const result = (engine as any).analyzeImportCoverage(
+        ['./xyz-totally-unknown.js', './another-unknown.js'],
+        'user'
+      );
+
+      expect(result.f1Score).toBe(0);
+      expect(result.predicted).toEqual([]);
+    });
+
+    it('should return zero coverage for unknown domain', async () => {
+      const engine = new SpecVerificationEngine(llmService, {
+        rootPath: testDir,
+        openspecPath: openspecDir,
+        outputDir,
+      });
+      await (engine as any).loadSpecs();
+
+      const result = (engine as any).analyzeImportCoverage(
+        ['./database.js'],
+        'nonexistent-domain'
+      );
+
+      expect(result.f1Score).toBe(0);
+    });
+
+    it('should handle empty imports list', async () => {
+      const engine = new SpecVerificationEngine(llmService, {
+        rootPath: testDir,
+        openspecPath: openspecDir,
+        outputDir,
+      });
+      await (engine as any).loadSpecs();
+
+      const result = (engine as any).analyzeImportCoverage([], 'user');
+
+      expect(result.f1Score).toBe(0);
+      expect(result.actual).toEqual([]);
+      expect(result.predicted).toEqual([]);
+    });
+  });
+
   describe('calculateSetMatch', () => {
     it('should calculate precision, recall, and F1', () => {
       const engine = new SpecVerificationEngine(llmService, {
@@ -510,9 +586,9 @@ export class PaymentService {}`;
       expect(zeroScore).toBe(0);
     });
 
-    // Fix 1: verify the actual weights are 40/15/15/30, not the old 25/30/30/15.
+    // Weights: purpose 45%, imports 15%, exports 10%, requirements 30%.
     // Each sub-score is isolated to confirm its exact contribution.
-    it('should apply purpose weight of 50%', () => {
+    it('should apply purpose weight of 45%', () => {
       const engine = new SpecVerificationEngine(llmService, {
         rootPath: testDir,
         openspecPath: openspecDir,
@@ -526,10 +602,27 @@ export class PaymentService {}`;
         { coverage: 0 }
       );
 
-      expect(score).toBeCloseTo(0.50, 5);
+      expect(score).toBeCloseTo(0.45, 5);
     });
 
-    it('should apply requirements weight of 40%', () => {
+    it('should apply imports weight of 15%', () => {
+      const engine = new SpecVerificationEngine(llmService, {
+        rootPath: testDir,
+        openspecPath: openspecDir,
+        outputDir,
+      });
+
+      const score = (engine as any).calculateOverallScore(
+        { similarity: 0 },
+        { f1Score: 1.0 },
+        { f1Score: 0 },
+        { coverage: 0 }
+      );
+
+      expect(score).toBeCloseTo(0.15, 5);
+    });
+
+    it('should apply requirements weight of 30%', () => {
       const engine = new SpecVerificationEngine(llmService, {
         rootPath: testDir,
         openspecPath: openspecDir,
@@ -543,7 +636,7 @@ export class PaymentService {}`;
         { coverage: 1.0 }
       );
 
-      expect(score).toBeCloseTo(0.40, 5);
+      expect(score).toBeCloseTo(0.30, 5);
     });
 
     it('should apply export weight of 10%', () => {
@@ -563,8 +656,8 @@ export class PaymentService {}`;
       expect(score).toBeCloseTo(0.10, 5);
     });
 
-    it('should allow passing with strong purpose and requirements alone', () => {
-      // Imports removed from scoring — max achievable with purpose=1 and requirements=1 is 0.90
+    it('should allow passing with all dimensions contributing', () => {
+      // With purpose=1, imports=1, exports=0, requirements=1: 0.45+0.15+0+0.30 = 0.90
       const engine = new SpecVerificationEngine(llmService, {
         rootPath: testDir,
         openspecPath: openspecDir,
@@ -574,7 +667,7 @@ export class PaymentService {}`;
 
       const score = (engine as any).calculateOverallScore(
         { similarity: 1.0 },
-        { f1Score: 0 },
+        { f1Score: 1.0 },
         { f1Score: 0 },
         { coverage: 1.0 }
       );

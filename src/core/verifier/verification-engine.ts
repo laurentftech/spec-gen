@@ -386,7 +386,7 @@ export class SpecVerificationEngine {
 
     // Compare prediction to actual
     const purposeMatch = this.comparePurpose(prediction.predictedPurpose, fileContent);
-    const importMatch = this.compareImports(prediction.predictedImports, fileAnalysis.imports.map(i => i.source));
+    const importMatch = this.analyzeImportCoverage(fileAnalysis.imports.map(i => i.source), candidate.domain);
     const exportMatch = this.compareExports(prediction.predictedExports, fileAnalysis.exports.map(e => e.name));
     const requirementCoverage = this.analyzeRequirementCoverage(candidate.domain, fileContent);
 
@@ -580,13 +580,42 @@ Respond in JSON:
   }
 
   /**
-   * Compare predicted imports to actual
+   * Analyze import coverage using spec content rather than LLM predictions.
+   * For each actual import (normalized to module name), checks whether it is
+   * mentioned in the domain's spec text (exact name or hyphen→space variant).
+   * This is a spec-completeness check: are the modules the file depends on
+   * actually described in the spec?
+   *
+   * Returns a SetMatch where:
+   *   - actual   = all normalized actual import module names
+   *   - predicted = subset of actual imports that appear in the spec text
+   *   - f1Score  = recall = fraction of actual imports covered by spec
    */
-  private compareImports(predicted: string[], actual: string[]): SetMatch {
-    return this.calculateSetMatch(
-      predicted.map(p => this.normalizeImport(p)),
-      actual.map(a => this.normalizeImport(a))
-    );
+  private analyzeImportCoverage(actualImports: string[], domain: string): SetMatch {
+    const normalized = actualImports.map(a => this.normalizeImport(a));
+    const spec = this.specs.find(s => s.domain === domain);
+    const specLower = spec ? spec.content.toLowerCase() : '';
+
+    const covered: string[] = [];
+    if (specLower.length > 0) {
+      for (const name of normalized) {
+        if (!name || name.length < 2) continue;
+        // Match literal (e.g. "config-manager") or with spaces (e.g. "config manager")
+        if (specLower.includes(name) || specLower.includes(name.replace(/-/g, ' '))) {
+          covered.push(name);
+        }
+      }
+    }
+
+    const total = normalized.length;
+    const coverage = total > 0 ? covered.length / total : 0;
+    return {
+      predicted: covered,   // imports mentioned in spec
+      actual: normalized,   // all actual imports
+      precision: coverage,
+      recall: coverage,
+      f1Score: coverage,
+    };
   }
 
   /**
@@ -718,19 +747,17 @@ Respond in JSON:
     requirementCoverage: RequirementCoverage
   ): number {
     // Weighted combination (total = 1.0):
-    //   Purpose:      50%  — semantic similarity of LLM-predicted vs actual purpose
-    //   Exports:      10%  — F1 of predicted vs actual exports
-    //   Requirements: 40%  — fraction of spec requirements whose description keywords
-    //                        appear in the file (parsed directly from spec, not LLM-predicted)
-    //
-    // Imports removed: specs never document import paths, so the LLM cannot predict
-    // them reliably and F1 was structurally 0% for all files.
-    // Requirements now use spec content directly (description keywords) instead of
-    // LLM-predicted requirement names, which were opaque camelCase identifiers.
+    //   Purpose:      45%  — semantic similarity of LLM-predicted vs actual purpose
+    //   Imports:      15%  — fraction of actual imports whose module name appears in spec
+    //                        (spec-completeness check, not LLM prediction)
+    //   Exports:      10%  — F1 of LLM-predicted vs actual exports
+    //   Requirements: 30%  — fraction of spec requirements whose description keywords
+    //                        appear in the file (parsed directly from spec markdown)
     return (
-      purposeMatch.similarity * 0.50 +
+      purposeMatch.similarity * 0.45 +
+      importMatch.f1Score * 0.15 +
       exportMatch.f1Score * 0.10 +
-      requirementCoverage.coverage * 0.40
+      requirementCoverage.coverage * 0.30
     );
   }
 
