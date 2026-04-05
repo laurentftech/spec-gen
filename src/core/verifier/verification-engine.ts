@@ -344,8 +344,9 @@ export class SpecVerificationEngine {
       if (node.file.lines > this.options.maxComplexity) continue;
 
       // Determine domain from path — skip files with no matching spec
+      // (only filter misc when specs are loaded; without specs every file maps to misc)
       const domain = this.inferDomain(node.file.path);
-      if (domain === 'misc') continue;
+      if (domain === 'misc' && this.specs.length > 0) continue;
 
       if (!filesByDomain.has(domain)) {
         filesByDomain.set(domain, []);
