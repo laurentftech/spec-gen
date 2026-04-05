@@ -55,6 +55,9 @@ const MOCK_REPO_STRUCTURE: RepoStructure = {
     routes: ['routes/user.ts'],
     services: ['services/user-service.ts'],
   },
+  uiComponents: [],
+  schemas: [],
+  routeInventory: { total: 0, byMethod: {}, byFramework: {}, routes: [] },
   statistics: {
     totalFiles: 50,
     analyzedFiles: 40,

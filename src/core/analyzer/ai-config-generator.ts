@@ -2,9 +2,11 @@
  * AI Config File Generator
  *
  * Generates tool-specific AI context files during `spec-gen analyze`:
- *   - .cursorrules      (Cursor IDE)
- *   - .clinerules/spec-gen.md  (Cline / Roo Code / Kilocode)
- *   - CLAUDE.md         (Claude Code — only if not already present)
+ *   - .cursorrules            (Cursor IDE)
+ *   - .clinerules/spec-gen.md (Cline / Roo Code / Kilocode)
+ *   - CLAUDE.md               (Claude Code)
+ *   - .github/copilot-instructions.md  (GitHub Copilot)
+ *   - .windsurf/rules.md      (Windsurf)
  *
  * Files are NEVER overwritten — if a file already exists it is skipped silently.
  * Returns the list of paths that were actually created.
@@ -17,6 +19,9 @@ import { join, dirname } from 'node:path';
 // TYPES
 // ============================================================================
 
+/** Supported AI assistant targets */
+export type AiTool = 'claude' | 'cursor' | 'cline' | 'copilot' | 'windsurf';
+
 export interface AiConfigOptions {
   /** Absolute path to the project root */
   rootDir: string;
@@ -24,7 +29,34 @@ export interface AiConfigOptions {
   analysisDir: string;
   /** Project name shown in the generated header */
   projectName: string;
+  /**
+   * Which tools to generate configs for.
+   * Defaults to all tools if omitted.
+   */
+  tools?: AiTool[];
 }
+
+// ============================================================================
+// TOOL REGISTRY
+// ============================================================================
+
+interface ToolTarget {
+  tool: AiTool;
+  /** Display label shown in the interactive prompt */
+  label: string;
+  /** Relative path from project root */
+  rel: string;
+  /** Use @-import syntax (Claude Code) vs HTML comment */
+  forClaude: boolean;
+}
+
+export const AI_TOOL_TARGETS: ToolTarget[] = [
+  { tool: 'claude',   label: 'Claude Code    (CLAUDE.md)',                        rel: 'CLAUDE.md',                              forClaude: true  },
+  { tool: 'cursor',   label: 'Cursor         (.cursorrules)',                      rel: '.cursorrules',                           forClaude: false },
+  { tool: 'cline',    label: 'Cline / Roo    (.clinerules/spec-gen.md)',           rel: '.clinerules/spec-gen.md',                forClaude: false },
+  { tool: 'copilot',  label: 'GitHub Copilot (.github/copilot-instructions.md)',  rel: '.github/copilot-instructions.md',        forClaude: false },
+  { tool: 'windsurf', label: 'Windsurf       (.windsurf/rules.md)',               rel: '.windsurf/rules.md',                     forClaude: false },
+];
 
 // ============================================================================
 // TEMPLATE
@@ -87,26 +119,25 @@ async function writeIfAbsent(filePath: string, content: string): Promise<boolean
  * Generate AI tool config files in the project root.
  * Skips any file that already exists.
  *
- * @returns Relative paths (from rootDir) of files that were created.
+ * @param options.tools - Which assistants to generate for. Defaults to all.
+ * @returns Relative paths (from rootDir) of files that were actually created.
  */
 export async function generateAiConfigs(options: AiConfigOptions): Promise<string[]> {
-  const { rootDir, analysisDir, projectName } = options;
-  const created: string[] = [];
+  const { rootDir, analysisDir, projectName, tools } = options;
 
-  const targets: Array<{ rel: string; forClaude: boolean }> = [
-    { rel: '.cursorrules',         forClaude: false },
-    { rel: '.clinerules/spec-gen.md', forClaude: false },
-    { rel: 'CLAUDE.md',            forClaude: true  },
-  ];
+  const targets = tools
+    ? AI_TOOL_TARGETS.filter(t => tools.includes(t.tool))
+    : AI_TOOL_TARGETS;
 
-  await Promise.all(
+  const results = await Promise.all(
     targets.map(async ({ rel, forClaude }) => {
       const absPath = join(rootDir, rel);
       const content = buildContent(analysisDir, projectName, forClaude);
       const wrote = await writeIfAbsent(absPath, content);
-      if (wrote) created.push(rel);
+      return wrote ? rel : null;
     })
   );
 
-  return created;
+  return results.filter((r): r is string => r !== null);
 }
+

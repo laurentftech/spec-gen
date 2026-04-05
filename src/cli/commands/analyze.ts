@@ -45,7 +45,7 @@ import { generateCodebaseDigest } from '../../core/analyzer/codebase-digest.js';
 import { extractUIComponents } from '../../core/analyzer/ui-component-extractor.js';
 import { extractSchemas } from '../../core/analyzer/schema-extractor.js';
 import { buildRouteInventory } from '../../core/analyzer/http-route-parser.js';
-import { generateAiConfigs } from '../../core/analyzer/ai-config-generator.js';
+import { generateAiConfigs, AI_TOOL_TARGETS, type AiTool } from '../../core/analyzer/ai-config-generator.js';
 
 // ============================================================================
 // TYPES
@@ -587,14 +587,33 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
         { rootPath, outputDir: outputPath },
       );
 
-      // Generate AI tool config files (.cursorrules, .clinerules, CLAUDE.md) if requested
+      // Generate AI tool config files — prompt user to select which assistants
       let aiConfigsCreated: string[] = [];
       if (opts.aiConfigs) {
-        aiConfigsCreated = await generateAiConfigs({
-          rootDir: rootPath,
-          analysisDir: opts.output.replace(/\/$/, ''),
-          projectName: result.repoMap.metadata.projectName,
-        });
+        let selectedTools: AiTool[] | undefined;
+
+        if (process.stdin.isTTY) {
+          const { checkbox } = await import('@inquirer/prompts');
+          const chosen = await checkbox<AiTool>({
+            message: 'Generate config files for which AI assistants?',
+            choices: AI_TOOL_TARGETS.map(t => ({
+              name: t.label,
+              value: t.tool,
+              checked: true,
+            })),
+          });
+          selectedTools = chosen.length > 0 ? chosen : undefined;
+        }
+        // Non-TTY: generate for all tools (CI / pipe usage)
+
+        if (selectedTools === undefined || selectedTools.length > 0) {
+          aiConfigsCreated = await generateAiConfigs({
+            rootDir: rootPath,
+            analysisDir: opts.output.replace(/\/$/, ''),
+            projectName: result.repoMap.metadata.projectName,
+            tools: selectedTools,
+          });
+        }
       }
 
       // Files generated
