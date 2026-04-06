@@ -18,6 +18,7 @@ import {
   ARTIFACT_REFACTOR_PRIORITIES,
   ARTIFACT_SCHEMA_INVENTORY,
   ARTIFACT_ROUTE_INVENTORY,
+  ARTIFACT_UI_INVENTORY,
 } from '../../constants.js';
 import type { ScoredFile, ProjectType } from '../../types/index.js';
 import type { RepositoryMap } from './repository-mapper.js';
@@ -327,6 +328,13 @@ export class AnalysisArtifactGenerator {
       saves.push(writeFile(
         join(this.options.outputDir, ARTIFACT_SCHEMA_INVENTORY),
         JSON.stringify(enrichment.schemas, null, 2)
+      ));
+    }
+
+    if (enrichment?.uiComponents) {
+      saves.push(writeFile(
+        join(this.options.outputDir, ARTIFACT_UI_INVENTORY),
+        JSON.stringify(enrichment.uiComponents, null, 2)
       ));
     }
 
