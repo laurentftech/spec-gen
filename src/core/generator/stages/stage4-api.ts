@@ -34,7 +34,11 @@ export async function runStage4(
     const fileChunks = graphSection ? [graphSection] : chunks;
     for (let i = 0; i < fileChunks.length; i++) {
       const chunkNote = !graphSection && isLargeFile ? ` (part ${i + 1}/${fileChunks.length})` : '';
-      const userPrompt = `Analyze this API/route file and extract endpoints:\n\n=== ${file.path}${chunkNote} ===\n${fileChunks[i]}`;
+      const routeHint = pipeline.routesFor(file.path);
+      const routeNote = routeHint
+        ? `\n\nKnown routes detected in this file (use these method/path values directly):\n${routeHint}`
+        : '';
+      const userPrompt = `Analyze this API/route file and extract endpoints:\n\n=== ${file.path}${chunkNote} ===\n${fileChunks[i]}${routeNote}`;
       try {
         const result = await pipeline.llm.completeJSON<ExtractedEndpoint[]>({
           systemPrompt: PROMPTS.stage4_api,

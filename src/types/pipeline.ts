@@ -195,5 +195,11 @@ export interface PipelineContext {
   saveResult(name: string, data: unknown): Promise<void>;
   chunkContent(content: string, maxChars: number): string[];
   graphPromptFor(filePath: string, content?: string): string | null;
+  /** Returns a text summary of function signatures in filePath, or null if unavailable. */
+  signaturesFor(filePath: string): string | null;
+  /** Returns a text summary of ORM schema tables defined in filePath, or null if none found. */
+  schemasFor(filePath: string): string | null;
+  /** Returns a text summary of HTTP routes defined in filePath, or null if none found. */
+  routesFor(filePath: string): string | null;
   generateSubSpecs(filePath: string, parentName: string, parentPurpose: string): Promise<ServiceSubSpec[]>;
 }

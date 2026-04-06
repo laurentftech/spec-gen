@@ -12,6 +12,43 @@ import type { PipelineOptions, ProjectSurveyResult, StageResult } from '../../..
 import type { LLMContext, RepoStructure } from '../../analyzer/artifact-generator.js';
 import { PROMPTS } from '../prompts.js';
 
+/**
+ * Build a concise structured hints section from pre-extracted analysis data.
+ * Gives less capable models a head start on identifying schema/api files.
+ */
+function buildStructuredHints(repoStructure: RepoStructure): string {
+  const parts: string[] = [];
+
+  const schemas = repoStructure.schemas ?? [];
+  if (schemas.length > 0) {
+    const byFile = new Map<string, string[]>();
+    for (const s of schemas) {
+      if (!byFile.has(s.file)) byFile.set(s.file, []);
+      byFile.get(s.file)!.push(s.name);
+    }
+    const lines = [...byFile.entries()].map(([f, names]) => `  ${f}: ${names.join(', ')}`);
+    parts.push(`Detected ORM schema tables (these files should be in schemaFiles):\n${lines.join('\n')}`);
+  }
+
+  const routes = repoStructure.routeInventory?.routes ?? [];
+  if (routes.length > 0) {
+    const byFile = new Map<string, number>();
+    for (const r of routes) byFile.set(r.file, (byFile.get(r.file) ?? 0) + 1);
+    const lines = [...byFile.entries()].map(([f, n]) => `  ${f}: ${n} route(s)`);
+    parts.push(`Detected HTTP routes (these files should be in apiFiles):\n${lines.join('\n')}`);
+  }
+
+  const components = repoStructure.uiComponents ?? [];
+  if (components.length > 0) {
+    const byFramework: Record<string, number> = {};
+    for (const c of components) byFramework[c.framework] = (byFramework[c.framework] ?? 0) + 1;
+    const summary = Object.entries(byFramework).map(([fw, n]) => `${n} ${fw}`).join(', ');
+    parts.push(`Detected UI components: ${summary}`);
+  }
+
+  return parts.length > 0 ? `\nPre-extracted structural intelligence:\n${parts.join('\n\n')}\n` : '';
+}
+
 export async function runStage1(
   llm: LLMService,
   options: PipelineOptions,
@@ -70,6 +107,7 @@ Statistics:
 - Edge count: ${repoStructure.statistics.edgeCount}
 - Clusters: ${repoStructure.statistics.clusterCount}
 
+${buildStructuredHints(repoStructure)}
 ${sectionLabel}
 ${fileListingSection}`;
 

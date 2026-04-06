@@ -38,7 +38,11 @@ export async function runStage2(
     const fileChunks = graphSection ? [graphSection] : chunks;
     for (let i = 0; i < fileChunks.length; i++) {
       const chunkNote = !graphSection && isLargeFile ? ` (part ${i + 1}/${fileChunks.length})` : '';
-      const userPrompt = `Analyze this schema/model file and extract entities:\n\n=== ${file.path}${chunkNote} ===\n${fileChunks[i]}`;
+      const schemaHint = pipeline.schemasFor(file.path);
+      const schemaNote = schemaHint
+        ? `\n\nKnown schema tables detected in this file (use these field names and types directly):\n${schemaHint}`
+        : '';
+      const userPrompt = `Analyze this schema/model file and extract entities:\n\n=== ${file.path}${chunkNote} ===\n${fileChunks[i]}${schemaNote}`;
       try {
         const result = await pipeline.llm.completeJSON<ExtractedEntity[]>({
           systemPrompt,

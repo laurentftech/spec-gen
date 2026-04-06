@@ -201,6 +201,9 @@ function createMockPipelineContext() {
     saveResult,
     chunkContent: vi.fn(),
     graphPromptFor: vi.fn().mockReturnValue(null),
+    signaturesFor: vi.fn().mockReturnValue(null),
+    schemasFor: vi.fn().mockReturnValue(null),
+    routesFor: vi.fn().mockReturnValue(null),
     generateSubSpecs: vi.fn().mockResolvedValue([]),
   };
   return { pipeline, provider, saveResult };
