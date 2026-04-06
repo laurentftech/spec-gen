@@ -222,12 +222,18 @@ export async function generateCodebaseDigest(
     lines.push('');
     lines.push('| Situation | Tool |');
     lines.push('|-----------|------|');
+    lines.push('| Starting any new task | `orient` — returns functions, files, specs, call paths, and insertion points in one call |');
     lines.push('| Don\'t know which file/function handles a concept | `search_code` |');
     lines.push('| Need call topology across many files | `get_subgraph` / `analyze_impact` |');
     lines.push('| Planning where to add a feature | `suggest_insertion_points` |');
+    lines.push('| Reading a spec before writing code | `get_spec` |');
     lines.push('| Checking if code still matches spec | `check_spec_drift` |');
-    lines.push('| Reading a spec by domain name | `get_spec` |');
-    lines.push('| Finding requirements by meaning | `search_specs` |');
+    lines.push('| Finding spec requirements by meaning | `search_specs` |');
+    lines.push('| Listing all API routes | `get_route_inventory` |');
+    lines.push('| Listing DB schema tables and fields | `get_schema_inventory` |');
+    lines.push('| Listing UI components and props | `get_ui_components` |');
+    lines.push('| Listing env vars (required vs default) | `get_env_vars` |');
+    lines.push('| Listing middleware chain | `get_middleware_inventory` |');
     lines.push('');
     lines.push('For all other cases (reading a file, grepping, listing files) use your native tools directly.');
 

@@ -93,6 +93,8 @@ Scans your codebase using pure static analysis:
 - Detects HTTP cross-language edges: matches `fetch`/`axios`/`ky`/`got` calls in JS/TS files to FastAPI/Flask/Django route definitions in Python files, creating cross-language dependency edges with `exact`, `path`, or `fuzzy` confidence
 - Resolves Python absolute imports (`from services.retriever import X`) to local files
 - Clusters related files into structural business domains automatically
+- Extracts DB schema tables (Prisma, TypeORM, Drizzle, SQLAlchemy), HTTP routes (Express, NestJS, Next.js, FastAPI, Flask), UI components (React, Vue, Svelte, Angular), middleware chains, and environment variables — saved as structured JSON artifacts in `.spec-gen/analysis/`
+- Generates AI tool config files (`CLAUDE.md`, `.cursorrules`, `.clinerules/`, `.vibe/skills/`, etc.) with `--ai-configs`
 - Produces structured context that makes LLM generation more accurate
 
 **2. Generate** (API key required)
@@ -492,6 +494,9 @@ spec-gen analyze [options]
   --include <glob>       # Additional include patterns
   --exclude <glob>       # Additional exclude patterns
   --force                # Force re-analysis (bypass 1-hour cache)
+  --ai-configs           # Generate AI tool config files (CLAUDE.md, .cursorrules, .clinerules/spec-gen.md,
+                         #   .github/copilot-instructions.md, .windsurf/rules.md, .vibe/skills/spec-gen.md)
+                         #   Safe to re-run — skips files that already exist, marks pre-existing ones.
   --no-embed             # Skip building the semantic vector index (index is built by default when embedding is configured)
   --reindex-specs        # Re-index OpenSpec specs into the vector index without re-running full analysis
 ```
@@ -576,6 +581,11 @@ After running `spec-gen analyze`, wire the generated digest into your agent's co
 | Reading a spec before writing code | `get_spec` |
 | Checking if code still matches spec | `check_spec_drift` |
 | Finding spec requirements by meaning | `search_specs` |
+| Listing all API routes | `get_route_inventory` |
+| Listing DB schema tables and fields | `get_schema_inventory` |
+| Listing UI components and props | `get_ui_components` |
+| Listing env vars (required vs default) | `get_env_vars` |
+| Listing middleware chain | `get_middleware_inventory` |
 
 For all other cases (reading a file, grepping, listing files) use native tools directly.
 ```
@@ -617,6 +627,23 @@ Use native tools (Read, Grep, Glob) only for cases not covered above.
 > **Tip:** `spec-gen analyze` prints these snippets after every run as a reminder.
 
 > **Note:** `.spec-gen/analysis/` is git-ignored — each developer generates it locally. Re-run `spec-gen analyze` after significant structural changes to keep the digest current.
+
+**Mistral Vibe (Devstral)** — inject CODEBASE.md into Vibe's global context:
+
+1. Run `spec-gen analyze` to generate `.spec-gen/analysis/CODEBASE.md`
+2. Append it to `~/.vibe/prompts/spec-gen.md` so Devstral absorbs it at every session start:
+
+```bash
+cat .spec-gen/analysis/CODEBASE.md >> ~/.vibe/prompts/spec-gen.md
+```
+
+Or install the Vibe skill (creates a `/spec-gen` slash command in `.vibe/skills/spec-gen.md`):
+
+```bash
+spec-gen analyze --ai-configs   # creates .vibe/skills/spec-gen.md
+```
+
+Then invoke `/spec-gen` inside Vibe to get architecture context on demand.
 
 ---
 
@@ -730,39 +757,49 @@ curl -sL https://raw.githubusercontent.com/clay-good/spec-gen/main/skills/opensp
 
 All tools run on **pure static analysis** -- no LLM quota consumed.
 
-**Analysis**
+**Run analysis**
 
 | Tool | Description | Requires prior analysis |
 |------|-------------|:---:|
 | `analyze_codebase` | Run full static analysis: repo structure, dependency graph, call graph (hub functions, entry points, layer violations), and top refactoring priorities. Results cached for 1 hour (`force: true` to bypass). | No |
-| `get_call_graph` | Hub functions (high fan-in), entry points (no internal callers), and architectural layer violations. Supports TypeScript, JavaScript, Python, Go, Rust, Ruby, Java, C++. | Yes |
-| `get_signatures` | Compact function/class signatures per file. Filter by path substring with `filePattern`. Useful for understanding a module's public API without reading full source. | Yes |
-| `get_duplicate_report` | Detect duplicate code: Type 1 (exact clones), Type 2 (structural -- renamed variables), Type 3 (near-clones with Jaccard similarity >= 0.7). Groups sorted by impact. | Yes |
 
-**Refactoring**
-
-| Tool | Description | Requires prior analysis |
-|------|-------------|:---:|
-| `get_refactor_report` | Prioritized list of functions with structural issues: unreachable code, hub overload (high fan-in), god functions (high fan-out), SRP violations, cyclic dependencies. | Yes |
-| `analyze_impact` | Deep impact analysis for a specific function: fan-in/fan-out, upstream call chain, downstream critical path, risk score (0-100), blast radius, and recommended strategy. | Yes |
-| `get_low_risk_refactor_candidates` | Safest functions to refactor first: low fan-in, low fan-out, not a hub, no cyclic involvement. Best starting point for incremental, low-risk sessions. | Yes |
-| `get_leaf_functions` | Functions that make no internal calls (leaves of the call graph). Zero downstream blast radius. Sorted by fan-in by default -- most-called leaves have the best unit-test ROI. | Yes |
-| `get_critical_hubs` | Highest-impact hub functions ranked by criticality. Each hub gets a stability score (0-100) and a recommended approach: extract, split, facade, or delegate. | Yes |
-| `get_god_functions` | Detect god functions (high fan-out, likely orchestrators) in the project or in a specific file, and return their call-graph neighborhood. Use this to identify which functions need to be refactored and understand what logical blocks to extract. | Yes |
-
-**Navigation**
+**Explore & Navigate**
 
 | Tool | Description | Requires prior analysis |
 |------|-------------|:---:|
 | `orient` | **Single entry point for any new task.** Given a natural-language task description, returns in one call: relevant functions, source files, spec domains, call neighbourhoods, insertion-point candidates, and matching spec sections. Start here. | Yes (+ embedding) |
-| `get_subgraph` | Depth-limited subgraph centred on a function. Direction: `downstream` (what it calls), `upstream` (who calls it), or `both`. Output as JSON or Mermaid diagram. | Yes |
-| `get_architecture_overview` | High-level cluster map: roles (entry layer, orchestrator, core utilities, API layer, internal), inter-cluster dependencies, global entry points, and critical hubs. No LLM required. | Yes |
-| `get_function_skeleton` | Noise-stripped view of a source file: logs, inline comments, and non-JSDoc block comments removed. Signatures, control flow, return/throw, and call expressions preserved. Returns reduction %. | No |
-| `get_function_body` | Return the exact source code of a named function in a file. | No |
-| `get_file_dependencies` | Return the file-level import dependencies for a given source file (imports, imported-by, or both). | Yes |
-| `trace_execution_path` | Find all call-graph paths between two functions (DFS, configurable depth/max-paths). Use this when debugging: "how does request X reach function Y?" Returns shortest path, all paths sorted by hops, and a step-by-step chain per path. | Yes |
-| `suggest_insertion_points` | Semantic search over the vector index to find the best existing functions to extend or hook into when implementing a new feature. Returns ranked candidates with role and strategy. Falls back to BM25 keyword search when no embedding server is configured. | Yes (+ embedding) |
 | `search_code` | Natural-language semantic search over indexed functions. Returns the closest matches by meaning with similarity score, call-graph neighbourhood enrichment, and spec-linked peer functions. Falls back to BM25 keyword search when no embedding server is configured. | Yes (+ embedding) |
+| `suggest_insertion_points` | Semantic search over the vector index to find the best existing functions to extend or hook into when implementing a new feature. Returns ranked candidates with role and strategy. Falls back to BM25 keyword search when no embedding server is configured. | Yes (+ embedding) |
+| `get_subgraph` | Depth-limited subgraph centred on a function. Direction: `downstream` (what it calls), `upstream` (who calls it), or `both`. Output as JSON or Mermaid diagram. | Yes |
+| `trace_execution_path` | Find all call-graph paths between two functions (DFS, configurable depth/max-paths). Use this when debugging: "how does request X reach function Y?" Returns shortest path, all paths sorted by hops, and a step-by-step chain per path. | Yes |
+| `get_function_body` | Return the exact source code of a named function in a file. | No |
+| `get_function_skeleton` | Noise-stripped view of a source file: logs, inline comments, and non-JSDoc block comments removed. Signatures, control flow, return/throw, and call expressions preserved. Returns reduction %. | No |
+| `get_file_dependencies` | Return the file-level import dependencies for a given source file (imports, imported-by, or both). | Yes |
+| `get_architecture_overview` | High-level cluster map: roles (entry layer, orchestrator, core utilities, API layer, internal), inter-cluster dependencies, global entry points, and critical hubs. No LLM required. | Yes |
+| `get_signatures` | Compact function/class signatures per file. Filter by path substring with `filePattern`. Useful for understanding a module's public API without reading full source. | Yes |
+
+**Stack inventory**
+
+| Tool | Description | Requires prior analysis |
+|------|-------------|:---:|
+| `get_route_inventory` | All detected HTTP routes with method, path, handler, and framework. Supports Express, NestJS, Next.js, FastAPI, Flask, and more. | Yes |
+| `get_schema_inventory` | ORM schema tables with field names and types. Supports Prisma, TypeORM, Drizzle, and SQLAlchemy. | Yes |
+| `get_ui_components` | Detected UI components with framework, props, and source file. Supports React, Vue, Svelte, and Angular. | Yes |
+| `get_env_vars` | Env vars referenced in source code with `required` (no fallback) and `hasDefault` flags. Supports JS/TS, Python, Go, and Ruby. | Yes |
+| `get_middleware_inventory` | Detected middleware with type (auth/cors/rate-limit/validation/logging/error-handler) and framework. | Yes |
+
+**Code quality**
+
+| Tool | Description | Requires prior analysis |
+|------|-------------|:---:|
+| `get_call_graph` | Hub functions (high fan-in), entry points (no internal callers), and architectural layer violations. Supports TypeScript, JavaScript, Python, Go, Rust, Ruby, Java, C++. | Yes |
+| `get_refactor_report` | Prioritized list of functions with structural issues: unreachable code, hub overload (high fan-in), god functions (high fan-out), SRP violations, cyclic dependencies. | Yes |
+| `get_critical_hubs` | Highest-impact hub functions ranked by criticality. Each hub gets a stability score (0-100) and a recommended approach: extract, split, facade, or delegate. | Yes |
+| `get_god_functions` | Detect god functions (high fan-out, likely orchestrators) in the project or in a specific file, and return their call-graph neighborhood. Use this to identify which functions need to be refactored and understand what logical blocks to extract. | Yes |
+| `analyze_impact` | Deep impact analysis for a specific function: fan-in/fan-out, upstream call chain, downstream critical path, risk score (0-100), blast radius, and recommended strategy. | Yes |
+| `get_low_risk_refactor_candidates` | Safest functions to refactor first: low fan-in, low fan-out, not a hub, no cyclic involvement. Best starting point for incremental, low-risk sessions. | Yes |
+| `get_leaf_functions` | Functions that make no internal calls (leaves of the call graph). Zero downstream blast radius. Sorted by fan-in by default -- most-called leaves have the best unit-test ROI. | Yes |
+| `get_duplicate_report` | Detect duplicate code: Type 1 (exact clones), Type 2 (structural -- renamed variables), Type 3 (near-clones with Jaccard similarity >= 0.7). Groups sorted by impact. | Yes |
 
 **Specs**
 

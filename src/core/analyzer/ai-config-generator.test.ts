@@ -30,7 +30,7 @@ describe('generateAiConfigs', () => {
   beforeEach(async () => { tmpDir = await createTempDir(); });
   afterEach(async () => { await rm(tmpDir, { recursive: true, force: true }); });
 
-  it('creates all 5 files when none exist and returns their relative paths', async () => {
+  it('creates all 6 files when none exist and returns their relative paths', async () => {
     const results = await generateAiConfigs({
       rootDir: tmpDir,
       analysisDir: '.spec-gen/analysis',
@@ -38,13 +38,14 @@ describe('generateAiConfigs', () => {
     });
 
     const rels = results.map(r => r.rel);
-    expect(results).toHaveLength(5);
+    expect(results).toHaveLength(6);
     expect(results.every(r => r.created)).toBe(true);
     expect(rels).toContain('CLAUDE.md');
     expect(rels).toContain('.cursorrules');
     expect(rels).toContain('.clinerules/spec-gen.md');
     expect(rels).toContain('.github/copilot-instructions.md');
     expect(rels).toContain('.windsurf/rules.md');
+    expect(rels).toContain('.vibe/skills/spec-gen.md');
   });
 
   it('skips files that already exist — all have created=false on second call', async () => {
@@ -62,7 +63,7 @@ describe('generateAiConfigs', () => {
       projectName: 'my-project',
     });
 
-    expect(results).toHaveLength(5);
+    expect(results).toHaveLength(6);
     expect(results.every(r => !r.created)).toBe(true);
   });
 
@@ -181,11 +182,11 @@ describe('generateAiConfigs', () => {
       projectName: 'my-project',
     });
 
-    // All 5 returned, CLAUDE.md has created=false, the rest created=true
-    expect(results).toHaveLength(5);
+    // All 6 returned, CLAUDE.md has created=false, the rest created=true
+    expect(results).toHaveLength(6);
     const claudeResult = results.find(r => r.rel === 'CLAUDE.md');
     expect(claudeResult?.created).toBe(false);
-    expect(results.filter(r => r.created)).toHaveLength(4);
+    expect(results.filter(r => r.created)).toHaveLength(5);
 
     // Existing file content should be unchanged
     const content = await readFile(join(tmpDir, 'CLAUDE.md'), 'utf-8');

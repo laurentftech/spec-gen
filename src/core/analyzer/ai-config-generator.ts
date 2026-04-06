@@ -20,7 +20,7 @@ import { join, dirname } from 'node:path';
 // ============================================================================
 
 /** Supported AI assistant targets */
-export type AiTool = 'claude' | 'cursor' | 'cline' | 'copilot' | 'windsurf';
+export type AiTool = 'claude' | 'cursor' | 'cline' | 'copilot' | 'windsurf' | 'vibe';
 
 export interface AiConfigOptions {
   /** Absolute path to the project root */
@@ -56,6 +56,7 @@ export const AI_TOOL_TARGETS: ToolTarget[] = [
   { tool: 'cline',    label: 'Cline / Roo    (.clinerules/spec-gen.md)',           rel: '.clinerules/spec-gen.md',                forClaude: false },
   { tool: 'copilot',  label: 'GitHub Copilot (.github/copilot-instructions.md)',  rel: '.github/copilot-instructions.md',        forClaude: false },
   { tool: 'windsurf', label: 'Windsurf       (.windsurf/rules.md)',               rel: '.windsurf/rules.md',                     forClaude: false },
+  { tool: 'vibe',    label: 'Mistral Vibe   (.vibe/skills/spec-gen.md)',          rel: '.vibe/skills/spec-gen.md',               forClaude: false },
 ];
 
 // ============================================================================
@@ -75,6 +76,10 @@ const MCP_TOOLS_TABLE = `
 | Checking if code still matches spec | \`check_spec_drift\` |
 | Finding spec requirements by meaning | \`search_specs\` |
 | Listing all API routes | \`get_route_inventory\` |
+| Listing DB schema tables and fields | \`get_schema_inventory\` |
+| Listing UI components and props | \`get_ui_components\` |
+| Listing env vars (required vs default) | \`get_env_vars\` |
+| Listing middleware chain | \`get_middleware_inventory\` |
 `.trim();
 
 function buildContent(analysisDir: string, projectName: string, forClaude: boolean): string {

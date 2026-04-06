@@ -261,6 +261,36 @@ spec-gen generate --provider mistral-vibe
 export MISTRAL_VIBE_CLI=/path/to/vibe
 ```
 
+### Pre-computed artifacts
+
+Always run `spec-gen analyze` first. It produces structured JSON artifacts that Devstral can
+read directly instead of exploring the codebase from scratch:
+
+| Artifact | What it contains |
+|----------|-----------------|
+| `.spec-gen/analysis/CODEBASE.md` | Architecture digest: entry points, critical hubs, god functions, spec domains, most-coupled files |
+| `.spec-gen/analysis/env-inventory.json` | All env vars with `required` (no fallback) and `hasDefault` flags, source files |
+| `.spec-gen/analysis/schema-inventory.json` | ORM tables and fields (Prisma, TypeORM, Drizzle, SQLAlchemy) |
+| `.spec-gen/analysis/route-inventory.json` | HTTP routes with method, path, handler, framework |
+| `.spec-gen/analysis/ui-inventory.json` | UI components with framework, props, source file |
+| `.spec-gen/analysis/middleware-inventory.json` | Middleware entries with type (auth/cors/rate-limit/…) and framework |
+
+### Injecting context into Vibe
+
+Vibe does not auto-read project files, but it supports global system prompts via `~/.vibe/prompts/`.
+To make CODEBASE.md available in every Vibe session on this project:
+
+```bash
+# After running spec-gen analyze:
+cat .spec-gen/analysis/CODEBASE.md >> ~/.vibe/prompts/spec-gen.md
+```
+
+Or install the Vibe skill (creates `.vibe/skills/spec-gen.md` as a `/spec-gen` slash command):
+
+```bash
+spec-gen analyze --ai-configs
+```
+
 ### Constraints and recommendations
 
 | Property | Value |
