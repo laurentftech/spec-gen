@@ -20,7 +20,7 @@ cd /path/to/your-project
 # Run the pipeline
 spec-gen init                  # Detect project type, create config
 spec-gen analyze --ai-configs  # Static analysis + generate context files (CLAUDE.md, .cursorrules…)
-spec-gen setup                 # Install workflow skills (Vibe, Cline, GSD)
+spec-gen setup                 # Install workflow skills (Vibe, Cline, GSD, BMAD)
 spec-gen generate              # Generate specs (requires API key)
 spec-gen drift                 # Check for spec drift
 
@@ -421,7 +421,7 @@ Priority: CLI flags > environment variables > config file > provider defaults.
 | `spec-gen drift --use-llm` | Detect spec drift (LLM-enhanced) | Yes |
 | `spec-gen run` | Full pipeline: init, analyze, generate | Yes |
 | `spec-gen view` | Launch interactive graph & spec viewer in the browser | No |
-| `spec-gen setup` | Install workflow skills into the project (Vibe, Cline, GSD) | No |
+| `spec-gen setup` | Install workflow skills into the project (Vibe, Cline, GSD, BMAD) | No |
 | `spec-gen mcp` | Start MCP server (stdio, for Cline / Claude Code) | No |
 | `spec-gen doctor` | Check environment and configuration for common issues | No |
 
@@ -602,11 +602,12 @@ spec-gen setup                   # install workflow skills
 **`spec-gen setup`** copies static workflow assets from the spec-gen package that are identical across all projects. Run once at onboarding; re-run after upgrading spec-gen to get new or updated skills.
 
 ```
-spec-gen setup [--tools vibe,cline,gsd]
+spec-gen setup [--tools vibe,cline,gsd,bmad]
 
-Mistral Vibe  ->  .vibe/skills/spec-gen-{name}/SKILL.md    (7 skills)
-Cline / Roo   ->  .clinerules/workflows/spec-gen-{name}.md  (6 workflows)
-GSD           ->  .claude/commands/gsd/spec-gen-{name}.md   (2 commands)
+Mistral Vibe  ->  .vibe/skills/spec-gen-{name}/SKILL.md      (7 skills)
+Cline / Roo   ->  .clinerules/workflows/spec-gen-{name}.md   (6 workflows)
+GSD           ->  .claude/commands/gsd/spec-gen-{name}.md    (2 commands)
+BMAD          ->  _bmad/spec-gen/{agents,tasks}/              (2 agents, 4 tasks)
 ```
 
 Wire the generated digest into your agent's context:
