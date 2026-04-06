@@ -1103,7 +1103,7 @@ Respond in JSON:
     lines.push('');
     for (const result of report.results) {
       const scorePercent = (result.overallScore * 100).toFixed(0);
-      const status = result.overallScore >= 0.6 ? '✅' : '❌';
+      const status = result.overallScore >= this.options.passThreshold ? '✅' : '❌';
       lines.push(`### ${status} ${result.filePath}`);
       lines.push('');
       lines.push(`- **Domain**: ${result.domain}`);
