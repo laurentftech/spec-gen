@@ -82,6 +82,7 @@ describe('generate command', () => {
         uiComponents: [],
         schemas: [],
         routeInventory: { total: 0, byMethod: {}, byFramework: {}, routes: [] },
+        middleware: [],
         statistics: {
           totalFiles: 100,
           analyzedFiles: 50,

@@ -674,6 +674,7 @@ describe('buildHttpEdges', () => {
       handlerName: 'handler',
       framework: 'fastapi',
       line: 1,
+      contractSource: 'none',
       ...overrides,
     };
   }

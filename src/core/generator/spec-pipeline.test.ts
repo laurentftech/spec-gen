@@ -54,6 +54,7 @@ function createMockRepoStructure(): RepoStructure {
     uiComponents: [],
     schemas: [],
     routeInventory: { total: 0, byMethod: {}, byFramework: {}, routes: [] },
+    middleware: [],
     statistics: {
       totalFiles: 50,
       analyzedFiles: 40,

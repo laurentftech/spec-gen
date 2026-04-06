@@ -155,6 +155,68 @@ export class HeroComponent {
     expect(components[0].framework).toBe('angular');
   });
 
+  // ── React.memo ─────────────────────────────────────────────────────────────
+
+  it('detects a React.memo(...) wrapped component', async () => {
+    const fp = await createFile(tmpDir, 'MemoButton.tsx', `
+import React from 'react';
+
+interface MemoButtonProps {
+  label: string;
+}
+
+const MemoButtonInner = ({ label }: MemoButtonProps) => {
+  return <button>{label}</button>;
+};
+
+export const MemoButton = React.memo(MemoButtonInner);
+`);
+    const components = await extractUIComponents([fp], tmpDir);
+    // Should detect at least one component from the file
+    expect(components.length).toBeGreaterThanOrEqual(1);
+    const names = components.map(c => c.name);
+    // Either MemoButtonInner or MemoButton should be detected
+    expect(names.some(n => n.includes('Memo') || n.includes('Button'))).toBe(true);
+    expect(components[0].framework).toBe('react');
+  });
+
+  // ── Multiple components in same file ───────────────────────────────────────
+
+  it('detects multiple components exported from the same .tsx file', async () => {
+    const fp = await createFile(tmpDir, 'Components.tsx', `
+export function Header({ title }: { title: string }) {
+  return <h1>{title}</h1>;
+}
+
+export function Footer({ text }: { text: string }) {
+  return <footer>{text}</footer>;
+}
+
+export const Sidebar = ({ items }: { items: string[] }) => {
+  return <aside>{items.join(',')}</aside>;
+};
+`);
+    const components = await extractUIComponents([fp], tmpDir);
+    expect(components.length).toBeGreaterThanOrEqual(2);
+    const names = components.map(c => c.name);
+    expect(names).toContain('Header');
+    expect(names).toContain('Footer');
+  });
+
+  // ── .jsx file support ──────────────────────────────────────────────────────
+
+  it('detects React components from .jsx file (not just .tsx)', async () => {
+    const fp = await createFile(tmpDir, 'Widget.jsx', `
+export function Widget({ value }) {
+  return <div>{value}</div>;
+}
+`);
+    const components = await extractUIComponents([fp], tmpDir);
+    expect(components).toHaveLength(1);
+    expect(components[0].name).toBe('Widget');
+    expect(components[0].framework).toBe('react');
+  });
+
   // ── Non-UI files ───────────────────────────────────────────────────────────
 
   it('ignores plain .ts files without @Component', async () => {

@@ -45,6 +45,7 @@ import { generateCodebaseDigest } from '../../core/analyzer/codebase-digest.js';
 import { extractUIComponents } from '../../core/analyzer/ui-component-extractor.js';
 import { extractSchemas } from '../../core/analyzer/schema-extractor.js';
 import { buildRouteInventory } from '../../core/analyzer/http-route-parser.js';
+import { extractMiddleware } from '../../core/analyzer/middleware-extractor.js';
 import { generateAiConfigs, AI_TOOL_TARGETS, type AiTool } from '../../core/analyzer/ai-config-generator.js';
 
 // ============================================================================
@@ -156,10 +157,11 @@ export async function runAnalysis(
 
   const allFilePaths = repoMap.allFiles.map(f => f.path);
 
-  const [uiComponents, schemas, routeInventory] = await Promise.all([
+  const [uiComponents, schemas, routeInventory, middleware] = await Promise.all([
     extractUIComponents(allFilePaths, rootPath),
     extractSchemas(allFilePaths, rootPath),
     buildRouteInventory(allFilePaths, rootPath),
+    extractMiddleware(allFilePaths, rootPath),
   ]);
 
   // Phase 4: Generate Artifacts
@@ -176,6 +178,7 @@ export async function runAnalysis(
     uiComponents,
     schemas,
     routeInventory,
+    middleware,
   });
 
   // Also save the raw dependency graph
@@ -627,6 +630,9 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
       }
       if (artifacts.repoStructure.routeInventory.total > 0) {
         console.log(`    ├─ ${opts.output}route-inventory.json  (${artifacts.repoStructure.routeInventory.total} route(s))`);
+      }
+      if (artifacts.repoStructure.middleware.length > 0) {
+        console.log(`    ├─ ${opts.output}middleware-inventory.json  (${artifacts.repoStructure.middleware.length} middleware entry(ies))`);
       }
       if (artifacts.repoStructure.uiComponents.length > 0) {
         console.log(`    ├─ ${opts.output}repo-structure.json  (${artifacts.repoStructure.uiComponents.length} UI component(s) in uiComponents field)`);

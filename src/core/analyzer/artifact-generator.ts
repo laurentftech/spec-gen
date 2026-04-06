@@ -26,6 +26,7 @@ import { toMermaidFormat } from './dependency-graph.js';
 import type { UIComponent } from './ui-component-extractor.js';
 import type { SchemaTable } from './schema-extractor.js';
 import type { RouteInventory } from './http-route-parser.js';
+import type { MiddlewareEntry } from './middleware-extractor.js';
 
 /**
  * Heuristic to detect test/spec files across languages.
@@ -128,6 +129,8 @@ export interface RepoStructure {
   schemas: SchemaTable[];
   /** Aggregated HTTP route inventory */
   routeInventory: RouteInventory;
+  /** Detected middleware entries */
+  middleware: MiddlewareEntry[];
   statistics: {
     totalFiles: number;
     analyzedFiles: number;
@@ -184,6 +187,7 @@ export interface EnrichmentData {
   uiComponents?: UIComponent[];
   schemas?: SchemaTable[];
   routeInventory?: RouteInventory;
+  middleware?: MiddlewareEntry[];
 }
 
 /**
@@ -333,6 +337,14 @@ export class AnalysisArtifactGenerator {
       ));
     }
 
+    if (enrichment?.middleware) {
+      const { ARTIFACT_MIDDLEWARE_INVENTORY } = await import('../../constants.js');
+      saves.push(writeFile(
+        join(this.options.outputDir, ARTIFACT_MIDDLEWARE_INVENTORY),
+        JSON.stringify(enrichment.middleware, null, 2)
+      ));
+    }
+
     await Promise.all(saves);
 
     return artifacts;
@@ -384,6 +396,7 @@ export class AnalysisArtifactGenerator {
       uiComponents: enrichment?.uiComponents ?? [],
       schemas: enrichment?.schemas ?? [],
       routeInventory: enrichment?.routeInventory ?? { total: 0, byMethod: {}, byFramework: {}, routes: [] },
+      middleware: enrichment?.middleware ?? [],
       statistics: {
         totalFiles: repoMap.summary.totalFiles,
         analyzedFiles: repoMap.summary.analyzedFiles,

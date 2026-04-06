@@ -90,6 +90,9 @@ export const ARTIFACT_SCHEMA_INVENTORY = 'schema-inventory.json';
 /** Filename for the API route inventory artifact */
 export const ARTIFACT_ROUTE_INVENTORY = 'route-inventory.json';
 
+/** Filename for the middleware inventory artifact */
+export const ARTIFACT_MIDDLEWARE_INVENTORY = 'middleware-inventory.json';
+
 // ============================================================================
 // LLM / PROVIDER LIMITS
 // ============================================================================

@@ -61,10 +61,16 @@ export interface RouteDefinition {
   normalizedPath: string;
   /** Name of the handler function */
   handlerName: string;
-  /** fastapi / flask / django / starlette */
+  /** fastapi / flask / django / starlette / express / nestjs / nextjs-app etc. */
   framework: string;
   /** 1-based source line */
   line: number;
+  /** Request body type extracted from handler signature, e.g. "CreateUserDto" or "z.infer<typeof schema>" */
+  requestBodyType?: string;
+  /** Response body type extracted from handler return type annotation, e.g. "User[]" or "void" */
+  responseType?: string;
+  /** How the contract was sourced */
+  contractSource: 'annotation' | 'validator' | 'none';
 }
 
 /** A resolved cross-language edge */
@@ -317,6 +323,7 @@ export async function extractRouteDefinitions(filePath: string): Promise<RouteDe
       handlerName,
       framework: 'fastapi',
       line: lineNum,
+      contractSource: 'none' as const,
     });
   }
 
@@ -338,6 +345,7 @@ export async function extractRouteDefinitions(filePath: string): Promise<RouteDe
         handlerName,
         framework: 'fastapi',
         line: lineNum,
+        contractSource: 'none' as const,
       });
     }
   }
@@ -363,6 +371,7 @@ export async function extractRouteDefinitions(filePath: string): Promise<RouteDe
           handlerName,
           framework: 'flask',
           line: lineNum,
+          contractSource: 'none' as const,
         });
       }
     } else {
@@ -375,6 +384,7 @@ export async function extractRouteDefinitions(filePath: string): Promise<RouteDe
         handlerName,
         framework: 'flask',
         line: lineNum,
+        contractSource: 'none' as const,
       });
     }
   }
@@ -403,6 +413,7 @@ export async function extractRouteDefinitions(filePath: string): Promise<RouteDe
       handlerName,
       framework: 'django',
       line: lineNum,
+      contractSource: 'none' as const,
     });
   }
 
@@ -571,6 +582,80 @@ function extractNextDefName(lines: string[], decoratorLine: number): string {
 }
 
 // ============================================================================
+// CONTRACT / TYPE EXTRACTION HELPERS
+// ============================================================================
+
+/**
+ * Extract contract information from a handler function body or surrounding context.
+ *
+ * Strategies:
+ *   1. TypeScript Request<P, ResBody, ReqBody, Q> generic → requestBodyType = ReqBody
+ *   2. NestJS @Body() dto: Type → requestBodyType = Type
+ *   3. Zod .parse( / .parseAsync( → contractSource = 'validator'
+ *   4. Promise<ResponseType> return annotation
+ */
+function extractContractFromHandler(
+  handlerSource: string
+): { requestBodyType?: string; responseType?: string; contractSource: 'annotation' | 'validator' | 'none' } {
+  let requestBodyType: string | undefined;
+  let responseType: string | undefined;
+  let contractSource: 'annotation' | 'validator' | 'none' = 'none';
+
+  // 1. TypeScript Request<P, ResBody, ReqBody, Q> generic
+  //    handler(req: Request<Params, ResBody, Body, Query>)
+  const reqGenericRe = /:\s*Request\s*<[^,>]+,\s*([^,>]+),\s*([^,>]+)/;
+  const reqGenericMatch = reqGenericRe.exec(handlerSource);
+  if (reqGenericMatch) {
+    const resBodyType = reqGenericMatch[1].trim();
+    const reqBodyType = reqGenericMatch[2].trim();
+    if (reqBodyType && reqBodyType !== 'unknown' && reqBodyType !== 'any') {
+      requestBodyType = reqBodyType;
+      contractSource = 'annotation';
+    }
+    if (resBodyType && resBodyType !== 'unknown' && resBodyType !== 'any') {
+      responseType = resBodyType;
+    }
+  }
+
+  // 2. NestJS @Body() dto: CreateUserDto
+  const bodyParamRe = /@Body\s*\(\s*\)\s+\w+\s*:\s*(\w+)/;
+  const bodyParamMatch = bodyParamRe.exec(handlerSource);
+  if (bodyParamMatch) {
+    requestBodyType = bodyParamMatch[1];
+    contractSource = 'annotation';
+  }
+
+  // 3. Zod validators: schema.parse( / schema.parseAsync( / z.infer<typeof
+  const zodRe = /\b\w+\.parse(?:Async)?\s*\(|z\.infer\s*<\s*typeof\s+(\w+)/;
+  const zodMatch = zodRe.exec(handlerSource);
+  if (zodMatch) {
+    contractSource = 'validator';
+    if (zodMatch[1]) {
+      requestBodyType = `z.infer<typeof ${zodMatch[1]}>`;
+    } else {
+      // Extract schema variable name from .parse( call
+      const parseVarRe = /(\w+)\.parse(?:Async)?\s*\(/;
+      const parseVarMatch = parseVarRe.exec(handlerSource);
+      if (parseVarMatch) {
+        requestBodyType = parseVarMatch[1];
+      }
+    }
+  }
+
+  // 4. Promise<ResponseType> return type annotation
+  const returnTypeRe = /\):\s*Promise\s*<\s*([^>]+)>/;
+  const returnTypeMatch = returnTypeRe.exec(handlerSource);
+  if (returnTypeMatch && !responseType) {
+    const rType = returnTypeMatch[1].trim();
+    if (rType && rType !== 'void' && rType !== 'unknown' && rType !== 'any') {
+      responseType = rType;
+    }
+  }
+
+  return { requestBodyType, responseType, contractSource };
+}
+
+// ============================================================================
 // TS/JS SERVER ROUTE EXTRACTION
 // ============================================================================
 
@@ -640,6 +725,9 @@ export async function extractTsRouteDefinitions(filePath: string): Promise<Route
     const re = new RegExp(NEXTJS_APP_ROUTER_RE.source, NEXTJS_APP_ROUTER_RE.flags);
     let m: RegExpExecArray | null;
     while ((m = re.exec(source)) !== null) {
+      // Extract handler body for contract detection (scan next 500 chars)
+      const handlerBody = source.slice(m.index, m.index + 500);
+      const contract = extractContractFromHandler(handlerBody);
       routes.push({
         file: filePath,
         method: m[1].toUpperCase(),
@@ -648,6 +736,7 @@ export async function extractTsRouteDefinitions(filePath: string): Promise<Route
         handlerName: m[1],
         framework: 'nextjs-app',
         line: lineOf(m.index),
+        ...contract,
       });
     }
     return routes;
@@ -675,6 +764,10 @@ export async function extractTsRouteDefinitions(filePath: string): Promise<Route
       const handlerMatch = NESTJS_HANDLER_RE.exec(afterDecorator.slice(0, 200));
       const handlerName = handlerMatch?.[1] ?? 'unknown';
 
+      // Extract contract from decorator + handler context (scan next 400 chars)
+      const handlerContext = source.slice(m.index, m.index + 400);
+      const contract = extractContractFromHandler(handlerContext);
+
       routes.push({
         file: filePath,
         method: httpMethod,
@@ -683,6 +776,7 @@ export async function extractTsRouteDefinitions(filePath: string): Promise<Route
         handlerName,
         framework: 'nestjs',
         line: lineOf(m.index),
+        ...contract,
       });
     }
     return routes;
@@ -713,6 +807,10 @@ export async function extractTsRouteDefinitions(filePath: string): Promise<Route
     const handlerMatch = lineText.match(/,\s*(?:async\s+)?(?:function\s+)?(\w+)\s*[,)]/);
     const handlerName = handlerMatch?.[1] ?? 'handler';
 
+    // Extract contract from route context (scan next 600 chars)
+    const routeContext = source.slice(m.index, m.index + 600);
+    const contract = extractContractFromHandler(routeContext);
+
     routes.push({
       file: filePath,
       method,
@@ -721,6 +819,7 @@ export async function extractTsRouteDefinitions(filePath: string): Promise<Route
       handlerName,
       framework,
       line: lineOf(m.index),
+      ...contract,
     });
   }
 
@@ -741,6 +840,9 @@ export interface RouteInventory {
     framework: string;
     file: string;
     handler: string;
+    requestBodyType?: string;
+    responseType?: string;
+    contractSource: 'annotation' | 'validator' | 'none';
   }>;
 }
 
@@ -789,6 +891,9 @@ export async function buildRouteInventory(
       framework: r.framework,
       file: relative(rootDir, r.file),
       handler: r.handlerName,
+      requestBodyType: r.requestBodyType,
+      responseType: r.responseType,
+      contractSource: r.contractSource,
     })),
   };
 }

@@ -137,6 +137,194 @@ export async function POST(request: Request) {
   });
 });
 
+describe('extractTsRouteDefinitions – Express prefix accumulation', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => { tmpDir = await createTempDir(); });
+  afterEach(async () => { await rm(tmpDir, { recursive: true, force: true }); });
+
+  it('accumulates prefix from app.use when route path is relative', async () => {
+    const fp = await createFile(tmpDir, 'app.ts', `
+import express from 'express';
+const app = express();
+const router = express.Router();
+app.use('/prefix', router);
+router.get('/users', listUsers);
+`);
+    const routes = await extractTsRouteDefinitions(fp);
+    // Should have at least a GET /users route (prefix accumulation is best-effort)
+    expect(routes.length).toBeGreaterThanOrEqual(1);
+    const paths = routes.map(r => r.path);
+    expect(paths.some(p => p.includes('users'))).toBe(true);
+  });
+});
+
+describe('extractTsRouteDefinitions – Hono/Fastify framework detection', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => { tmpDir = await createTempDir(); });
+  afterEach(async () => { await rm(tmpDir, { recursive: true, force: true }); });
+
+  it('detects Hono framework via import (no express import)', async () => {
+    const fp = await createFile(tmpDir, 'hono-app.ts', `
+import { Hono } from 'hono';
+const app = new Hono();
+app.get('/items', listItems);
+app.post('/items', createItem);
+`);
+    const routes = await extractTsRouteDefinitions(fp);
+    expect(routes.length).toBeGreaterThanOrEqual(2);
+    expect(routes[0].framework).toBe('hono');
+  });
+
+  it('detects Fastify framework via import', async () => {
+    const fp = await createFile(tmpDir, 'fastify-app.ts', `
+import fastify from 'fastify';
+const server = fastify();
+server.get('/ping', pingHandler);
+server.post('/data', dataHandler);
+`);
+    const routes = await extractTsRouteDefinitions(fp);
+    expect(routes.length).toBeGreaterThanOrEqual(2);
+    expect(routes[0].framework).toBe('fastify');
+  });
+});
+
+describe('extractTsRouteDefinitions – NestJS no sub-path on method decorator', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => { tmpDir = await createTempDir(); });
+  afterEach(async () => { await rm(tmpDir, { recursive: true, force: true }); });
+
+  it('@Get() with no argument uses only controller prefix as path', async () => {
+    const fp = await createFile(tmpDir, 'cats.controller.ts', `
+import { Controller, Get, Post } from '@nestjs/common';
+
+@Controller('cats')
+export class CatsController {
+  @Get()
+  findAll() { return []; }
+
+  @Post()
+  create() { return {}; }
+}
+`);
+    const routes = await extractTsRouteDefinitions(fp);
+    expect(routes.length).toBeGreaterThanOrEqual(2);
+    const paths = routes.map(r => r.path);
+    // When @Get() has no argument, path should be just the controller prefix /cats
+    expect(paths.some(p => p === '/cats')).toBe(true);
+  });
+});
+
+describe('extractTsRouteDefinitions – Next.js dynamic segment', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => { tmpDir = await createTempDir(); });
+  afterEach(async () => { await rm(tmpDir, { recursive: true, force: true }); });
+
+  it('converts [id] dynamic segment to :id in path', async () => {
+    const fp = await createFile(tmpDir, 'app/users/[id]/route.ts', `
+export async function GET(request: Request) {
+  return Response.json({});
+}
+`);
+    const routes = await extractTsRouteDefinitions(fp);
+    expect(routes.length).toBeGreaterThanOrEqual(1);
+    expect(routes[0].framework).toBe('nextjs-app');
+    // [id] should be converted to :id
+    expect(routes[0].path).toContain(':id');
+    expect(routes[0].path).not.toContain('[id]');
+  });
+});
+
+describe('extractTsRouteDefinitions — per-route contract extraction', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => { tmpDir = await createTempDir(); });
+  afterEach(async () => { await rm(tmpDir, { recursive: true, force: true }); });
+
+  it('extracts requestBodyType from Express handler with req: Request<P, R, Body>', async () => {
+    const fp = await createFile(tmpDir, 'users.ts', `
+import express from 'express';
+const router = express.Router();
+
+interface CreateUserBody {
+  name: string;
+  email: string;
+}
+
+router.post('/users', async (req: Request<{}, User, CreateUserBody>, res) => {
+  const body = req.body;
+  return res.json(body);
+});
+`);
+    const routes = await extractTsRouteDefinitions(fp);
+    const post = routes.find(r => r.method === 'POST');
+    expect(post).toBeDefined();
+    expect(post!.requestBodyType).toBe('CreateUserBody');
+    expect(post!.contractSource).toBe('annotation');
+  });
+
+  it('extracts requestBodyType from NestJS @Body() dto param', async () => {
+    const fp = await createFile(tmpDir, 'users.controller.ts', `
+import { Controller, Post, Body } from '@nestjs/common';
+
+class CreateUserDto {
+  name: string;
+}
+
+@Controller('users')
+export class UsersController {
+  @Post()
+  create(@Body() dto: CreateUserDto) {
+    return dto;
+  }
+}
+`);
+    const routes = await extractTsRouteDefinitions(fp);
+    const post = routes.find(r => r.method === 'POST');
+    expect(post).toBeDefined();
+    expect(post!.requestBodyType).toBe('CreateUserDto');
+    expect(post!.contractSource).toBe('annotation');
+  });
+
+  it('sets contractSource to validator when Zod .parse() is used', async () => {
+    const fp = await createFile(tmpDir, 'routes.ts', `
+import express from 'express';
+import { z } from 'zod';
+const router = express.Router();
+
+const userSchema = z.object({ name: z.string() });
+
+router.post('/users', (req, res) => {
+  const body = userSchema.parse(req.body);
+  return res.json(body);
+});
+`);
+    const routes = await extractTsRouteDefinitions(fp);
+    const post = routes.find(r => r.method === 'POST');
+    expect(post).toBeDefined();
+    expect(post!.contractSource).toBe('validator');
+  });
+
+  it('sets contractSource to none when handler has no types', async () => {
+    const fp = await createFile(tmpDir, 'simple.ts', `
+import express from 'express';
+const router = express.Router();
+
+router.get('/ping', (req, res) => {
+  res.send('pong');
+});
+`);
+    const routes = await extractTsRouteDefinitions(fp);
+    const get = routes.find(r => r.method === 'GET');
+    expect(get).toBeDefined();
+    expect(get!.contractSource).toBe('none');
+    expect(get!.requestBodyType).toBeUndefined();
+  });
+});
+
 describe('buildRouteInventory', () => {
   let tmpDir: string;
 

@@ -87,6 +87,55 @@ model Item {
   });
 });
 
+describe('extractSchemas – Drizzle variants', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => { tmpDir = await createTempDir(); });
+  afterEach(async () => { await rm(tmpDir, { recursive: true, force: true }); });
+
+  it('extracts a Drizzle mysqlTable definition', async () => {
+    const fp = await createFile(tmpDir, 'schema-mysql.ts', `
+import { mysqlTable, serial, varchar, int } from 'drizzle-orm/mysql-core';
+
+export const orders = mysqlTable('orders', {
+  id: serial('id').primaryKey(),
+  customerId: int('customer_id').notNull(),
+  status: varchar('status', { length: 50 }),
+  createdAt: varchar('created_at', { length: 30 }),
+});
+`);
+    const tables = await extractSchemas([fp], tmpDir);
+    expect(tables).toHaveLength(1);
+    expect(tables[0].name).toBe('orders');
+    expect(tables[0].orm).toBe('drizzle');
+    const fields = tables[0].fields.map(f => f.name);
+    expect(fields).toContain('id');
+    expect(fields).toContain('customerId');
+    expect(fields).toContain('status');
+    expect(fields).not.toContain('createdAt');
+  });
+
+  it('extracts a Drizzle sqliteTable definition', async () => {
+    const fp = await createFile(tmpDir, 'schema-sqlite.ts', `
+import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+
+export const notes = sqliteTable('notes', {
+  id: integer('id').primaryKey(),
+  content: text('content').notNull(),
+  updatedAt: text('updated_at'),
+});
+`);
+    const tables = await extractSchemas([fp], tmpDir);
+    expect(tables).toHaveLength(1);
+    expect(tables[0].name).toBe('notes');
+    expect(tables[0].orm).toBe('drizzle');
+    const fields = tables[0].fields.map(f => f.name);
+    expect(fields).toContain('id');
+    expect(fields).toContain('content');
+    expect(fields).not.toContain('updatedAt');
+  });
+});
+
 describe('extractSchemas – Drizzle', () => {
   let tmpDir: string;
 
@@ -150,6 +199,38 @@ export class User {
     expect(fields).toContain('name');
     expect(fields).not.toContain('updatedAt');
   });
+
+  it('excludes @CreateDateColumn and @UpdateDateColumn as audit fields', async () => {
+    const fp = await createFile(tmpDir, 'post.entity.ts', `
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+
+@Entity()
+export class Post {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Column()
+  title: string;
+
+  @Column()
+  body: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+}
+`);
+    const tables = await extractSchemas([fp], tmpDir);
+    expect(tables).toHaveLength(1);
+    const fields = tables[0].fields.map(f => f.name);
+    expect(fields).toContain('title');
+    expect(fields).toContain('body');
+    // Audit fields should be excluded
+    expect(fields).not.toContain('createdAt');
+    expect(fields).not.toContain('updatedAt');
+  });
 });
 
 describe('extractSchemas – SQLAlchemy', () => {
@@ -181,6 +262,30 @@ class Product(Base):
     expect(fields).toContain('name');
     // audit field excluded
     expect(fields).not.toContain('created_at');
+  });
+
+  it('extracts a SQLAlchemy model using mapped_column() syntax (without type annotation)', async () => {
+    const fp = await createFile(tmpDir, 'models2.py', `
+from sqlalchemy.orm import DeclarativeBase, mapped_column
+from sqlalchemy import Integer, String
+
+class Category(DeclarativeBase):
+    __tablename__ = 'categories'
+    id = mapped_column(Integer, primary_key=True)
+    label = mapped_column(String(100), nullable=False)
+    description = mapped_column(String, nullable=True)
+    updated_at = mapped_column(String)
+`);
+    const tables = await extractSchemas([fp], tmpDir);
+    expect(tables).toHaveLength(1);
+    expect(tables[0].name).toBe('Category');
+    expect(tables[0].orm).toBe('sqlalchemy');
+    const fields = tables[0].fields.map(f => f.name);
+    expect(fields).toContain('id');
+    expect(fields).toContain('label');
+    expect(fields).toContain('description');
+    // audit field excluded
+    expect(fields).not.toContain('updated_at');
   });
 });
 

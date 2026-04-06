@@ -58,6 +58,7 @@ import {
   handleGetFunctionBody,
   handleGetDecisions,
   handleGetRouteInventory,
+  handleGetMiddlewareInventory,
 } from '../../core/services/mcp-handlers/analysis.js';
 
 // Re-export utilities for tests
@@ -86,6 +87,7 @@ export {
   handleCheckSpecDrift,
   handleGetFunctionSkeleton,
   handleGetRouteInventory,
+  handleGetMiddlewareInventory,
 };
 
 // ============================================================================
@@ -754,6 +756,24 @@ export const TOOL_DEFINITIONS = [
       required: ['directory'],
     },
   },
+  {
+    name: 'get_middleware_inventory',
+    description:
+      'Return the middleware inventory for the project: all detected middleware entries with ' +
+      'type (auth, cors, rate-limit, validation, logging, error-handler, custom), framework, ' +
+      'source file, line number, and name. ' +
+      'Reads the pre-computed middleware-inventory.json artifact when available, ' +
+      'otherwise scans source files live. ' +
+      'Supports Express, Hono, Fastify, NestJS, Next.js, and more. ' +
+      'Run analyze_codebase first for the fastest results.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+      },
+      required: ['directory'],
+    },
+  },
 ];
 
 // ============================================================================
@@ -893,6 +913,9 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
       } else if (name === 'get_route_inventory') {
         const { directory } = args as { directory: string };
         result = await handleGetRouteInventory(directory);
+      } else if (name === 'get_middleware_inventory') {
+        const { directory } = args as { directory: string };
+        result = await handleGetMiddlewareInventory(directory);
       } else {
         return {
           content: [{ type: 'text', text: `Unknown tool: ${name}` }],

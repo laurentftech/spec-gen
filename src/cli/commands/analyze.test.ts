@@ -61,6 +61,7 @@ vi.mock('../../core/analyzer/artifact-generator.js', () => ({
           uiComponents: [],
           schemas: [],
           routeInventory: { total: 0, byMethod: {}, byFramework: {}, routes: [] },
+          middleware: [],
         },
         llmContext: { callGraph: null },
       }),
@@ -80,6 +81,10 @@ vi.mock('../../core/analyzer/schema-extractor.js', () => ({
 vi.mock('../../core/analyzer/http-route-parser.js', () => ({
   buildRouteInventory: vi.fn().mockResolvedValue({ total: 0, byMethod: {}, byFramework: {}, routes: [] }),
   extractAllHttpEdges: vi.fn().mockResolvedValue({ calls: [], routes: [], edges: [] }),
+}));
+
+vi.mock('../../core/analyzer/middleware-extractor.js', () => ({
+  extractMiddleware: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../../core/analyzer/ai-config-generator.js', () => ({
