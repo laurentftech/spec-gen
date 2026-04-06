@@ -304,6 +304,7 @@ export function createUserService(): UserService {
         relatedRequirements: ['UserAuthentication', 'UserProfile'],
         confidence: 0.8,
         specAccuracyScore: 0.85,
+        requirementCoverageScore: 0.75,
         reasoning: 'The user spec clearly describes these operations',
       }));
 
@@ -335,8 +336,10 @@ export function createUserService(): UserService {
       expect(result.overallScore).toBeGreaterThanOrEqual(0);
       expect(result.overallScore).toBeLessThanOrEqual(1);
       expect(result.llmConfidence).toBe(0.8);
-      // LLM-as-judge: specAccuracyScore (0.85) should be used as purposeMatch.similarity
+      // LLM-as-judge: specAccuracyScore (0.85) → purposeMatch.similarity
       expect(result.purposeMatch.similarity).toBe(0.85);
+      // LLM-as-judge: requirementCoverageScore (0.75) → requirementCoverage.coverage
+      expect(result.requirementCoverage.coverage).toBe(0.75);
     });
 
     it('should fall back to Jaccard similarity when specAccuracyScore is absent', async () => {
@@ -648,9 +651,9 @@ export class PaymentService {}`;
       expect(zeroScore).toBe(0);
     });
 
-    // Weights: purpose 45%, imports 15%, exports 10%, requirements 30%.
+    // Weights: purpose 50%, requirements 35%, exports 10%, imports 5%.
     // Each sub-score is isolated to confirm its exact contribution.
-    it('should apply purpose weight of 45%', () => {
+    it('should apply purpose weight of 50%', () => {
       const engine = new SpecVerificationEngine(llmService, {
         rootPath: testDir,
         openspecPath: openspecDir,
@@ -664,10 +667,10 @@ export class PaymentService {}`;
         { coverage: 0 }
       );
 
-      expect(score).toBeCloseTo(0.45, 5);
+      expect(score).toBeCloseTo(0.50, 5);
     });
 
-    it('should apply imports weight of 15%', () => {
+    it('should apply imports weight of 5%', () => {
       const engine = new SpecVerificationEngine(llmService, {
         rootPath: testDir,
         openspecPath: openspecDir,
@@ -681,10 +684,10 @@ export class PaymentService {}`;
         { coverage: 0 }
       );
 
-      expect(score).toBeCloseTo(0.15, 5);
+      expect(score).toBeCloseTo(0.05, 5);
     });
 
-    it('should apply requirements weight of 30%', () => {
+    it('should apply requirements weight of 35%', () => {
       const engine = new SpecVerificationEngine(llmService, {
         rootPath: testDir,
         openspecPath: openspecDir,
@@ -698,7 +701,7 @@ export class PaymentService {}`;
         { coverage: 1.0 }
       );
 
-      expect(score).toBeCloseTo(0.30, 5);
+      expect(score).toBeCloseTo(0.35, 5);
     });
 
     it('should apply export weight of 10%', () => {
@@ -719,7 +722,7 @@ export class PaymentService {}`;
     });
 
     it('should allow passing with all dimensions contributing', () => {
-      // With purpose=1, imports=1, exports=0, requirements=1: 0.45+0.15+0+0.30 = 0.90
+      // With purpose=1, imports=1, exports=0, requirements=1: 0.50+0.05+0+0.35 = 0.90
       const engine = new SpecVerificationEngine(llmService, {
         rootPath: testDir,
         openspecPath: openspecDir,

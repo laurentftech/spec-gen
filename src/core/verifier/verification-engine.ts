@@ -43,6 +43,8 @@ export interface FilePrediction {
   confidence: number;
   /** LLM-as-judge score: how accurately does the spec describe this file (0.0–1.0) */
   specAccuracyScore?: number;
+  /** LLM-as-judge score: fraction of this file's behavior covered by spec requirements (0.0–1.0) */
+  requirementCoverageScore?: number;
   reasoning: string;
 }
 
@@ -461,7 +463,7 @@ export class SpecVerificationEngine {
     const purposeMatch = this.comparePurpose(prediction.predictedPurpose, fileContent, prediction.specAccuracyScore);
     const importMatch = this.analyzeImportCoverage(fileAnalysis.imports.map(i => i.source), candidate.domain);
     const exportMatch = this.compareExports(prediction.predictedExports, fileAnalysis.exports.map(e => e.name));
-    const requirementCoverage = this.analyzeRequirementCoverage(candidate.domain, fileContent);
+    const requirementCoverage = this.analyzeRequirementCoverage(candidate.domain, fileContent, prediction.requirementCoverageScore);
 
     // Calculate overall score
     const overallScore = this.calculateOverallScore(purposeMatch, importMatch, exportMatch, requirementCoverage);
@@ -523,7 +525,9 @@ export class SpecVerificationEngine {
       : '';
 
     const judgeInstruction = fileContent
-      ? `\nAlso set "specAccuracyScore" to a float 0.0–1.0 measuring how accurately the spec above describes this specific file's purpose and behavior (1.0 = spec perfectly describes this file, 0.0 = spec is irrelevant).`
+      ? `\nAlso set:
+- "specAccuracyScore": float 0.0–1.0 — how accurately the spec describes this specific file's purpose and behavior (1.0 = spec perfectly describes this file, 0.0 = spec is irrelevant).
+- "requirementCoverageScore": float 0.0–1.0 — of the requirements in the spec that are relevant to THIS file specifically, what fraction does the file actually implement? Ignore requirements that clearly belong to other files in the domain.`
       : '';
 
     const userPrompt = `Here are the specifications:
@@ -545,6 +549,7 @@ Respond in JSON:
   "relatedRequirements": ["RequirementName1", "RequirementName2"],
   "confidence": 0.0-1.0,
   "specAccuracyScore": 0.0-1.0,
+  "requirementCoverageScore": 0.0-1.0,
   "reasoning": "..."
 }`;
 
@@ -564,6 +569,7 @@ Respond in JSON:
         relatedRequirements: prediction.relatedRequirements ?? [],
         confidence: prediction.confidence ?? 0.5,
         specAccuracyScore: typeof prediction.specAccuracyScore === 'number' ? prediction.specAccuracyScore : undefined,
+        requirementCoverageScore: typeof prediction.requirementCoverageScore === 'number' ? prediction.requirementCoverageScore : undefined,
         reasoning: prediction.reasoning ?? '',
       };
     } catch (error) {
@@ -806,17 +812,34 @@ Respond in JSON:
   }
 
   /**
-   * Analyze requirement coverage using spec requirement descriptions rather than
-   * LLM-predicted requirement names. For each requirement in the domain spec,
-   * check whether its description keywords appear in the file content.
+   * Analyze requirement coverage.
+   *
+   * When llmScore is provided (LLM-as-judge), it is used directly — the LLM
+   * has seen both the spec and the file and scores only the requirements
+   * relevant to this specific file, avoiding the false penalty of a domain
+   * spec covering many files where each file implements only a small subset.
+   *
+   * Falls back to keyword matching when no LLM score is available.
    */
-  private analyzeRequirementCoverage(domain: string, fileContent: string): RequirementCoverage {
+  private analyzeRequirementCoverage(domain: string, fileContent: string, llmScore?: number): RequirementCoverage {
     const spec = this.specs.find(s => s.domain === domain);
     if (!spec) {
       return { relatedRequirements: [], actuallyImplements: [], coverage: 0 };
     }
 
     const requirements = this.parseSpecRequirements(spec.content);
+    const relatedRequirements = requirements.map(r => r.name);
+
+    // LLM-as-judge: use the score directly, synthesize actuallyImplements proportionally
+    if (typeof llmScore === 'number') {
+      const implementedCount = Math.round(llmScore * requirements.length);
+      return {
+        relatedRequirements,
+        actuallyImplements: relatedRequirements.slice(0, implementedCount),
+        coverage: llmScore,
+      };
+    }
+
     if (requirements.length === 0) {
       return { relatedRequirements: [], actuallyImplements: [], coverage: 0 };
     }
@@ -825,8 +848,6 @@ Respond in JSON:
     const actuallyImplements: string[] = [];
 
     for (const req of requirements) {
-      // Use description keywords (from the "The system SHALL ..." line) for matching.
-      // Fall back to the requirement name if no description was found.
       const source = req.description.length > 0 ? req.description : req.name;
       const keywords = source
         .toLowerCase()
@@ -836,15 +857,12 @@ Respond in JSON:
 
       if (keywords.length === 0) continue;
       const matched = keywords.filter(w => contentLower.includes(w));
-      // Require at least half the keywords to match
       if (matched.length >= Math.ceil(keywords.length * 0.5)) {
         actuallyImplements.push(req.name);
       }
     }
 
     const coverage = actuallyImplements.length / requirements.length;
-    const relatedRequirements = requirements.map(r => r.name);
-
     return { relatedRequirements, actuallyImplements, coverage };
   }
 
@@ -858,17 +876,16 @@ Respond in JSON:
     requirementCoverage: RequirementCoverage
   ): number {
     // Weighted combination (total = 1.0):
-    //   Purpose:      45%  — semantic similarity of LLM-predicted vs actual purpose
-    //   Imports:      15%  — fraction of actual imports whose module name appears in spec
-    //                        (spec-completeness check, not LLM prediction)
+    //   Purpose:      50%  — LLM-as-judge: how well the spec describes this file
+    //   Requirements: 35%  — LLM-as-judge: fraction of file-relevant requirements covered
+    //   Imports:       5%  — fraction of actual imports mentioned in spec
+    //                        (low weight: library deps are never in specs, so ceiling ~20%)
     //   Exports:      10%  — F1 of LLM-predicted vs actual exports
-    //   Requirements: 30%  — fraction of spec requirements whose description keywords
-    //                        appear in the file (parsed directly from spec markdown)
     return (
-      purposeMatch.similarity * 0.45 +
-      importMatch.f1Score * 0.15 +
-      exportMatch.f1Score * 0.10 +
-      requirementCoverage.coverage * 0.30
+      purposeMatch.similarity * 0.50 +
+      requirementCoverage.coverage * 0.35 +
+      importMatch.f1Score * 0.05 +
+      exportMatch.f1Score * 0.10
     );
   }
 
