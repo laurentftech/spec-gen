@@ -611,42 +611,42 @@ describe('inferTestAnnotation (via generateSpecs)', () => {
   it('emits tags=smoke for a successful scenario', () => {
     const specs = generateOpenSpecs(makeResult('SuccessfulLogin', 'user is logged in'));
     const domain = specs.find(s => s.type === 'domain')!;
-    const block = getScenarioBlock(domain.content, 'Successfullogin');
+    const block = getScenarioBlock(domain.content, 'SuccessfulLogin');
     expect(block).toContain('tags=smoke');
   });
 
   it('emits tags=regression for an invalid-credentials scenario', () => {
     const specs = generateOpenSpecs(makeResult('InvalidCredentials', 'returns error 401'));
     const domain = specs.find(s => s.type === 'domain')!;
-    const block = getScenarioBlock(domain.content, 'Invalidcredentials');
+    const block = getScenarioBlock(domain.content, 'InvalidCredentials');
     expect(block).toContain('tags=regression');
   });
 
   it('emits priority=high for an auth scenario', () => {
     const specs = generateOpenSpecs(makeResult('LoginWithJwt', 'token is returned'));
     const domain = specs.find(s => s.type === 'domain')!;
-    const block = getScenarioBlock(domain.content, 'Loginwithjwt');
+    const block = getScenarioBlock(domain.content, 'LoginWithJwt');
     expect(block).toContain('priority=high');
   });
 
   it('emits priority=low for a deprecated scenario', () => {
     const specs = generateOpenSpecs(makeResult('LegacyEndpointBackcompat', 'old format accepted'));
     const domain = specs.find(s => s.type === 'domain')!;
-    const block = getScenarioBlock(domain.content, 'Legacyendpointbackcompat');
+    const block = getScenarioBlock(domain.content, 'LegacyEndpointBackcompat');
     expect(block).toContain('priority=low');
   });
 
   it('emits no annotation for a generic scenario', () => {
     const specs = generateOpenSpecs(makeResult('ProcessData', 'data is processed'));
     const domain = specs.find(s => s.type === 'domain')!;
-    const block = getScenarioBlock(domain.content, 'Processdata');
+    const block = getScenarioBlock(domain.content, 'ProcessData');
     expect(block).not.toContain('spec-gen-test');
   });
 
   it('annotation appears between heading and GIVEN bullet', () => {
     const specs = generateOpenSpecs(makeResult('SuccessfulCreation', 'resource is created'));
     const domain = specs.find(s => s.type === 'domain')!;
-    const block = getScenarioBlock(domain.content, 'Successfulcreation');
+    const block = getScenarioBlock(domain.content, 'SuccessfulCreation');
     const lines = block.split('\n');
     const annotationIdx = lines.findIndex(l => l.includes('spec-gen-test'));
     const givenIdx = lines.findIndex(l => l.includes('**GIVEN**'));
