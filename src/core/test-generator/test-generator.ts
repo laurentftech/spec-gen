@@ -174,14 +174,28 @@ function outputFilename(
  * Generate test files from parsed scenarios.
  * Groups by (domain, requirement) → one file per requirement.
  */
+const PRIORITY_ORDER: Record<string, number> = { high: 0, normal: 1, low: 2 };
+
+/**
+ * Generate test files from parsed scenarios.
+ * Groups by (domain, requirement) → one file per requirement.
+ * Scenarios are sorted by priority (high → normal → low) before grouping
+ * so that high-priority groups appear first and consume LLM budget first
+ * when --limit is in effect upstream.
+ */
 export async function generateTests(
   opts: GenerateTestsOptions
 ): Promise<GeneratedTestFile[]> {
   const { scenarios, framework, outputDir, rootPath, useLlm, llm } = opts;
 
-  // Group scenarios by domain + requirement (preserving order)
+  // Sort by priority so high-priority scenarios / requirements come first
+  const sorted = [...scenarios].sort(
+    (a, b) => (PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1)
+  );
+
+  // Group scenarios by domain + requirement (preserving sorted order)
   const groups = new Map<string, ParsedScenario[]>();
-  for (const s of scenarios) {
+  for (const s of sorted) {
     const key = `${s.domain}::${s.requirement}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(s);

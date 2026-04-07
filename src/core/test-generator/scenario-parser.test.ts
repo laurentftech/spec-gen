@@ -144,6 +144,60 @@ describe('parseScenarios', () => {
     expect(domains.has('tasks')).toBe(true);
   });
 
+  it('sets default annotation fields (skip=false, tags=[], priority=normal)', async () => {
+    await createFixture(tmpDir, { auth: AUTH_SPEC });
+
+    const result = await parseScenarios({ rootPath: tmpDir });
+    for (const s of result) {
+      expect(s.skip).toBe(false);
+      expect(s.tags).toEqual([]);
+      expect(s.priority).toBe('normal');
+    }
+  });
+
+  it('excludes domains via excludeDomains', async () => {
+    await createFixture(tmpDir, { auth: AUTH_SPEC, tasks: TASKS_SPEC });
+
+    const result = await parseScenarios({ rootPath: tmpDir, excludeDomains: ['auth'] });
+    expect(result.every((s) => s.domain === 'tasks')).toBe(true);
+  });
+
+  it('parses skip annotation', async () => {
+    const ANNOTATED_SPEC = `# Test Spec\n\n## Requirements\n\n### Requirement: Req\n\n#### Scenario: Skipped\n<!-- spec-gen-test: skip reason="deprecated" -->\n- **GIVEN** something\n- **WHEN** something\n- **THEN** something\n\n#### Scenario: Active\n- **GIVEN** something\n- **WHEN** something\n- **THEN** something\n`;
+    await createFixture(tmpDir, { demo: ANNOTATED_SPEC });
+
+    const result = await parseScenarios({ rootPath: tmpDir });
+    expect(result.map((s) => s.scenarioName)).toEqual(['Active']);
+  });
+
+  it('includes skipped scenarios when includeSkipped=true', async () => {
+    const ANNOTATED_SPEC = `# Test Spec\n\n## Requirements\n\n### Requirement: Req\n\n#### Scenario: Skipped\n<!-- spec-gen-test: skip reason="deprecated" -->\n- **GIVEN** something\n- **WHEN** something\n- **THEN** something\n`;
+    await createFixture(tmpDir, { demo: ANNOTATED_SPEC });
+
+    const result = await parseScenarios({ rootPath: tmpDir, includeSkipped: true });
+    expect(result).toHaveLength(1);
+    expect(result[0].skip).toBe(true);
+    expect(result[0].skipReason).toBe('deprecated');
+  });
+
+  it('parses priority and tags annotations', async () => {
+    const ANNOTATED_SPEC = `# Test Spec\n\n## Requirements\n\n### Requirement: Req\n\n#### Scenario: HighPrio\n<!-- spec-gen-test: priority=high tags=smoke,regression -->\n- **GIVEN** something\n- **WHEN** something\n- **THEN** something\n`;
+    await createFixture(tmpDir, { demo: ANNOTATED_SPEC });
+
+    const result = await parseScenarios({ rootPath: tmpDir });
+    expect(result[0].priority).toBe('high');
+    expect(result[0].tags).toEqual(['smoke', 'regression']);
+  });
+
+  it('filters by tags', async () => {
+    const ANNOTATED_SPEC = `# Test Spec\n\n## Requirements\n\n### Requirement: Req\n\n#### Scenario: Tagged\n<!-- spec-gen-test: tags=smoke -->\n- **GIVEN** something\n- **WHEN** something\n- **THEN** something\n\n#### Scenario: Untagged\n- **GIVEN** something\n- **WHEN** something\n- **THEN** something\n`;
+    await createFixture(tmpDir, { demo: ANNOTATED_SPEC });
+
+    const result = await parseScenarios({ rootPath: tmpDir, tags: ['smoke'] });
+    expect(result).toHaveLength(1);
+    expect(result[0].scenarioName).toBe('Tagged');
+  });
+
   it('sets empty mappedFunctions when no mapping.json', async () => {
     await createFixture(tmpDir, { auth: AUTH_SPEC });
 

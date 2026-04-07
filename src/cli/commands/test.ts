@@ -131,6 +131,8 @@ export const testCommand = new Command('test')
     'auto'
   )
   .option('--domains <list>', 'Only generate tests for specific domains (comma-separated)', parseList)
+  .option('--exclude-domains <list>', 'Skip these domains (comma-separated)', parseList)
+  .option('--tags <list>', 'Only include scenarios carrying ALL these tags (comma-separated)', parseList)
   .option('--output <path>', 'Output directory for generated tests', 'spec-tests')
   .option('--merge', 'Append new scenarios to existing test files', false)
   .option('--dry-run', 'Preview what would be generated without writing files', false)
@@ -152,6 +154,8 @@ Examples:
   $ spec-gen test --framework gtest            Generate Google Test (C++) tests
   $ spec-gen test --framework catch2           Generate Catch2 (C++) tests
   $ spec-gen test --domains auth,tasks         Only for specific domains
+  $ spec-gen test --exclude-domains database   Skip a domain
+  $ spec-gen test --tags smoke,regression      Only scenarios tagged smoke AND regression
   $ spec-gen test --dry-run                    Preview without writing
   $ spec-gen test --use-llm                    Enrich assertions via LLM
   $ spec-gen test --merge                      Append new scenarios to existing files
@@ -183,6 +187,8 @@ This tag enables coverage tracking even when tests are moved between files.
     const useLlm: boolean = opts.useLlm ?? false;
     const isJson: boolean = opts.json ?? false;
     const domains: string[] = opts.domains ?? [];
+    const excludeDomains: string[] = opts.excludeDomains ?? [];
+    const tags: string[] = opts.tags ?? [];
     const testDirs: string[] = opts.testDirs ?? ['spec-tests', 'src'];
     const outputDir: string = opts.output ?? 'spec-tests';
     const limit: number | undefined = opts.limit ? parseInt(opts.limit, 10) : undefined;
@@ -271,6 +277,8 @@ This tag enables coverage tracking even when tests are moved between files.
       const scenarios = await parseScenarios({
         rootPath,
         domains: domains.length > 0 ? domains : undefined,
+        excludeDomains: excludeDomains.length > 0 ? excludeDomains : undefined,
+        tags: tags.length > 0 ? tags : undefined,
         limit,
       });
 

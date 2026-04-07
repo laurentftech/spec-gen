@@ -23,6 +23,69 @@ import { fileExists } from '../../utils/command-helpers.js';
 import type { ParsedScenario, FunctionRef } from '../../types/test-generator.js';
 
 // ============================================================================
+// ANNOTATION PARSER  (<!-- spec-gen-test: key=value key=value ... -->)
+// ============================================================================
+
+interface ScenarioAnnotation {
+  skip: boolean;
+  skipReason?: string;
+  tags: string[];
+  priority: 'high' | 'normal' | 'low';
+}
+
+const DEFAULT_ANNOTATION: ScenarioAnnotation = {
+  skip: false,
+  tags: [],
+  priority: 'normal',
+};
+
+/**
+ * Parse a `<!-- spec-gen-test: ... -->` comment immediately following a
+ * `#### Scenario:` heading. Returns default values if no annotation present.
+ *
+ * Supported keys:
+ *   skip              flag (presence = true)
+ *   skip=true|false
+ *   reason="…"        skip reason (only meaningful when skip is set)
+ *   tags=smoke,regression
+ *   priority=high|normal|low
+ */
+function parseAnnotation(lines: string[]): ScenarioAnnotation {
+  // Look at the first few non-empty body lines for an HTML comment annotation
+  for (const line of lines.slice(0, 3)) {
+    const trimmed = line.trim();
+    const m = trimmed.match(/^<!--\s*spec-gen-test:\s*(.*?)\s*-->$/i);
+    if (!m) continue;
+
+    const raw = m[1];
+    const result: ScenarioAnnotation = { skip: false, tags: [], priority: 'normal' };
+
+    // key=value pairs (value may be quoted)
+    const pairs = raw.matchAll(/(\w+)(?:=(?:"([^"]*?)"|([^\s"]+)))?/g);
+    for (const pair of pairs) {
+      const key = pair[1].toLowerCase();
+      const value = (pair[2] ?? pair[3] ?? '').trim();
+      switch (key) {
+        case 'skip':
+          result.skip = value === '' || value.toLowerCase() !== 'false';
+          break;
+        case 'reason':
+          result.skipReason = value;
+          break;
+        case 'tags':
+          result.tags = value.split(',').map((t) => t.trim()).filter(Boolean);
+          break;
+        case 'priority':
+          if (value === 'high' || value === 'low') result.priority = value;
+          break;
+      }
+    }
+    return result;
+  }
+  return { ...DEFAULT_ANNOTATION };
+}
+
+// ============================================================================
 // TYPES
 // ============================================================================
 
@@ -151,17 +214,27 @@ async function findSpecFiles(
 /**
  * Parse all scenarios from OpenSpec spec files.
  *
- * @param opts.rootPath   Project root (default: process.cwd())
- * @param opts.domains    If set, only parse these domains
- * @param opts.limit      Maximum number of scenarios to return
+ * @param opts.rootPath        Project root (default: process.cwd())
+ * @param opts.domains         If set, only parse these domains
+ * @param opts.excludeDomains  Skip these domains even if included above
+ * @param opts.tags            If set, only include scenarios that carry ALL these tags
+ * @param opts.limit           Maximum number of scenarios to return (applied after filters)
+ * @param opts.includeSkipped  If true, include scenarios marked skip=true (default: false)
  */
 export async function parseScenarios(opts: {
   rootPath?: string;
   domains?: string[];
+  excludeDomains?: string[];
+  tags?: string[];
   limit?: number;
+  includeSkipped?: boolean;
 }): Promise<ParsedScenario[]> {
   const rootPath = opts.rootPath ?? process.cwd();
   const specsDir = join(rootPath, OPENSPEC_DIR, OPENSPEC_SPECS_SUBDIR);
+  const excludeSet = new Set(
+    (opts.excludeDomains ?? []).map((d) => d.toLowerCase())
+  );
+  const requiredTags = opts.tags ?? [];
 
   const [specFiles, mappingMap] = await Promise.all([
     findSpecFiles(specsDir, opts.domains),
@@ -171,6 +244,8 @@ export async function parseScenarios(opts: {
   const scenarios: ParsedScenario[] = [];
 
   for (const { domain, path: specPath } of specFiles) {
+    // Domain-level exclusion
+    if (excludeSet.has(domain.toLowerCase())) continue;
     let content: string;
     try {
       content = await readFile(specPath, 'utf-8');
@@ -211,6 +286,18 @@ export async function parseScenarios(opts: {
           continue;
         }
 
+        // Parse inline annotation (<!-- spec-gen-test: ... -->)
+        const annotation = parseAnnotation(bodyLines);
+
+        // Filter: skipped scenarios (unless caller explicitly wants them)
+        if (annotation.skip && !opts.includeSkipped) continue;
+
+        // Filter: tag-based inclusion
+        if (requiredTags.length > 0) {
+          const hasAll = requiredTags.every((t) => annotation.tags.includes(t));
+          if (!hasAll) continue;
+        }
+
         scenarios.push({
           domain,
           specFile: specFileRel,
@@ -220,6 +307,10 @@ export async function parseScenarios(opts: {
           when,
           then,
           mappedFunctions: functions,
+          skip: annotation.skip,
+          skipReason: annotation.skipReason,
+          tags: annotation.tags,
+          priority: annotation.priority,
         });
 
         if (opts.limit && scenarios.length >= opts.limit) {

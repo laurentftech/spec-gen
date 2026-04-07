@@ -44,6 +44,12 @@ export interface ParsedScenario {
   when: string[];
   then: string[];
   mappedFunctions: FunctionRef[];
+
+  // Business-logic controls (from <!-- spec-gen-test: ... --> annotations)
+  skip: boolean;
+  skipReason?: string;
+  tags: string[];
+  priority: 'high' | 'normal' | 'low';
 }
 
 // ============================================================================
