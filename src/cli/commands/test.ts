@@ -20,7 +20,7 @@
 import { Command } from 'commander';
 import { join } from 'node:path';
 import { logger } from '../../utils/logger.js';
-import { parseList, formatDuration } from '../../utils/command-helpers.js';
+import { parseList, formatDuration, resolveLLMProvider } from '../../utils/command-helpers.js';
 import { readSpecGenConfig } from '../../core/services/config-manager.js';
 import { createLLMService } from '../../core/services/llm-service.js';
 import type { LLMService } from '../../core/services/llm-service.js';
@@ -31,7 +31,11 @@ import {
   analyzeTestCoverage,
   detectFramework,
 } from '../../core/test-generator/index.js';
-import type { TestFramework, TestCoverageReport, GeneratedTestFile } from '../../types/test-generator.js';
+import type {
+  TestFramework,
+  TestCoverageReport,
+  GeneratedTestFile,
+} from '../../types/test-generator.js';
 import {
   SPEC_GEN_DIR,
   SPEC_GEN_LOGS_SUBDIR,
@@ -61,9 +65,10 @@ function displayCoverageReport(report: TestCoverageReport, json: boolean): void 
   }
   console.log(`   Uncovered:          ${report.totalScenarios - report.coveredScenarios}`);
 
-  const thresholdSuffix = report.minCoverage !== undefined
-    ? `  (target: ${report.minCoverage}%) ${report.belowThreshold ? '✗ below threshold' : '✓'}`
-    : '';
+  const thresholdSuffix =
+    report.minCoverage !== undefined
+      ? `  (target: ${report.minCoverage}%) ${report.belowThreshold ? '✗ below threshold' : '✓'}`
+      : '';
   console.log(`   Effective coverage: ${report.coveragePercent}%${thresholdSuffix}`);
   console.log('');
   console.log('   By domain:');
@@ -111,7 +116,9 @@ function displayGenerationSummary(
   for (const file of files) {
     const scenCount = file.scenarios.length;
     const icon = file.isNew ? '+ ' : '~ ';
-    console.log(`     ${icon}${file.outputPath}  (${scenCount} scenario${scenCount !== 1 ? 's' : ''})`);
+    console.log(
+      `     ${icon}${file.outputPath}  (${scenCount} scenario${scenCount !== 1 ? 's' : ''})`
+    );
   }
 
   console.log('');
@@ -129,9 +136,17 @@ export const testCommand = new Command('test')
     'Test framework: vitest | playwright | pytest | gtest | catch2 | auto',
     'auto'
   )
-  .option('--domains <list>', 'Only generate tests for specific domains (comma-separated)', parseList)
+  .option(
+    '--domains <list>',
+    'Only generate tests for specific domains (comma-separated)',
+    parseList
+  )
   .option('--exclude-domains <list>', 'Skip these domains (comma-separated)', parseList)
-  .option('--tags <list>', 'Only include scenarios carrying ALL these tags (comma-separated)', parseList)
+  .option(
+    '--tags <list>',
+    'Only include scenarios carrying ALL these tags (comma-separated)',
+    parseList
+  )
   .option('--output <path>', 'Output directory for generated tests', 'spec-tests')
   .option('--merge', 'Append new scenarios to existing test files', false)
   .option('--dry-run', 'Preview what would be generated without writing files', false)
@@ -139,9 +154,17 @@ export const testCommand = new Command('test')
   .option('--limit <n>', 'Maximum number of scenarios to process')
   // Coverage options
   .option('--coverage', 'Show spec test coverage report instead of generating', false)
-  .option('--discover', 'Semantically match existing tests to uncovered scenarios (requires --use-llm)', false)
+  .option(
+    '--discover',
+    'Semantically match existing tests to uncovered scenarios (requires --use-llm)',
+    false
+  )
   .option('--min-coverage <n>', 'Fail if effective coverage is below N% (for CI)')
-  .option('--test-dirs <list>', 'Directories to scan for tests (default: spec-tests,src)', parseList)
+  .option(
+    '--test-dirs <list>',
+    'Directories to scan for tests (default: spec-tests,src)',
+    parseList
+  )
   // Shared
   .option('--json', 'Output JSON (for CI / scripting)', false)
   .addHelpText(
@@ -191,7 +214,9 @@ This tag enables coverage tracking even when tests are moved between files.
     const testDirs: string[] = opts.testDirs ?? ['spec-tests', 'src'];
     const outputDir: string = opts.output ?? 'spec-tests';
     const limit: number | undefined = opts.limit ? parseInt(opts.limit, 10) : undefined;
-    const minCoverage: number | undefined = opts.minCoverage ? parseFloat(opts.minCoverage) : undefined;
+    const minCoverage: number | undefined = opts.minCoverage
+      ? parseFloat(opts.minCoverage)
+      : undefined;
 
     // ── Validate ──────────────────────────────────────────────────────────
     if (!isJson) logger.section('Spec-Driven Tests');
@@ -207,27 +232,32 @@ This tag enables coverage tracking even when tests are moved between files.
     let llm: LLMService | undefined;
     if (useLlm || isDiscover) {
       const config = await readSpecGenConfig(rootPath);
-      const anthropicKey = process.env.ANTHROPIC_API_KEY;
-      const openaiKey = process.env.OPENAI_API_KEY;
+      const resolved = resolveLLMProvider(config ?? undefined);
 
-      if (!anthropicKey && !openaiKey) {
-        logger.error('--use-llm and --discover require an API key.');
-        logger.discovery('Set ANTHROPIC_API_KEY or OPENAI_API_KEY.');
+      if (!resolved) {
+        logger.error('--use-llm and --discover require an API key or LLM configuration.');
+        logger.discovery(
+          'Set ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENAI_COMPAT_API_KEY, or OPENAI_API_KEY,'
+        );
+        logger.discovery(
+          'or configure a no-key provider (claude-code, mistral-vibe, copilot, gemini-cli, cursor-agent) in .spec-gen/config.json'
+        );
         process.exitCode = 1;
         return;
       }
 
       try {
-        const provider = anthropicKey ? 'anthropic' : 'openai';
         llm = createLLMService({
-          provider,
+          provider: resolved.provider,
+          openaiCompatBaseUrl: resolved.openaiCompatBaseUrl,
           apiBase: globalOpts.apiBase ?? config?.llm?.apiBase,
-          sslVerify: globalOpts.insecure != null ? !globalOpts.insecure : config?.llm?.sslVerify ?? true,
+          sslVerify:
+            globalOpts.insecure != null ? !globalOpts.insecure : (config?.llm?.sslVerify ?? true),
           enableLogging: true,
           logDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_LOGS_SUBDIR),
         });
         if (!isJson && verbose) {
-          logger.discovery(`LLM enabled (${provider})`);
+          logger.discovery(`LLM enabled (${resolved.provider})`);
         }
       } catch (err) {
         logger.error(`LLM setup failed: ${(err as Error).message}`);
@@ -362,7 +392,7 @@ This tag enables coverage tracking even when tests are moved between files.
         if (!isDryRun) {
           logger.success(
             `Generated ${files.length} test file${files.length !== 1 ? 's' : ''} ` +
-            `in ${outputDir}/`
+              `in ${outputDir}/`
           );
           if (!quiet) {
             logger.discovery(`Run "spec-gen test --coverage" to check spec test coverage.`);
