@@ -14,6 +14,15 @@ To apply the plan, use the `spec-gen-execute-refactor` skill.
 
 ---
 
+## User-specified target — shortcut path
+
+If the user has already named a specific file or function to refactor:
+- **Skip** Steps 2, 3, and 3b (discovery is not needed).
+- **Do not skip** Steps 3c, 4, 5, 6, and 6b — coverage check and impact analysis are mandatory regardless of how the target was chosen.
+- Jump directly to Step 3c using the user-provided target.
+
+---
+
 ## Step 1 — Confirm the project directory
 
 Ask the user which project to analyze, or confirm the current workspace root.
@@ -158,7 +167,11 @@ For each candidate, note its role and strategy. Prefer candidates that already c
 
 ## Step 7 — Design the change sequence
 
-Design an ordered sequence of atomic changes based on the strategy from Step 4. Each change must specify:
+Design an ordered sequence of atomic changes based on the strategy from Step 4.
+
+**Each change is a complete unit: edit → verify diff → run tests → mark done. Tests are not a final gate; they are a mandatory sub-step after every single change. Write the plan to reflect this explicitly.**
+
+Each change must specify:
 
 - **What**: the exact block to move (line range or description)
 - **New name**: the function or method name to give it

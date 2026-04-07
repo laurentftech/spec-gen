@@ -28,13 +28,15 @@ Extract and display a summary:
 
 **Ask the user to confirm before proceeding.**
 
+> **Execution mode**: once confirmed, execute all changes in the plan **without asking for permission between steps**. The only valid reasons to pause mid-execution are: (a) a test fails, (b) you detect potentially lost code (`git diff` shows far more deletions than additions with no new file), or (c) Step 6 is explicitly requested. Any other pause is non-compliant with this skill.
+
 ---
 
 ## Step 2 — Establish a green baseline
 
 Confirm the test suite is passing using the test command from the plan.
 
-**If tests are already failing, stop and tell the user.** Do not refactor on a red baseline.
+**If tests are already failing, stop and tell the user. Under no circumstances continue on a red baseline — not even if the failures appear pre-existing.** Pre-existing failures must be fixed or explicitly acknowledged in the plan before any refactoring starts. Do not offer to "proceed at your own risk" on a red baseline.
 
 If a coverage tool is available, run it on the target file and compare against the coverage baseline in the plan.
 
@@ -192,3 +194,5 @@ Only renames with `confidence: "llm"` should be proposed automatically. Flag `co
 - Always verify the diff before running tests
 - Never proceed to Step 6 without explicit user request
 - Always flag potentially lost code (deleted lines >> added lines with no new file created)
+- Never ask for confirmation between steps — only pause for failures or lost-code signals
+- Never continue on a red baseline, regardless of whether failures appear pre-existing
