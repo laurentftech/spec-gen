@@ -767,3 +767,98 @@ export async function handleAuditSpecCoverage(
     return { error: `Audit failed: ${err instanceof Error ? err.message : String(err)}` };
   }
 }
+
+// ============================================================================
+// TEST GENERATION HANDLERS
+// ============================================================================
+
+/**
+ * Generate spec-driven test files from OpenSpec scenarios.
+ */
+export async function handleGenerateTests(args: {
+  directory: string;
+  domains?: string[];
+  framework?: string;
+  useLlm?: boolean;
+  dryRun?: boolean;
+}): Promise<Record<string, unknown>> {
+  const absDir = await validateDirectory(args.directory);
+
+  const { parseScenarios, generateTests, writeTestFiles, detectFramework } =
+    await import('../../../core/test-generator/index.js');
+  const { FRAMEWORK_EXTENSIONS } = await import('../../../types/test-generator.js');
+  type TestFramework = keyof typeof FRAMEWORK_EXTENSIONS;
+
+  const scenarios = await parseScenarios({
+    rootPath: absDir,
+    domains: args.domains,
+  });
+
+  if (scenarios.length === 0) {
+    return { files: [], message: 'No scenarios found. Run "spec-gen generate" first.' };
+  }
+
+  // Resolve framework
+  let framework: TestFramework;
+  const valid = Object.keys(FRAMEWORK_EXTENSIONS) as TestFramework[];
+  if (!args.framework || args.framework === 'auto') {
+    framework = await detectFramework(absDir);
+  } else if (valid.includes(args.framework as TestFramework)) {
+    framework = args.framework as TestFramework;
+  } else {
+    return { error: `Unknown framework "${args.framework}". Valid: ${valid.join(', ')}` };
+  }
+
+  const files = await generateTests({
+    scenarios,
+    framework,
+    outputDir: 'spec-tests',
+    rootPath: absDir,
+    useLlm: args.useLlm ?? false,
+  });
+
+  const dryRun = args.dryRun ?? true; // MCP defaults to dry-run for safety
+  const writeResult = await writeTestFiles({
+    files,
+    rootPath: absDir,
+    dryRun,
+    merge: false,
+  });
+
+  return {
+    framework,
+    dryRun,
+    files: files.map((f) => ({
+      path: f.outputPath,
+      domain: f.domain,
+      scenarioCount: f.scenarios.length,
+      content: f.content,
+    })),
+    summary: writeResult,
+  };
+}
+
+/**
+ * Report spec test coverage for a project.
+ */
+export async function handleGetTestCoverage(args: {
+  directory: string;
+  domains?: string[];
+  discover?: boolean;
+  minCoverage?: number;
+}): Promise<Record<string, unknown>> {
+  const absDir = await validateDirectory(args.directory);
+
+  const { analyzeTestCoverage } = await import('../../../core/test-generator/index.js');
+
+  const report = await analyzeTestCoverage({
+    rootPath: absDir,
+    testDirs: ['spec-tests', 'src'],
+    domains: args.domains,
+    minCoverage: args.minCoverage,
+    // discover without LLM: tag-based only
+    discover: false,
+  });
+
+  return report as unknown as Record<string, unknown>;
+}

@@ -65,6 +65,8 @@ import {
   handleGetUIComponents,
   handleGetEnvVars,
   handleAuditSpecCoverage,
+  handleGenerateTests,
+  handleGetTestCoverage,
 } from '../../core/services/mcp-handlers/analysis.js';
 
 // Re-export utilities for tests
@@ -98,6 +100,8 @@ export {
   handleGetUIComponents,
   handleGetEnvVars,
   handleAuditSpecCoverage,
+  handleGenerateTests,
+  handleGetTestCoverage,
 };
 
 // ============================================================================
@@ -974,6 +978,75 @@ export const TOOL_DEFINITIONS = [
       required: ['directory'],
     },
   },
+  {
+    name: 'generate_tests',
+    description:
+      'Generate spec-driven test files from OpenSpec scenarios. ' +
+      'Supports vitest, playwright, pytest (Python), gtest and catch2 (C++). ' +
+      'A THEN clause pattern engine emits real assertions for common patterns ' +
+      '(HTTP status codes, property presence, error messages) without any LLM call. ' +
+      'Pass useLlm:true to enrich unmatched clauses using mapped function source. ' +
+      'Each generated test is tagged with a parseable spec-gen: metadata comment ' +
+      'that enables spec coverage tracking via get_test_coverage. ' +
+      'Defaults to dryRun:true — set dryRun:false to write files to disk.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: {
+          type: 'string',
+          description: 'Absolute path to the project directory',
+        },
+        domains: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Only generate tests for these spec domains (omit for all)',
+        },
+        framework: {
+          type: 'string',
+          enum: ['vitest', 'playwright', 'pytest', 'gtest', 'catch2', 'auto'],
+          description: 'Test framework (default: auto-detect from project files)',
+        },
+        useLlm: {
+          type: 'boolean',
+          description: 'Use LLM to fill in assertions the pattern engine cannot match',
+        },
+        dryRun: {
+          type: 'boolean',
+          description: 'Preview generated content without writing files (default: true)',
+        },
+      },
+      required: ['directory'],
+    },
+  },
+  {
+    name: 'get_test_coverage',
+    description:
+      'Report which OpenSpec scenarios have corresponding test coverage. ' +
+      'Scans test files for // spec-gen: {JSON} or # spec-gen: {JSON} metadata tags ' +
+      '(added automatically by generate_tests). ' +
+      'Returns coverage percentage by domain, a list of uncovered scenarios, ' +
+      'and flags domains where spec drift was detected. ' +
+      'Use minCoverage to enforce a CI coverage gate.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: {
+          type: 'string',
+          description: 'Absolute path to the project directory',
+        },
+        domains: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Only check these spec domains (omit for all)',
+        },
+        minCoverage: {
+          type: 'number',
+          description: 'Report belowThreshold:true if effective coverage is below this percentage',
+        },
+      },
+      required: ['directory'],
+    },
+  },
 ];
 
 // ============================================================================
@@ -1141,6 +1214,20 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
         const { directory, maxUncovered = 50, hubThreshold = 5 } =
           args as { directory: string; maxUncovered?: number; hubThreshold?: number };
         result = await handleAuditSpecCoverage(directory, maxUncovered, hubThreshold);
+      } else if (name === 'generate_tests') {
+        const { directory, domains, framework, useLlm, dryRun } =
+          args as {
+            directory: string;
+            domains?: string[];
+            framework?: string;
+            useLlm?: boolean;
+            dryRun?: boolean;
+          };
+        result = await handleGenerateTests({ directory, domains, framework, useLlm, dryRun });
+      } else if (name === 'get_test_coverage') {
+        const { directory, domains, minCoverage } =
+          args as { directory: string; domains?: string[]; minCoverage?: number };
+        result = await handleGetTestCoverage({ directory, domains, minCoverage });
       } else {
         return {
           content: [{ type: 'text', text: `Unknown tool: ${name}` }],
