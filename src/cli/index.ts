@@ -18,6 +18,7 @@ import { runCommand } from './commands/run.js';
 import { mcpCommand } from './commands/mcp.js';
 import { viewCommand } from './commands/view.js';
 import { doctorCommand } from './commands/doctor.js';
+import { setupCommand } from './commands/setup.js';
 import { configureLogger } from '../utils/logger.js';
 
 // Read version from package.json at runtime so it never drifts from the published version
@@ -116,5 +117,6 @@ program.addCommand(runCommand);
 program.addCommand(mcpCommand);
 program.addCommand(viewCommand);
 program.addCommand(doctorCommand);
+program.addCommand(setupCommand);
 
 program.parse();
