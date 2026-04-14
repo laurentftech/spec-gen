@@ -116,6 +116,8 @@ export interface GenerateApiOptions extends BaseOptions {
   sslVerify?: boolean;
   /** OpenAI-compatible base URL (for Mistral, Groq, Ollama, etc.) */
   openaiCompatBaseUrl?: string;
+  /** LLM request timeout in milliseconds. Default: 120000 (2 minutes) */
+  timeout?: number;
   /** Only generate specific domains */
   domains?: string[];
   /** Write mode for existing specs */
@@ -155,6 +157,8 @@ export interface VerifyApiOptions extends BaseOptions {
   openaiCompatBaseUrl?: string;
   /** Enable/disable SSL certificate verification. Default: true */
   sslVerify?: boolean;
+  /** LLM request timeout in milliseconds. Default: 120000 (2 minutes) */
+  timeout?: number;
   /** Number of files to sample for verification. Default: 5 */
   samples?: number;
   /** Minimum confidence score to pass. Default: 0.5 */
@@ -191,6 +195,8 @@ export interface DriftApiOptions extends BaseOptions {
   openaiCompatBaseUrl?: string;
   /** Enable/disable SSL certificate verification. Default: true */
   sslVerify?: boolean;
+  /** LLM request timeout in milliseconds. Default: 120000 (2 minutes) */
+  timeout?: number;
   /** Exit threshold severity. Default: 'warning' */
   failOn?: DriftSeverity;
   /** Maximum changed files to analyze. Default: 100 */
@@ -218,6 +224,8 @@ export interface RunApiOptions extends BaseOptions {
   sslVerify?: boolean;
   /** OpenAI-compatible base URL */
   openaiCompatBaseUrl?: string;
+  /** LLM request timeout in milliseconds. Default: 120000 (2 minutes) */
+  timeout?: number;
   /** Maximum files to analyze. Default: 500 */
   maxFiles?: number;
   /** Generate Architecture Decision Records */

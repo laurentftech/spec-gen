@@ -72,6 +72,7 @@ program
     'Custom LLM API base URL (for local/enterprise OpenAI-compatible servers)'
   )
   .option('--insecure', 'Disable SSL certificate verification (for internal/self-signed certs)')
+  .option('--timeout <ms>', 'LLM request timeout in milliseconds (default: 120000)', parseInt)
   .addHelpText(
     'after',
     `

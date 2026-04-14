@@ -171,6 +171,7 @@ To write tests, use the spec-gen-write-tests skill:
           apiBase: globalOpts.apiBase ?? config?.llm?.apiBase,
           sslVerify:
             globalOpts.insecure != null ? !globalOpts.insecure : (config?.llm?.sslVerify ?? true),
+          timeout: globalOpts.timeout ?? config?.generation?.timeout,
           enableLogging: true,
           logDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_LOGS_SUBDIR),
         });

@@ -42,6 +42,8 @@ export interface GenerationConfig {
   model?: string;
   openaiCompatBaseUrl?: string;
   skipSslVerify?: boolean;
+  /** LLM request timeout in milliseconds. Default: 120000 (2 minutes) */
+  timeout?: number;
   domains: string | string[];
 }
 

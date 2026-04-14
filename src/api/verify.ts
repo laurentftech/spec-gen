@@ -99,6 +99,7 @@ export async function specGenVerify(options: VerifyApiOptions = {}): Promise<Ver
       apiBase: options.apiBase ?? specGenConfig.llm?.apiBase,
       sslVerify: options.sslVerify ?? specGenConfig.llm?.sslVerify ?? true,
       openaiCompatBaseUrl: options.openaiCompatBaseUrl,
+      timeout: options.timeout ?? specGenConfig.generation?.timeout,
       enableLogging: true,
       logDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_LOGS_SUBDIR),
     });

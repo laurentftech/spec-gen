@@ -92,6 +92,7 @@ export async function specGenDrift(options: DriftApiOptions = {}): Promise<Drift
       apiBase: options.apiBase ?? specGenConfig.llm?.apiBase,
       openaiCompatBaseUrl: options.openaiCompatBaseUrl,
       sslVerify: options.sslVerify ?? specGenConfig.llm?.sslVerify ?? true,
+      timeout: options.timeout ?? specGenConfig.generation?.timeout,
       enableLogging: true,
       logDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_LOGS_SUBDIR),
     });

@@ -481,6 +481,7 @@ Each spec.md follows OpenSpec conventions:
           openaiCompatBaseUrl: effectiveBaseUrl,
           apiBase: globalOpts.apiBase ?? specGenConfig.llm?.apiBase,
           sslVerify: globalOpts.insecure != null ? !globalOpts.insecure : specGenConfig.llm?.sslVerify ?? true,
+          timeout: globalOpts.timeout ?? specGenConfig.generation?.timeout,
           enableLogging: true,
           logDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_LOGS_SUBDIR),
         });
