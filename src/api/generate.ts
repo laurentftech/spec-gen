@@ -180,6 +180,7 @@ export async function specGenGenerate(options: GenerateApiOptions = {}): Promise
       apiBase: options.apiBase ?? specGenConfig.llm?.apiBase,
       sslVerify,
       timeout: options.timeout ?? specGenConfig.generation?.timeout,
+      disableResponseFormat: specGenConfig.generation?.disableResponseFormat,
       enableLogging: true,
       logDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_LOGS_SUBDIR),
     });

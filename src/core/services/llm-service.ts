@@ -304,6 +304,8 @@ export interface LLMServiceOptions {
   logDir?: string;
   /** Enable prompt logging */
   enableLogging?: boolean;
+  /** Disable response_format field in requests (for endpoints that don't support it) */
+  disableResponseFormat?: boolean;
 }
 
 /**
@@ -611,7 +613,8 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   private parseError(error: string, status: number, retryAfterHeader?: string | null): Error & { status?: number; retryable?: boolean; retryAfterMs?: number } {
-    const err = new Error(error) as Error & { status?: number; retryable?: boolean; retryAfterMs?: number };
+    const detail = error.trim() || '(empty response body)';
+    const err = new Error(`HTTP ${status}: ${detail}`) as Error & { status?: number; retryable?: boolean; retryAfterMs?: number };
     err.status = status;
     err.retryable = status === 429 || status >= 500;
     if (status === 429) {
@@ -728,7 +731,8 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   private parseError(error: string, status: number, retryAfterHeader?: string | null): Error & { status?: number; retryable?: boolean; retryAfterMs?: number } {
-    const err = new Error(error) as Error & { status?: number; retryable?: boolean; retryAfterMs?: number };
+    const detail = error.trim() || '(empty response body)';
+    const err = new Error(`HTTP ${status}: ${detail}`) as Error & { status?: number; retryable?: boolean; retryAfterMs?: number };
     err.status = status;
     err.retryable = status === 429 || status >= 500;
     if (status === 429) {
@@ -765,11 +769,13 @@ export class OpenAICompatibleProvider implements LLMProvider {
   private apiKey: string;
   private model: string;
   private baseUrl: string;
+  private disableResponseFormat: boolean;
 
-  constructor(apiKey: string, baseUrl: string, model = DEFAULT_OPENAI_COMPAT_MODEL) {
+  constructor(apiKey: string, baseUrl: string, model = DEFAULT_OPENAI_COMPAT_MODEL, disableResponseFormat = false) {
     this.apiKey = apiKey;
     this.baseUrl = normalizeApiBase(baseUrl);
     this.model = model;
+    this.disableResponseFormat = disableResponseFormat;
   }
 
   countTokens(text: string): number {
@@ -855,16 +861,18 @@ export class OpenAICompatibleProvider implements LLMProvider {
       ...(request.stopSequences && { stop: request.stopSequences }),
     };
 
-    if (request.responseFormat === 'json' && request.jsonSchema) {
-      body.response_format = {
-        type: 'json_schema',
-        json_schema: {
-          name: 'response',
-          schema: wrapArraySchema(request.jsonSchema),
-        },
-      };
-    } else if (request.responseFormat === 'json') {
-      body.response_format = { type: 'json_object' };
+    if (!this.disableResponseFormat) {
+      if (request.responseFormat === 'json' && request.jsonSchema) {
+        body.response_format = {
+          type: 'json_schema',
+          json_schema: {
+            name: 'response',
+            schema: wrapArraySchema(request.jsonSchema),
+          },
+        };
+      } else if (request.responseFormat === 'json') {
+        body.response_format = { type: 'json_object' };
+      }
     }
 
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -878,7 +886,8 @@ export class OpenAICompatibleProvider implements LLMProvider {
 
     if (!response.ok) {
       const error = await response.text();
-      const err = new Error(error) as Error & { status?: number; retryable?: boolean; retryAfterMs?: number };
+      const detail = error.trim() || '(empty response body)';
+      const err = new Error(`HTTP ${response.status}: ${detail}`) as Error & { status?: number; retryable?: boolean; retryAfterMs?: number };
       err.status = response.status;
       err.retryable = response.status === 429 || response.status >= 500;
       if (response.status === 429) {
@@ -975,7 +984,8 @@ export class CopilotProvider implements LLMProvider {
 
     if (!response.ok) {
       const error = await response.text();
-      const err = new Error(error) as Error & { status?: number; retryable?: boolean; retryAfterMs?: number };
+      const detail = error.trim() || '(empty response body)';
+      const err = new Error(`HTTP ${response.status}: ${detail}`) as Error & { status?: number; retryable?: boolean; retryAfterMs?: number };
       err.status = response.status;
       err.retryable = response.status === 429 || response.status >= 500;
       if (response.status === 429) {
@@ -1240,7 +1250,8 @@ export class GeminiProvider implements LLMProvider {
 
     if (!response.ok) {
       const error = await response.text();
-      const err = new Error(error) as Error & { status?: number; retryable?: boolean; retryAfterMs?: number };
+      const detail = error.trim() || '(empty response body)';
+      const err = new Error(`HTTP ${response.status}: ${detail}`) as Error & { status?: number; retryable?: boolean; retryAfterMs?: number };
       err.status = response.status;
       err.retryable = response.status === 429 || response.status >= 500;
       if (response.status === 429) {
@@ -1382,6 +1393,7 @@ export class LLMService {
       costWarningThreshold: options.costWarningThreshold ?? DEFAULT_LLM_COST_WARNING_THRESHOLD,
       logDir: options.logDir ?? `${SPEC_GEN_DIR}/${SPEC_GEN_LOGS_SUBDIR}`,
       enableLogging: options.enableLogging ?? false,
+      disableResponseFormat: options.disableResponseFormat ?? false,
     };
     this.retryConfig = {
       maxRetries: this.options.maxRetries,
@@ -1756,7 +1768,7 @@ export function createLLMService(options: LLMServiceOptions = {}): LLMService {
     if (!baseUrl) {
       throw new Error('openaiCompatBaseUrl must be set in config or OPENAI_COMPAT_BASE_URL env var (e.g. https://api.mistral.ai/v1)');
     }
-    provider = new OpenAICompatibleProvider(apiKey, baseUrl, options.model ?? DEFAULT_OPENAI_COMPAT_MODEL);
+    provider = new OpenAICompatibleProvider(apiKey, baseUrl, options.model ?? DEFAULT_OPENAI_COMPAT_MODEL, options.disableResponseFormat ?? false);
   } else if (providerName === 'copilot') {
     const baseUrl = options.openaiCompatBaseUrl ?? options.apiBase ?? process.env.COPILOT_API_BASE_URL ?? 'http://localhost:4141/v1';
     const apiKey = process.env.COPILOT_API_KEY ?? 'copilot';
