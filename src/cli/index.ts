@@ -23,6 +23,7 @@ import { refreshStoriesCommand } from './commands/refresh-stories.js';
 import { auditCommand } from './commands/audit.js';
 import { testCommand } from './commands/test.js';
 import { digestCommand } from './commands/digest.js';
+import { decisionsCommand } from './commands/decisions.js';
 import { configureLogger } from '../utils/logger.js';
 
 // Read version from package.json at runtime so it never drifts from the published version
@@ -131,5 +132,6 @@ program.addCommand(refreshStoriesCommand);
 program.addCommand(auditCommand);
 program.addCommand(testCommand);
 program.addCommand(digestCommand);
+program.addCommand(decisionsCommand);
 
 program.parse();

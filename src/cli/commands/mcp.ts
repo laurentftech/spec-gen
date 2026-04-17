@@ -49,6 +49,13 @@ import {
 import { handleOrient } from '../../core/services/mcp-handlers/orient.js';
 import { handleGenerateChangeProposal, handleAnnotateStory } from '../../core/services/mcp-handlers/change.js';
 import {
+  handleRecordDecision,
+  handleListDecisions,
+  handleApproveDecision,
+  handleRejectDecision,
+  handleSyncDecisions,
+} from '../../core/services/mcp-handlers/decisions.js';
+import {
   handleAnalyzeCodebase,
   handleGetArchitectureOverview,
   handleGetRefactorReport,
@@ -1047,6 +1054,101 @@ export const TOOL_DEFINITIONS = [
       required: ['directory'],
     },
   },
+  {
+    name: 'record_decision',
+    description:
+      'Record an architectural decision made during the current development session. ' +
+      'Call this whenever you make a significant design choice: choosing a data structure, ' +
+      'picking a library, defining an API contract, selecting an auth strategy, etc. ' +
+      'Decisions are stored as drafts and consolidated before the next commit. ' +
+      'Use the supersedes field when a later decision replaces an earlier one.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+        title: { type: 'string', description: 'Short imperative statement, e.g. "Use UUIDs for decision IDs"' },
+        rationale: { type: 'string', description: 'Why this decision was made' },
+        consequences: { type: 'string', description: 'What changes as a result (optional)' },
+        affectedFiles: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Source files most relevant to this decision (optional)',
+        },
+        supersedes: {
+          type: 'string',
+          description: 'ID of a prior decision this one replaces (optional)',
+        },
+      },
+      required: ['directory', 'title', 'rationale'],
+    },
+  },
+  {
+    name: 'list_decisions',
+    description:
+      'List architectural decisions recorded during the current session. ' +
+      'Shows draft, consolidated, verified, approved, rejected, and synced decisions. ' +
+      'Use approve_decision or reject_decision to act on verified decisions, ' +
+      'then sync_decisions to write them to spec.md files.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+        status: {
+          type: 'string',
+          enum: ['draft', 'consolidated', 'verified', 'phantom', 'approved', 'rejected', 'synced'],
+          description: 'Filter by status (default: returns all)',
+        },
+      },
+      required: ['directory'],
+    },
+  },
+  {
+    name: 'approve_decision',
+    description:
+      'Approve a verified architectural decision for syncing into spec.md files. ' +
+      'After approving, call sync_decisions to write the decision to the relevant spec.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+        id: { type: 'string', description: '8-character decision ID from list_decisions' },
+        note: { type: 'string', description: 'Optional review note' },
+      },
+      required: ['directory', 'id'],
+    },
+  },
+  {
+    name: 'reject_decision',
+    description:
+      'Reject a pending decision. Rejected decisions are never synced to spec files.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+        id: { type: 'string', description: '8-character decision ID from list_decisions' },
+        note: { type: 'string', description: 'Optional reason for rejection' },
+      },
+      required: ['directory', 'id'],
+    },
+  },
+  {
+    name: 'sync_decisions',
+    description:
+      'Write all approved decisions into their target spec.md files. ' +
+      'Appends new Requirement blocks and Decision sections (append-only, never overwrites). ' +
+      'Creates ADR files in openspec/decisions/ for architectural decisions. ' +
+      'Pass dryRun=true to preview without writing. ' +
+      'Pass id to sync a single decision by ID.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+        dryRun: { type: 'boolean', description: 'Preview without writing files (default: false)' },
+        id: { type: 'string', description: 'Sync only this specific decision ID (default: all approved)' },
+      },
+      required: ['directory'],
+    },
+  },
 ];
 
 // ============================================================================
@@ -1228,6 +1330,22 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
         const { directory, domains, minCoverage } =
           args as { directory: string; domains?: string[]; minCoverage?: number };
         result = await handleGetTestCoverage({ directory, domains, minCoverage });
+      } else if (name === 'record_decision') {
+        const { directory, title, rationale, consequences, affectedFiles, supersedes } =
+          args as { directory: string; title: string; rationale: string; consequences?: string; affectedFiles?: string[]; supersedes?: string };
+        result = await handleRecordDecision(directory, title, rationale, consequences, affectedFiles, supersedes);
+      } else if (name === 'list_decisions') {
+        const { directory, status } = args as { directory: string; status?: string };
+        result = await handleListDecisions(directory, status);
+      } else if (name === 'approve_decision') {
+        const { directory, id, note } = args as { directory: string; id: string; note?: string };
+        result = await handleApproveDecision(directory, id, note);
+      } else if (name === 'reject_decision') {
+        const { directory, id, note } = args as { directory: string; id: string; note?: string };
+        result = await handleRejectDecision(directory, id, note);
+      } else if (name === 'sync_decisions') {
+        const { directory, dryRun = false, id } = args as { directory: string; dryRun?: boolean; id?: string };
+        result = await handleSyncDecisions(directory, dryRun, id);
       } else {
         return {
           content: [{ type: 'text', text: `Unknown tool: ${name}` }],

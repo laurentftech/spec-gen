@@ -497,3 +497,25 @@ export const SHALLOW_FUNCTION_DEPTH_MAX = 2;
 
 /** Score bonus for shallow functions with issues */
 export const SHALLOW_FUNCTION_SCORE_BONUS = 0.5;
+
+// ============================================================================
+// DECISIONS
+// ============================================================================
+
+/** Sub-directory inside SPEC_GEN_DIR where pending decisions are stored */
+export const SPEC_GEN_DECISIONS_SUBDIR = 'decisions';
+
+/** Filename for the pending decisions store */
+export const DECISIONS_PENDING_FILE = 'pending.json';
+
+/** Maximum number of changed files passed to the consolidation LLM */
+export const DECISIONS_EXTRACTION_MAX_FILES = 50;
+
+/** Maximum diff characters fed to the consolidation LLM per file */
+export const DECISIONS_DIFF_MAX_CHARS = 12_000;
+
+/** Max output tokens for consolidation LLM call */
+export const DECISIONS_CONSOLIDATION_MAX_TOKENS = 2_000;
+
+/** Max output tokens for verification LLM call */
+export const DECISIONS_VERIFICATION_MAX_TOKENS = 1_500;
