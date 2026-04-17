@@ -39,6 +39,13 @@ vi.mock('../../core/services/config-manager.js', () => ({
   }),
 }));
 
+vi.mock('../../core/services/llm-service.js', () => ({
+  createLLMService: vi.fn().mockReturnValue({
+    complete: vi.fn().mockResolvedValue({ model: 'claude-opus-4-6', content: 'pong' }),
+    saveLogs: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 // ============================================================================
 // HELPERS
 // ============================================================================
@@ -50,15 +57,6 @@ function mockExecSuccess(stdout = 'ok'): void {
   vi.mocked(execFileMock).mockImplementation((...args: any[]) => {
     const cb = args[args.length - 1];
     if (typeof cb === 'function') cb(null, { stdout, stderr: '' });
-    return {} as ReturnType<typeof execFileMock>;
-  });
-}
-
-/** Make execFileMock fail */
-function mockExecFail(): void {
-  vi.mocked(execFileMock).mockImplementation((...args: any[]) => {
-    const cb = args[args.length - 1];
-    if (typeof cb === 'function') cb(new Error('command not found'));
     return {} as ReturnType<typeof execFileMock>;
   });
 }
@@ -83,12 +81,18 @@ async function runDoctorJson(): Promise<Array<{ name: string; status: string; de
 describe('doctor command', () => {
   let consoleSpy: ReturnType<typeof vi.spyOn>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     process.exitCode = undefined;
     vi.clearAllMocks();
     consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
     mockExecSuccess();
+    // Restore default LLM mock after clearAllMocks
+    const llmService = await import('../../core/services/llm-service.js');
+    vi.mocked(llmService.createLLMService).mockReturnValue({
+      complete: vi.fn().mockResolvedValue({ model: 'claude-opus-4-6', content: 'pong' }),
+      saveLogs: vi.fn().mockResolvedValue(undefined),
+    } as never);
   });
 
   afterEach(() => {
@@ -165,9 +169,9 @@ describe('doctor command', () => {
       expect(openspecCheck).toBeDefined();
     });
 
-    it('should include an LLM provider check', async () => {
+    it('should include an LLM connection check', async () => {
       const checks = await runDoctorJson();
-      const llmCheck = checks.find(c => c.name === 'LLM provider');
+      const llmCheck = checks.find(c => c.name === 'LLM connection');
       expect(llmCheck).toBeDefined();
     });
 
@@ -188,8 +192,8 @@ describe('doctor command', () => {
   });
 
   // --------------------------------------------------------------------------
-  describe('LLM provider check', () => {
-    const keyVars = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'SPEC_GEN_API_BASE'];
+  describe('LLM connection check', () => {
+    const keyVars = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OPENAI_COMPAT_API_KEY'];
 
     function clearLLMKeys(): Record<string, string | undefined> {
       const saved: Record<string, string | undefined> = {};
@@ -203,72 +207,66 @@ describe('doctor command', () => {
     function restoreLLMKeys(saved: Record<string, string | undefined>): void {
       for (const k of keyVars) {
         if (saved[k] !== undefined) process.env[k] = saved[k];
+        else delete process.env[k];
       }
     }
 
-    it('should pass (ok) when ANTHROPIC_API_KEY is set', async () => {
+    it('should pass (ok) when createLLMService and complete() both succeed', async () => {
       const saved = clearLLMKeys();
       process.env.ANTHROPIC_API_KEY = 'sk-test-anthropic';
       try {
         const checks = await runDoctorJson();
-        const llmCheck = checks.find(c => c.name === 'LLM provider')!;
+        const llmCheck = checks.find(c => c.name === 'LLM connection')!;
         expect(llmCheck.status).toBe('ok');
-        expect(llmCheck.detail).toContain('ANTHROPIC_API_KEY');
+        expect(llmCheck.detail).toContain('anthropic');
       } finally {
         restoreLLMKeys(saved);
       }
     });
 
-    it('should pass (ok) when OPENAI_API_KEY is set', async () => {
-      const saved = clearLLMKeys();
-      process.env.OPENAI_API_KEY = 'sk-test-openai';
-      try {
-        const checks = await runDoctorJson();
-        const llmCheck = checks.find(c => c.name === 'LLM provider')!;
-        expect(llmCheck.status).toBe('ok');
-        expect(llmCheck.detail).toContain('OPENAI_API_KEY');
-      } finally {
-        restoreLLMKeys(saved);
-      }
-    });
-
-    it('should pass (ok) when GEMINI_API_KEY is set', async () => {
+    it('should detect gemini provider when GEMINI_API_KEY is set', async () => {
       const saved = clearLLMKeys();
       process.env.GEMINI_API_KEY = 'test-gemini-key';
       try {
         const checks = await runDoctorJson();
-        const llmCheck = checks.find(c => c.name === 'LLM provider')!;
+        const llmCheck = checks.find(c => c.name === 'LLM connection')!;
         expect(llmCheck.status).toBe('ok');
-        expect(llmCheck.detail).toContain('GEMINI_API_KEY');
+        expect(llmCheck.detail).toContain('gemini');
       } finally {
         restoreLLMKeys(saved);
       }
     });
 
-    it('should fail when no provider key is set and claude CLI is absent', async () => {
+    it('should fail when createLLMService throws (missing API key)', async () => {
       const saved = clearLLMKeys();
-      // Make execFile fail so claude --version check fails
-      mockExecFail();
+      const llmService = await import('../../core/services/llm-service.js');
+      vi.mocked(llmService.createLLMService).mockImplementationOnce(() => {
+        throw new Error('No API key');
+      });
       try {
         const checks = await runDoctorJson();
-        const llmCheck = checks.find(c => c.name === 'LLM provider')!;
+        const llmCheck = checks.find(c => c.name === 'LLM connection')!;
         expect(llmCheck.status).toBe('fail');
         expect(llmCheck.fix).toBeDefined();
-        expect(llmCheck.fix).toContain('ANTHROPIC_API_KEY');
+        expect(llmCheck.fix).toContain('API key');
       } finally {
         restoreLLMKeys(saved);
       }
     });
 
-    it('should warn when SPEC_GEN_API_BASE is set but no API key', async () => {
+    it('should fail when complete() rejects (network error)', async () => {
       const saved = clearLLMKeys();
-      process.env.SPEC_GEN_API_BASE = 'http://localhost:11434/v1';
-      mockExecFail(); // no claude CLI
+      process.env.ANTHROPIC_API_KEY = 'sk-test-anthropic';
+      const llmService = await import('../../core/services/llm-service.js');
+      vi.mocked(llmService.createLLMService).mockReturnValueOnce({
+        complete: vi.fn().mockRejectedValue(new Error('Connection refused')),
+        saveLogs: vi.fn().mockResolvedValue(undefined),
+      } as never);
       try {
         const checks = await runDoctorJson();
-        const llmCheck = checks.find(c => c.name === 'LLM provider')!;
-        expect(llmCheck.status).toBe('warn');
-        expect(llmCheck.detail).toContain('SPEC_GEN_API_BASE');
+        const llmCheck = checks.find(c => c.name === 'LLM connection')!;
+        expect(llmCheck.status).toBe('fail');
+        expect(llmCheck.fix).toContain('API key');
       } finally {
         restoreLLMKeys(saved);
       }
@@ -276,11 +274,14 @@ describe('doctor command', () => {
 
     it('should include a fix suggestion when failing', async () => {
       const saved = clearLLMKeys();
-      mockExecFail();
+      const llmService = await import('../../core/services/llm-service.js');
+      vi.mocked(llmService.createLLMService).mockImplementationOnce(() => {
+        throw new Error('No API key');
+      });
       try {
         const checks = await runDoctorJson();
-        const llmCheck = checks.find(c => c.name === 'LLM provider')!;
-        expect(llmCheck.fix).toMatch(/API_KEY/);
+        const llmCheck = checks.find(c => c.name === 'LLM connection')!;
+        expect(llmCheck.fix).toBeDefined();
       } finally {
         restoreLLMKeys(saved);
       }
@@ -356,22 +357,26 @@ describe('doctor command', () => {
   describe('exit code', () => {
     it('should set exitCode=1 when any check fails (JSON mode confirms fail status)', async () => {
       consoleSpy.mockImplementation(() => {});
-      const keyVars = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'SPEC_GEN_API_BASE'];
+      const keyVars = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OPENAI_COMPAT_API_KEY'];
       const saved: Record<string, string | undefined> = {};
       for (const k of keyVars) { saved[k] = process.env[k]; delete process.env[k]; }
-      mockExecFail();
+
+      const llmService = await import('../../core/services/llm-service.js');
+      vi.mocked(llmService.createLLMService).mockImplementationOnce(() => {
+        throw new Error('No API key');
+      });
 
       try {
         // Confirm via JSON mode that the LLM check is a 'fail'
         const checks = await runDoctorJson();
-        const llmCheck = checks.find(c => c.name === 'LLM provider')!;
+        const llmCheck = checks.find(c => c.name === 'LLM connection')!;
         expect(llmCheck.status).toBe('fail');
         // The JSON path returns early, so exitCode is only set in the non-JSON path.
         // Verify the failure count reported includes at least one failure.
         const failures = checks.filter(c => c.status === 'fail');
         expect(failures.length).toBeGreaterThan(0);
       } finally {
-        for (const k of keyVars) { if (saved[k] !== undefined) process.env[k] = saved[k]; }
+        for (const k of keyVars) { if (saved[k] !== undefined) process.env[k] = saved[k]; else delete process.env[k]; }
       }
     });
 
@@ -405,6 +410,13 @@ describe('doctor command', () => {
         projectType: 'nodejs', createdAt: '2024-01-01T00:00:00Z', openspecPath: './openspec', maxFiles: 500,
       } as never);
 
+      // Ensure createLLMService returns a working mock (clearAllMocks resets it)
+      const llmService = await import('../../core/services/llm-service.js');
+      vi.mocked(llmService.createLLMService).mockReturnValue({
+        complete: vi.fn().mockResolvedValue({ model: 'claude-opus-4-6', content: 'pong' }),
+        saveLogs: vi.fn().mockResolvedValue(undefined),
+      } as never);
+
       const saved = process.env.ANTHROPIC_API_KEY;
       process.env.ANTHROPIC_API_KEY = 'sk-test-key';
 
@@ -423,10 +435,14 @@ describe('doctor command', () => {
     it('non-JSON: logger.error called and exitCode=1 when a check fails', async () => {
       doctorCommand.setOptionValue('json', false);
 
-      const keyVars = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'SPEC_GEN_API_BASE'];
+      const keyVars = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OPENAI_COMPAT_API_KEY'];
       const saved: Record<string, string | undefined> = {};
       for (const k of keyVars) { saved[k] = process.env[k]; delete process.env[k]; }
-      mockExecFail();
+
+      const llmService = await import('../../core/services/llm-service.js');
+      vi.mocked(llmService.createLLMService).mockImplementationOnce(() => {
+        throw new Error('No API key');
+      });
 
       const loggerModule = await import('../../utils/logger.js');
       vi.mocked(loggerModule.logger.error).mockClear();
@@ -436,7 +452,7 @@ describe('doctor command', () => {
         expect(vi.mocked(loggerModule.logger.error)).toHaveBeenCalled();
         expect(process.exitCode).toBe(1);
       } finally {
-        for (const k of keyVars) { if (saved[k] !== undefined) process.env[k] = saved[k]; }
+        for (const k of keyVars) { if (saved[k] !== undefined) process.env[k] = saved[k]; else delete process.env[k]; }
       }
     });
   });

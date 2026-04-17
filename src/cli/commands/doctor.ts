@@ -12,6 +12,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { logger } from '../../utils/logger.js';
 import { readSpecGenConfig } from '../../core/services/config-manager.js';
+import { createLLMService, ProviderName } from '../../core/services/llm-service.js';
 import {
   MIN_NODE_MAJOR_VERSION,
   ANALYSIS_AGE_WARNING_HOURS,
@@ -24,6 +25,11 @@ import {
   OPENSPEC_DIR,
   OPENSPEC_SPECS_SUBDIR,
   ARTIFACT_REPO_STRUCTURE,
+  DEFAULT_ANTHROPIC_MODEL,
+  DEFAULT_OPENAI_MODEL,
+  DEFAULT_OPENAI_COMPAT_MODEL,
+  DEFAULT_GEMINI_MODEL,
+  DEFAULT_COPILOT_MODEL,
 } from '../../constants.js';
 
 const execFileAsync = promisify(execFile);
@@ -150,47 +156,165 @@ async function checkOpenSpecDir(rootPath: string): Promise<CheckResult> {
   }
 }
 
-async function checkLLMProvider(): Promise<CheckResult> {
-  const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
-  const hasOpenAI = !!process.env.OPENAI_API_KEY;
-  const hasGemini = !!process.env.GEMINI_API_KEY || !!process.env.GOOGLE_API_KEY;
-  const hasApiBase = !!process.env.SPEC_GEN_API_BASE;
+const CLI_PROVIDERS: Record<string, string> = {
+  'claude-code': 'claude',
+  'gemini-cli': 'gemini',
+  'cursor-agent': 'cursor',
+  'mistral-vibe': 'vibe',
+};
 
-  // Check if claude CLI is available (Claude Code / Max plan)
-  let hasClaudeCode = false;
+const DOCTOR_TIMEOUT_MS = 10_000;
+
+async function checkLLMConnection(rootPath: string): Promise<CheckResult> {
+  let config;
+  try { config = await readSpecGenConfig(rootPath); } catch { /* no config */ }
+
+  const gen = config?.generation;
+
+  // Detect provider (mirrors generate.ts logic)
+  const configuredProvider = gen?.provider;
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  const openaiCompatKey = process.env.OPENAI_COMPAT_API_KEY;
+  const envDetectedProvider = anthropicKey ? 'anthropic'
+    : geminiKey ? 'gemini'
+    : openaiCompatKey ? 'openai-compat'
+    : 'openai';
+  const provider = configuredProvider ?? envDetectedProvider;
+
+  const defaultModels: Record<string, string> = {
+    anthropic: DEFAULT_ANTHROPIC_MODEL,
+    gemini: DEFAULT_GEMINI_MODEL,
+    'openai-compat': DEFAULT_OPENAI_COMPAT_MODEL,
+    copilot: DEFAULT_COPILOT_MODEL,
+    openai: DEFAULT_OPENAI_MODEL,
+    'claude-code': 'claude-code',
+    'mistral-vibe': 'mistral-vibe',
+    'gemini-cli': 'gemini-cli',
+    'cursor-agent': 'cursor-agent',
+  };
+  const model = gen?.model ?? defaultModels[provider] ?? provider;
+
+  // CLI-based providers: just check binary availability
+  if (provider in CLI_PROVIDERS) {
+    const bin = CLI_PROVIDERS[provider];
+    try {
+      await execFileAsync(bin, ['--version']);
+      return { name: 'LLM connection', status: 'ok', detail: `${provider} · ${bin} CLI detected` };
+    } catch {
+      return {
+        name: 'LLM connection',
+        status: 'fail',
+        detail: `${provider} · '${bin}' not found on PATH`,
+        fix: `Install the ${bin} CLI and ensure it is on your PATH`,
+      };
+    }
+  }
+
+  // Apply SSL setting before creating provider
+  const sslVerify = config?.llm?.sslVerify ?? true;
+  if (!sslVerify || gen?.skipSslVerify) {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+  }
+
+  const baseUrl = gen?.openaiCompatBaseUrl ?? process.env.OPENAI_COMPAT_BASE_URL;
+
+  let llm;
   try {
-    await execFileAsync('claude', ['--version']);
-    hasClaudeCode = true;
-  } catch { /* not installed */ }
-
-  if (hasAnthropic) {
-    return { name: 'LLM provider', status: 'ok', detail: 'ANTHROPIC_API_KEY set' };
-  }
-  if (hasOpenAI) {
-    return { name: 'LLM provider', status: 'ok', detail: 'OPENAI_API_KEY set' };
-  }
-  if (hasGemini) {
-    return { name: 'LLM provider', status: 'ok', detail: 'GEMINI_API_KEY set' };
-  }
-  if (hasClaudeCode) {
-    return { name: 'LLM provider', status: 'ok', detail: 'claude CLI detected (Claude Code / Max)' };
-  }
-  if (hasApiBase) {
+    llm = createLLMService({
+      provider: provider as ProviderName,
+      model,
+      openaiCompatBaseUrl: baseUrl,
+      sslVerify,
+      timeout: DOCTOR_TIMEOUT_MS,
+      disableResponseFormat: gen?.disableResponseFormat,
+    });
+  } catch (err) {
     return {
-      name: 'LLM provider',
-      status: 'warn',
-      detail: `SPEC_GEN_API_BASE set to ${process.env.SPEC_GEN_API_BASE} (no API key)`,
+      name: 'LLM connection',
+      status: 'fail',
+      detail: `${provider} · ${(err as Error).message}`,
+      fix: 'Check that the required API key environment variable is set',
     };
   }
 
-  return {
-    name: 'LLM provider',
-    status: 'fail',
-    detail: 'No LLM provider configured',
-    fix:
-      'Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY.\n' +
-      '  Alternatively install Claude Code (claude CLI) for subscription-based access.',
-  };
+  const t0 = Date.now();
+  try {
+    const result = await llm.complete({ systemPrompt: 'Reply with one word.', userPrompt: 'ping', maxTokens: 5 });
+    const ms = Date.now() - t0;
+    return {
+      name: 'LLM connection',
+      status: 'ok',
+      detail: `${provider} · ${result.model ?? model} · ${ms}ms`,
+    };
+  } catch (err) {
+    const ms = Date.now() - t0;
+    const msg = (err as Error).message ?? String(err);
+    return {
+      name: 'LLM connection',
+      status: 'fail',
+      detail: `${provider} · ${msg} (${ms}ms)`,
+      fix: 'Check your API key, base URL, and network connectivity',
+    };
+  }
+}
+
+async function checkEmbeddingConnection(rootPath: string): Promise<CheckResult | null> {
+  let config;
+  try { config = await readSpecGenConfig(rootPath); } catch { /* no config */ }
+
+  const emb = config?.embedding;
+
+  // Resolve base URL from config or env
+  const baseUrl = emb?.baseUrl ?? process.env.EMBED_BASE_URL;
+  if (!baseUrl) return null; // Embedding not configured — skip
+
+  if (emb?.skipSslVerify) {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+  }
+
+  const apiKey = emb?.apiKey ?? process.env.EMBED_API_KEY ?? 'none';
+  const model = emb?.model ?? process.env.EMBED_MODEL ?? 'text-embedding-ada-002';
+  const url = baseUrl.replace(/\/$/, '');
+
+  const t0 = Date.now();
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), DOCTOR_TIMEOUT_MS);
+    const response = await fetch(`${url}/embeddings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, input: 'ping' }),
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
+
+    const ms = Date.now() - t0;
+    if (!response.ok) {
+      const body = (await response.text().catch(() => '')).trim() || '(empty)';
+      return {
+        name: 'Embedding connection',
+        status: 'fail',
+        detail: `HTTP ${response.status}: ${body} (${ms}ms)`,
+        fix: 'Check your embedding server URL, API key, and that the server is running',
+      };
+    }
+    const data = await response.json() as { data?: Array<{ embedding: number[] }> };
+    const dims = data?.data?.[0]?.embedding?.length ?? '?';
+    return {
+      name: 'Embedding connection',
+      status: 'ok',
+      detail: `${url} · ${model} · ${dims} dims · ${ms}ms`,
+    };
+  } catch (err) {
+    const ms = Date.now() - t0;
+    const msg = (err as Error).message ?? String(err);
+    return {
+      name: 'Embedding connection',
+      status: 'fail',
+      detail: `${url} · ${msg} (${ms}ms)`,
+      fix: 'Check your embedding server is running (npm run embed:up) and the URL is correct',
+    };
+  }
 }
 
 async function checkDiskSpace(rootPath: string): Promise<CheckResult> {
@@ -268,7 +392,8 @@ Checks performed:
   • spec-gen configuration (${SPEC_GEN_CONFIG_REL_PATH})
   • Analysis artifacts freshness
   • OpenSpec directory presence
-  • LLM provider configuration
+  • LLM connection (live request with 10s timeout)
+  • Embedding connection (if configured)
   • Available disk space
 `
   )
@@ -282,15 +407,24 @@ Checks performed:
       console.log('');
     }
 
-    const checks = await Promise.all([
-      checkNodeVersion(),
-      checkGit(rootPath),
-      checkConfig(rootPath),
-      checkAnalysis(rootPath),
-      checkOpenSpecDir(rootPath),
-      checkLLMProvider(),
-      checkDiskSpace(rootPath),
+    const [staticChecks, llmCheck, embeddingCheck] = await Promise.all([
+      Promise.all([
+        checkNodeVersion(),
+        checkGit(rootPath),
+        checkConfig(rootPath),
+        checkAnalysis(rootPath),
+        checkOpenSpecDir(rootPath),
+        checkDiskSpace(rootPath),
+      ]),
+      checkLLMConnection(rootPath),
+      checkEmbeddingConnection(rootPath),
     ]);
+
+    const checks = [
+      ...staticChecks,
+      llmCheck,
+      ...(embeddingCheck ? [embeddingCheck] : []),
+    ];
 
     if (options.json) {
       console.log(JSON.stringify(checks, null, 2));
