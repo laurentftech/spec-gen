@@ -8,6 +8,7 @@
 import {
   DECISIONS_CONSOLIDATION_MAX_TOKENS,
 } from '../../constants.js';
+import { logger } from '../../utils/logger.js';
 import type { LLMService } from '../services/llm-service.js';
 import type { PendingDecision, DecisionStore } from '../../types/index.js';
 import { makeDecisionId } from './store.js';
@@ -83,6 +84,11 @@ export async function consolidateDrafts(
   const raw = response.content;
 
   const consolidated = parseJSON<ConsolidatedRaw[]>(raw, []);
+
+  if (consolidated.length === 0 && drafts.length > 0) {
+    logger.warning(`consolidation returned 0 decisions from ${drafts.length} drafts — LLM may have returned empty or malformed JSON`);
+  }
+
   const now = new Date().toISOString();
   const allSupersededIds = consolidated.flatMap((c) => c.supersededIds ?? []);
 
