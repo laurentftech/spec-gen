@@ -5,7 +5,7 @@
  * Handles initialization, merging with existing specs, and output tracking.
  */
 
-import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, copyFile, readdir, rm } from 'node:fs/promises';
 import { join, dirname, relative } from 'node:path';
 import logger from '../../utils/logger.js';
 import {
@@ -55,6 +55,8 @@ export interface OpenSpecWriterOptions {
   updateConfig?: boolean;
   /** Whether to validate specs before writing */
   validateBeforeWrite?: boolean;
+  /** Remove existing domain directories not present in the new generation (used with --force) */
+  cleanBeforeWrite?: boolean;
 }
 
 /**
@@ -79,6 +81,7 @@ export interface GenerationReport {
   filesSkipped: string[];
   filesBackedUp: string[];
   filesMerged: string[];
+  domainsRemoved: string[];
   configUpdated: boolean;
   validationErrors: string[];
   warnings: string[];
@@ -110,6 +113,7 @@ export class OpenSpecWriter {
       createBackups: options.createBackups ?? true,
       updateConfig: options.updateConfig ?? true,
       validateBeforeWrite: options.validateBeforeWrite ?? true,
+      cleanBeforeWrite: options.cleanBeforeWrite ?? false,
     };
     this.configManager = new OpenSpecConfigManager(options.rootPath);
   }
@@ -147,6 +151,7 @@ export class OpenSpecWriter {
       filesSkipped: [],
       filesBackedUp: [],
       filesMerged: [],
+      domainsRemoved: [],
       configUpdated: false,
       validationErrors: [],
       warnings: [],
@@ -155,6 +160,37 @@ export class OpenSpecWriter {
 
     // Ensure directories exist
     await this.initialize();
+
+    // Remove stale domain directories when --force is used
+    if (this.options.cleanBeforeWrite) {
+      const incomingDomains = new Set(
+        specs.filter(s => s.type === 'domain').map(s => normalizeDomainName(s.domain))
+      );
+      const specsDir = join(this.openspecRoot, OPENSPEC_SPECS_SUBDIR);
+      try {
+        const entries = await readdir(specsDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          if (incomingDomains.has(entry.name)) continue;
+          const domainDir = join(specsDir, entry.name);
+          // Backup before removing
+          if (this.options.createBackups) {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const backupDir = join(this.specGenRoot, 'backups', timestamp, OPENSPEC_SPECS_SUBDIR, entry.name);
+            await mkdir(backupDir, { recursive: true });
+            const domainEntries = await readdir(domainDir);
+            for (const f of domainEntries) {
+              await copyFile(join(domainDir, f), join(backupDir, f));
+            }
+          }
+          await rm(domainDir, { recursive: true, force: true });
+          report.domainsRemoved.push(entry.name);
+          logger.warning(`Removed stale domain: ${entry.name}`);
+        }
+      } catch {
+        // specsDir doesn't exist yet — nothing to clean
+      }
+    }
 
     // Write each spec
     for (const spec of specs) {
@@ -429,6 +465,9 @@ export class OpenSpecWriter {
     }
     if (report.filesSkipped.length > 0) {
       logger.info('Skipped', `${report.filesSkipped.length} spec(s) already exist`);
+    }
+    if (report.domainsRemoved.length > 0) {
+      logger.warning(`Removed ${report.domainsRemoved.length} stale domain(s): ${report.domainsRemoved.join(', ')}`);
     }
     if (report.filesBackedUp.length > 0) {
       logger.info('Backups', `${report.filesBackedUp.length} created`);

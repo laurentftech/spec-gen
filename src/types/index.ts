@@ -126,6 +126,7 @@ export interface GenerateOptions extends GlobalOptions {
   domains: string[];
   adr: boolean;
   adrOnly: boolean;
+  force?: boolean;
 }
 
 export interface VerifyOptions extends GlobalOptions {
