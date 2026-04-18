@@ -10,6 +10,8 @@
 
 import { Command } from 'commander';
 import { readFile, writeFile, mkdir, chmod } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { logger } from '../../utils/logger.js';
 import { fileExists, resolveLLMProvider } from '../../utils/command-helpers.js';
@@ -605,8 +607,7 @@ Examples:
       const missing: Array<{ file: string; description: string }> = [];
 
       if (verified.length === 0 && missing.length === 0) {
-        // Warn if source files are staged but no decisions were ever recorded this session.
-        // This catches the case where an agent made structural changes without calling record_decision.
+        // If source files are staged but nothing was recorded, offer to run the fallback extractor.
         const activeDecisions = store.decisions.filter(
           (d) => !['rejected', 'synced'].includes(d.status),
         );
@@ -616,11 +617,60 @@ Examples:
             const SOURCE_EXTS = /\.(ts|js|tsx|jsx|py|go|rs|rb|java|cpp|cc|swift)$/;
             const hasSourceChanges = staged.files.some((f) => SOURCE_EXTS.test(f.path));
             if (hasSourceChanges) {
-              logger.warning(
-                '[decisions] Source files staged but no decisions recorded. ' +
-                'If this commit contains an architectural choice, record it with: ' +
-                'spec-gen decisions --record  or the record_decision MCP tool.',
-              );
+              if (process.stdin.isTTY && process.stdout.isTTY) {
+                // TTY: ask the user
+                const answer = await new Promise<string>((resolve) => {
+                  process.stderr.write(
+                    '\n[decisions] Source files staged but no decisions recorded.\n' +
+                    'Run fallback extraction now? This will call the LLM (~10-30s). [y/N] ',
+                  );
+                  process.stdin.setRawMode(true);
+                  process.stdin.resume();
+                  process.stdin.once('data', (buf: Buffer) => {
+                    process.stdin.setRawMode(false);
+                    process.stdin.pause();
+                    process.stderr.write('\n');
+                    resolve(buf.toString().toLowerCase());
+                  });
+                });
+                if (answer === 'y') {
+                  // Re-invoke with --consolidate --gate so the full pipeline runs
+                  const localBin = join(rootPath, 'node_modules', '.bin', 'spec-gen');
+                  const localDist = join(rootPath, 'dist', 'cli', 'index.js');
+                  let cmd: string; let args: string[];
+                  if (existsSync(localBin)) {
+                    cmd = localBin; args = ['decisions', '--consolidate', '--gate'];
+                  } else if (existsSync(localDist)) {
+                    cmd = process.execPath; args = [localDist, 'decisions', '--consolidate', '--gate'];
+                  } else {
+                    cmd = 'spec-gen'; args = ['decisions', '--consolidate', '--gate'];
+                  }
+                  const exitCode = await new Promise<number>((resolve) => {
+                    const child = spawn(cmd, args, { cwd: rootPath, stdio: 'inherit' });
+                    child.on('close', (code) => resolve(code ?? 0));
+                  });
+                  process.exitCode = exitCode;
+                  return;
+                }
+              } else {
+                // Non-TTY (agent): spawn background consolidation for next commit
+                const localBin = join(rootPath, 'node_modules', '.bin', 'spec-gen');
+                const localDist = join(rootPath, 'dist', 'cli', 'index.js');
+                let bgCmd: string; let bgArgs: string[];
+                if (existsSync(localBin)) {
+                  bgCmd = localBin; bgArgs = ['decisions', '--consolidate'];
+                } else if (existsSync(localDist)) {
+                  bgCmd = process.execPath; bgArgs = [localDist, 'decisions', '--consolidate'];
+                } else {
+                  bgCmd = 'spec-gen'; bgArgs = ['decisions', '--consolidate'];
+                }
+                const bg = spawn(bgCmd, bgArgs, { cwd: rootPath, detached: true, stdio: 'ignore' });
+                bg.unref();
+                process.stderr.write(
+                  '[decisions] Source files staged but no decisions recorded. ' +
+                  'Background consolidation started — decisions will be gated on the next commit.\n',
+                );
+              }
             }
           } catch { /* git unavailable — skip */ }
         }
