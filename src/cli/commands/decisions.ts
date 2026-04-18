@@ -302,6 +302,7 @@ export const decisionsCommand = new Command('decisions')
   .option('--approve <id>', 'Approve a decision by ID')
   .option('--reject <id>', 'Reject a decision by ID')
   .option('--note <text>', 'Note to attach to approve/reject action')
+  .option('--reason <text>', 'Alias for --note')
   .option('--sync', 'Sync all approved decisions to spec.md files', false)
   .option('--dry-run', 'Preview sync without writing', false)
   .option('--list', 'List decisions (default action when no other flag given)', false)
@@ -365,7 +366,7 @@ Examples:
       const updated = patchDecision(store, id, {
         status: 'approved',
         reviewedAt: new Date().toISOString(),
-        reviewNote: options.note,
+        reviewNote: options.note ?? (options as any).reason,
       });
       await saveDecisionStore(rootPath, updated);
       logger.success(`Decision ${id} approved.`);
@@ -406,7 +407,7 @@ Examples:
       const updated = patchDecision(store, id, {
         status: 'rejected',
         reviewedAt: new Date().toISOString(),
-        reviewNote: options.note,
+        reviewNote: options.note ?? (options as any).reason,
       });
       await saveDecisionStore(rootPath, updated);
       logger.success(`Decision ${id} rejected.`);
