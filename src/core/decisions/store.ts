@@ -89,7 +89,7 @@ export function makeDecisionId(
   domain: string,
   title: string,
 ): string {
-  return createHash('sha1')
+  return createHash('sha256')
     .update(`${sessionId}:${domain}:${title}`)
     .digest('hex')
     .slice(0, 8);
@@ -97,7 +97,7 @@ export function makeDecisionId(
 
 /** Generate a new session ID for a commit cycle. */
 export function newSessionId(): string {
-  return createHash('sha1')
+  return createHash('sha256')
     .update(`${Date.now()}-${Math.random()}`)
     .digest('hex')
     .slice(0, 12);
