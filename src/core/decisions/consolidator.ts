@@ -12,6 +12,7 @@ import { logger } from '../../utils/logger.js';
 import type { LLMService } from '../services/llm-service.js';
 import type { PendingDecision, DecisionStore, SpecMap } from '../../types/index.js';
 import { makeDecisionId } from './store.js';
+import { parseJSON } from '../../utils/misc.js';
 import { matchFileToDomains } from '../drift/spec-mapper.js';
 
 const SYSTEM_PROMPT = `You are an architectural decision consolidator for a software project.
@@ -162,16 +163,4 @@ function resolveDomainsFromFiles(
     .filter((d): d is string => d !== null);
 
   return normalised.length > 0 ? normalised : llmDomains.length > 0 ? llmDomains : ['unknown'];
-}
-
-function parseJSON<T>(text: string, fallback: T): T {
-  // Strip markdown code fences before extracting JSON
-  const stripped = text.replace(/```(?:json)?\s*/g, '').replace(/```\s*/g, '');
-  const match = stripped.match(/\[[\s\S]*\]/);
-  if (!match) return fallback;
-  try {
-    return JSON.parse(match[0]) as T;
-  } catch {
-    return fallback;
-  }
 }

@@ -10,6 +10,7 @@
 import { DECISIONS_VERIFICATION_MAX_TOKENS } from '../../constants.js';
 import type { LLMService } from '../services/llm-service.js';
 import type { PendingDecision } from '../../types/index.js';
+import { parseJSON } from '../../utils/misc.js';
 
 const SYSTEM_PROMPT = `You are an architectural decision verifier for a software project.
 
@@ -141,16 +142,4 @@ export async function verifyDecisions(
     });
 
   return { verified, phantom, missing: result.missing };
-}
-
-function parseJSON<T>(text: string, fallback: T): T {
-  // Strip markdown code fences before extracting JSON
-  const stripped = text.replace(/```(?:json)?\s*/g, '').replace(/```\s*/g, '');
-  const match = stripped.match(/\{[\s\S]*\}/);
-  if (!match) return fallback;
-  try {
-    return JSON.parse(match[0]) as T;
-  } catch {
-    return fallback;
-  }
 }
