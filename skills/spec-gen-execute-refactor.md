@@ -10,6 +10,8 @@ Trigger this skill when the user asks to **apply a refactoring plan**, with phra
 **Prerequisite**: the `spec-gen-plan-refactor` skill must have been run and the plan confirmed.
 The file `.spec-gen/refactor-plan.md` must exist.
 
+> **Loop contract**: this skill does not end until every change in the plan is marked ✅ AND the full test suite passes. After completing any individual change or step, re-read `.spec-gen/refactor-plan.md`, find the next unmarked item, and continue without waiting for user input. "Task completed" is only valid when all items are ✅.
+
 ---
 
 ## Step 1 — Read the plan
