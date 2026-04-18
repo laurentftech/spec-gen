@@ -187,3 +187,4 @@ openspec/
 .clinerules/spec-gen.md
 .windsurf/rules.md
 .github/copilot-instructions.md
+.spec-gen/decisions/
