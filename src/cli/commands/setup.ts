@@ -191,6 +191,10 @@ function buildManifest(projectRoot: string): Record<ToolName, SkillEntry[]> {
         src: join(ex, 'opencode', 'plugins', 'spec-gen-decision-extractor.ts'),
         dest: join(projectRoot, '.opencode', 'plugins', 'spec-gen-decision-extractor.ts'),
       },
+      {
+        src: join(ex, 'opencode', 'plugins', 'spec-gen-context-injector.ts'),
+        dest: join(projectRoot, '.opencode', 'plugins', 'spec-gen-context-injector.ts'),
+      },
       // Sisyphus SDD system prompt
       {
         src: join(ex, 'opencode', 'prompts', 'sisyphus-sdd.md'),

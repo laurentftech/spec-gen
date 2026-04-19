@@ -26,6 +26,8 @@
  */
 
 import { execSync } from "child_process"
+import { readFileSync } from "fs"
+import { join } from "path"
 import type { Plugin } from "@opencode-ai/plugin"
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -51,6 +53,12 @@ function resolveSpecGen(): string {
 const SOURCE_PATTERN = /\.(ts|tsx|js|jsx|py|go|rs|rb|java|cpp|c|h)$/
 const SKIP_PATTERN =
   /\.(test|spec|stories|mock|fixture)\.[jt]sx?$|\.d\.ts$|\.lock$|\.json$|\.ya?ml$|\.md$|\.env$/
+
+// Seuils de scoring pour le pre-filtrage dep-graph
+// Un fichier est "définitivement architectural" si l'un des critères est vrai
+const HUB_INDEGREE = 3       // ≥ 3 fichiers l'importent
+const HIGH_PAGERANK = 0.4    // PageRank normalisé ≥ 40%
+const HIGH_FILE_SCORE = 0.65 // Significance score ≥ 65%
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -98,14 +106,72 @@ function alreadyCovered(filePath: string): boolean {
   return getActiveDecisions().some(d => (d.affectedFiles ?? []).includes(filePath))
 }
 
+// ─── Dep-graph scoring ───────────────────────────────────────────────────────
+
+interface FileScore {
+  inDegree: number
+  pageRank: number
+  fileScore: number
+  isHub: boolean
+}
+
+/**
+ * Read the dep-graph and score a file by its structural centrality.
+ * Returns null if the file is not in the graph (new file — treat as unknown).
+ */
+function scoreFromDepGraph(filePath: string): FileScore | null {
+  try {
+    const raw = readFileSync(
+      join(process.cwd(), ".spec-gen", "analysis", "dependency-graph.json"),
+      "utf-8",
+    )
+    const graph = JSON.parse(raw)
+    const nodes: any[] = graph.nodes ?? []
+
+    // Match by relative path or absolute path suffix
+    const node = nodes.find(
+      n => n.file?.path === filePath || n.id === filePath || n.file?.path?.endsWith(filePath),
+    )
+    if (!node) return null
+
+    const inDegree: number = node.metrics?.inDegree ?? 0
+    const pageRank: number = node.metrics?.pageRank ?? 0
+    const fileScore: number = node.file?.score ?? 0
+
+    return {
+      inDegree,
+      pageRank,
+      fileScore,
+      isHub: inDegree >= HUB_INDEGREE || pageRank >= HIGH_PAGERANK || fileScore >= HIGH_FILE_SCORE,
+    }
+  } catch {
+    return null
+  }
+}
+
 // Prompt envoyé au Librarian (ou au fallback LLM)
-function buildPrompt(filePath: string, content: string): string {
+function buildPrompt(filePath: string, content: string, score: FileScore | null): string {
   const domains = getSpecDomains()
+
+  const scoreContext = score
+    ? [
+        `STRUCTURAL CONTEXT (from static analysis):`,
+        `  inDegree  : ${score.inDegree} file(s) import this file`,
+        `  pageRank  : ${(score.pageRank * 100).toFixed(0)}% (normalized importance)`,
+        `  fileScore : ${(score.fileScore * 100).toFixed(0)}% (significance score)`,
+        score.isHub
+          ? `  → This is a HUB file. Lean toward recording a decision.`
+          : `  → Low centrality. Only record if clearly architectural.`,
+      ].join("\n")
+    : `STRUCTURAL CONTEXT: File not found in dep-graph (new file — treat as potentially architectural).`
+
   return [
     `You are an architectural decision detector for a spec-driven development project.`,
     ``,
     `FILE: ${filePath}`,
     `KNOWN SPEC DOMAINS: ${domains.join(", ") || "unknown"}`,
+    ``,
+    scoreContext,
     ``,
     `NEW CONTENT (first 800 chars):`,
     content.slice(0, 800),
@@ -191,8 +257,8 @@ async function fallbackExtract(filePath: string, content: string): Promise<void>
 // ─── Plugin ──────────────────────────────────────────────────────────────────
 
 export const SpecGenDecisionExtractor: Plugin = async ({ client }) => {
-  // Fichiers en attente d'analyse : filePath → toolOutput
-  const pending = new Map<string, string>()
+  // Fichiers en attente d'analyse : filePath → { content, score }
+  const pending = new Map<string, { content: string; score: FileScore | null }>()
 
   // Sessions Librarian actives : libSessionId → filePath
   const librarianSessions = new Map<string, string>()
@@ -229,8 +295,21 @@ export const SpecGenDecisionExtractor: Plugin = async ({ client }) => {
       const filePath: string = input.args?.path ?? input.args?.file_path ?? ""
       if (!filePath || !isSource(filePath) || alreadyCovered(filePath)) return
 
+      const score = scoreFromDepGraph(filePath)
+
+      // Fichier connu du graph avec score très faible : probablement pas architectural
+      // (inDegree=0, pageRank<0.1, fileScore<0.3) — on skip pour économiser un appel LLM
+      if (
+        score !== null &&
+        score.inDegree === 0 &&
+        score.pageRank < 0.1 &&
+        score.fileScore < 0.3
+      ) {
+        return
+      }
+
       // Enqueue pour analyse au prochain idle
-      pending.set(filePath, output.output ?? "")
+      pending.set(filePath, { content: output.output ?? "", score })
     },
 
     event: async ({ event }: any) => {
@@ -242,10 +321,10 @@ export const SpecGenDecisionExtractor: Plugin = async ({ client }) => {
       if (event.type === "session.idle" && !librarianSessions.has(event.sessionID)) {
         if (pending.size === 0) return
 
-        for (const [filePath, content] of pending) {
+        for (const [filePath, { content, score }] of pending) {
           pending.delete(filePath)
 
-          const prompt = buildPrompt(filePath, content)
+          const prompt = buildPrompt(filePath, content, score)
 
           try {
             // Spawn une session Librarian.
