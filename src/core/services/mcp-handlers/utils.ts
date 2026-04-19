@@ -140,6 +140,10 @@ export async function isCacheFresh(directory: string): Promise<boolean> {
 // BIDIRECTIONAL CODE ↔ SPEC LINKING (#4)
 // ============================================================================
 
+// Cache for mapping index to avoid repeated disk reads
+type MappingCache = Map<string, MappingIndex>;
+const mappingCache: MappingCache = new Map();
+
 export interface MappingEntry {
   requirement: string;
   service: string;
@@ -158,6 +162,13 @@ export interface MappingIndex {
 
 /** Load and index mapping.json for bidirectional lookup. Returns null if not found. */
 export async function loadMappingIndex(absDir: string, retryCount: number = 1): Promise<MappingIndex | null> {
+  // Check cache first
+  const cacheKey = absDir;
+  const cached = mappingCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const loadAttempt = async (attempt: number): Promise<MappingIndex | null> => {
     try {
       const raw = await readFile(join(absDir, '.spec-gen', 'analysis', 'mapping.json'), 'utf-8');
@@ -183,7 +194,10 @@ export async function loadMappingIndex(absDir: string, retryCount: number = 1): 
         }
       }
       
-      return { byFile, byDomain, entries };
+      const result = { byFile, byDomain, entries };
+      // Cache the result
+      mappingCache.set(cacheKey, result);
+      return result;
     } catch (error) {
       if (attempt < retryCount && error instanceof Error) {
         const delay = Math.pow(2, attempt) * 100; // Exponential backoff: 200ms, 400ms, 800ms...
@@ -195,6 +209,11 @@ export async function loadMappingIndex(absDir: string, retryCount: number = 1): 
   };
   
   return loadAttempt(1);
+}
+
+/** Clear the mapping cache. Useful for tests to ensure fresh reads. */
+export function clearMappingCache(): void {
+  mappingCache.clear();
 }
 
 /** Summarise which specs cover a given file path (for search_code enrichment). */

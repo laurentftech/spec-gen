@@ -325,7 +325,9 @@ export const SpecGenDecisionExtractor: Plugin = async ({ client }) => {
         return
       }
 
-      pending.set(filePath, { content: output.output ?? "", score, sessionID: input.sessionID ?? "" })
+      let content = ""
+      try { content = readFileSync(filePath, "utf-8") } catch {}
+      pending.set(filePath, { content, score, sessionID: input.sessionID ?? "" })
     },
 
     event: async ({ event }: any) => {
