@@ -18,6 +18,7 @@
 import { Command } from 'commander';
 import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
+import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { checkbox } from '@inquirer/prompts';
 import { logger } from '../../utils/logger.js';
@@ -27,7 +28,7 @@ import { installPreCommitHook, installClaudeHook } from './decisions.js';
 // TYPES
 // ============================================================================
 
-type ToolName = 'vibe' | 'cline' | 'gsd' | 'bmad' | 'claude' | 'opencode';
+type ToolName = 'vibe' | 'cline' | 'gsd' | 'bmad' | 'claude' | 'opencode' | 'omoa';
 
 interface SkillEntry {
   /** Absolute source path inside the package's examples/ directory */
@@ -53,6 +54,43 @@ const PACKAGE_ROOT = join(__dirname, '../../..');
 
 async function fileExists(p: string): Promise<boolean> {
   try { await access(p); return true; } catch { return false; }
+}
+
+/**
+ * Detect whether oh-my-openagent is installed in the project or user config.
+ * Checks both the legacy oh-my-opencode and the renamed oh-my-openagent basenames.
+ */
+async function detectOmoa(projectRoot: string): Promise<boolean> {
+  const home = homedir();
+  const candidates = [
+    // Project-level config
+    join(projectRoot, '.opencode', 'oh-my-openagent.jsonc'),
+    join(projectRoot, '.opencode', 'oh-my-openagent.json'),
+    join(projectRoot, '.opencode', 'oh-my-opencode.jsonc'),
+    join(projectRoot, '.opencode', 'oh-my-opencode.json'),
+    // User-level config
+    join(home, '.config', 'opencode', 'oh-my-openagent.jsonc'),
+    join(home, '.config', 'opencode', 'oh-my-openagent.json'),
+    join(home, '.config', 'opencode', 'oh-my-opencode.jsonc'),
+    join(home, '.config', 'opencode', 'oh-my-opencode.json'),
+  ];
+  for (const p of candidates) {
+    if (await fileExists(p)) return true;
+  }
+
+  // Also check if opencode.json plugin list references oh-my-openagent / oh-my-opencode
+  for (const opencodeJson of [
+    join(home, '.config', 'opencode', 'opencode.json'),
+    join(projectRoot, '.opencode', 'opencode.json'),
+    join(projectRoot, 'opencode.json'),
+  ]) {
+    try {
+      const raw = await readFile(opencodeJson, 'utf-8');
+      if (raw.includes('oh-my-openagent') || raw.includes('oh-my-opencode')) return true;
+    } catch { /* file not found */ }
+  }
+
+  return false;
 }
 
 async function copyFile(src: string, dest: string, force: boolean): Promise<'created' | 'updated' | 'skipped'> {
@@ -139,6 +177,26 @@ function buildManifest(projectRoot: string): Record<ToolName, SkillEntry[]> {
         dest: join(projectRoot, '.opencode', 'plugins', 'agent-guard.ts'),
       },
     ],
+    omoa: [
+      // SDD enforcement plugins
+      {
+        src: join(ex, 'opencode', 'plugins', 'anti-laziness.ts'),
+        dest: join(projectRoot, '.opencode', 'plugins', 'anti-laziness.ts'),
+      },
+      {
+        src: join(ex, 'opencode', 'plugins', 'spec-gen-enforcer.ts'),
+        dest: join(projectRoot, '.opencode', 'plugins', 'spec-gen-enforcer.ts'),
+      },
+      {
+        src: join(ex, 'opencode', 'plugins', 'spec-gen-decision-extractor.ts'),
+        dest: join(projectRoot, '.opencode', 'plugins', 'spec-gen-decision-extractor.ts'),
+      },
+      // Sisyphus SDD system prompt
+      {
+        src: join(ex, 'opencode', 'prompts', 'sisyphus-sdd.md'),
+        dest: join(projectRoot, '.opencode', 'prompts', 'sisyphus-sdd.md'),
+      },
+    ],
   };
 }
 
@@ -196,16 +254,21 @@ export const setupCommand = new Command('setup')
   )
   .action(async (options: { tools?: string; force: boolean; dir: string }) => {
     const projectRoot = options.dir;
-    const allTools: ToolName[] = ['vibe', 'cline', 'gsd', 'bmad', 'claude', 'opencode'];
+    const allTools: ToolName[] = ['vibe', 'cline', 'gsd', 'bmad', 'claude', 'opencode', 'omoa'];
 
     let tools: ToolName[];
     if (options.tools) {
       tools = (options.tools.split(',').map(t => t.trim()) as ToolName[]).filter(t => allTools.includes(t));
       if (tools.length === 0) {
-        logger.error('setup: no valid tools specified. Valid values: vibe, cline, gsd, bmad, claude, opencode');
+        logger.error('setup: no valid tools specified. Valid values: vibe, cline, gsd, bmad, claude, opencode, omoa');
         process.exit(1);
       }
     } else if (process.stdout.isTTY) {
+      const omoaDetected = await detectOmoa(projectRoot);
+      if (omoaDetected) {
+        console.log('  ✦ oh-my-openagent detected — SDD plugins available.\n');
+      }
+
       const selected = await checkbox({
         message: 'Which agent tools do you want to install skills for?',
         choices: [
@@ -215,6 +278,11 @@ export const setupCommand = new Command('setup')
           { name: 'OpenCode      (.opencode/skills/spec-gen-{name}/SKILL.md — 8 skills + agent-guard plugin)', value: 'opencode' as ToolName },
           { name: 'GSD           (.claude/commands/gsd/spec-gen-{name}.md — 2 commands)', value: 'gsd' as ToolName },
           { name: 'BMAD          (_bmad/spec-gen/{agents,tasks}/ — 2 agents, 4 tasks)', value: 'bmad' as ToolName },
+          {
+            name: `oh-my-openagent  (.opencode/plugins/ — SDD enforcement: anti-laziness, enforcer, decision-extractor)${omoaDetected ? ' ← detected' : ''}`,
+            value: 'omoa' as ToolName,
+            checked: omoaDetected,
+          },
         ],
       });
       if (selected.length === 0) {
@@ -226,7 +294,7 @@ export const setupCommand = new Command('setup')
       logger.error(
         'setup requires an interactive terminal.\n' +
         'Use --tools to specify which to install.\n' +
-        'Example: spec-gen setup --tools claude,cline'
+        'Example: spec-gen setup --tools claude,cline,omoa'
       );
       process.exit(1);
     }
@@ -260,6 +328,7 @@ export const setupCommand = new Command('setup')
       opencode: 'OpenCode',
       gsd:      'get-shit-done (GSD)',
       bmad:     'BMAD',
+      omoa:     'oh-my-openagent (SDD plugins)',
     };
 
     for (const tool of tools) {
@@ -285,5 +354,28 @@ export const setupCommand = new Command('setup')
       console.log('Run `spec-gen analyze --ai-configs` to also generate project-specific context files (CLAUDE.md, .cursorrules, etc.).');
     } else {
       console.log('\nAll files already up-to-date. Use --force to overwrite with the latest version.');
+    }
+
+    if (tools.includes('omoa')) {
+      console.log(`
+┌─ oh-my-openagent SDD plugins installed ────────────────────────────────────┐
+│                                                                              │
+│  Wire the Sisyphus SDD prompt in your oh-my-openagent config:               │
+│                                                                              │
+│  ~/.config/opencode/oh-my-openagent.jsonc  (or .opencode/oh-my-openagent)  │
+│                                                                              │
+│  {                                                                           │
+│    "agents": {                                                               │
+│      "sisyphus": {                                                           │
+│        "prompt_append": "file://.opencode/prompts/sisyphus-sdd.md"          │
+│      }                                                                       │
+│    }                                                                         │
+│  }                                                                           │
+│                                                                              │
+│  Plugins loaded automatically from .opencode/plugins/ by OpenCode.           │
+│  decision-extractor uses the Librarian agent — configure it in your config:  │
+│    "agents": { "librarian": { "model": "google/gemini-3-flash" } }          │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘`);
     }
   });

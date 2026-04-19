@@ -15,6 +15,10 @@ import { ANALYSIS_STALE_THRESHOLD_MS, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, AR
  * file path instead of a project directory.
  */
 export async function validateDirectory(directory: string): Promise<string> {
+  return validateDirectoryImpl(directory);
+}
+
+export async function validateDirectoryImpl(directory: string): Promise<string> {
   if (!directory || typeof directory !== 'string') {
     throw new Error('directory parameter is required and must be a string');
   }
