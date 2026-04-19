@@ -311,7 +311,7 @@ export const SpecGenDecisionExtractor: Plugin = async ({ client }) => {
       ].includes(input.tool)
       if (!isFileWrite) return
 
-      const filePath: string = input.args?.path ?? input.args?.file_path ?? ""
+      const filePath: string = input.args?.filePath ?? input.args?.path ?? input.args?.file_path ?? ""
       if (!filePath || !isSource(filePath) || alreadyCovered(filePath)) return
 
       const score = scoreFromDepGraph(filePath)
@@ -330,19 +330,20 @@ export const SpecGenDecisionExtractor: Plugin = async ({ client }) => {
 
     event: async ({ event }: any) => {
       // ── Extraction sur idle : appel HTTP direct, pas de Librarian ────────
+      const sid: string = event.properties?.sessionID ?? event.sessionID ?? ""
       if (event.type === "session.idle") {
         if (pending.size === 0) return
 
         const now = Date.now()
-        const sinceLastExtract = now - (lastExtract.get(event.sessionID) ?? 0)
+        const sinceLastExtract = now - (lastExtract.get(sid) ?? 0)
         if (sinceLastExtract < COOLDOWN_MS) return
 
         const toProcess = [...pending.entries()]
-          .filter(([, { sessionID }]) => sessionID === event.sessionID)
+          .filter(([, { sessionID }]) => sessionID === sid)
 
         if (toProcess.length === 0) return
 
-        lastExtract.set(event.sessionID, now)
+        lastExtract.set(sid, now)
 
         for (const [filePath, { content, score, sessionID }] of toProcess) {
           pending.delete(filePath)
@@ -353,9 +354,9 @@ export const SpecGenDecisionExtractor: Plugin = async ({ client }) => {
 
       if (event.type === "session.deleted") {
         for (const [filePath, { sessionID }] of pending) {
-          if (sessionID === event.sessionID) pending.delete(filePath)
+          if (sessionID === sid) pending.delete(filePath)
         }
-        lastExtract.delete(event.sessionID)
+        lastExtract.delete(sid)
       }
     },
   }
