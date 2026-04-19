@@ -41,9 +41,9 @@ interface SpecDomain {
   purpose: string   // première ligne du ## Purpose
 }
 
-/** Lit l'index des domaines OpenSpec depuis openspec/specs/. */
-function loadSpecDomains(): SpecDomain[] {
-  const specsDir = join(process.cwd(), "openspec", "specs")
+/** Lit l'index des domaines OpenSpec depuis openspec/specs/. Exporté pour les tests. */
+export function loadSpecDomains(rootDir = process.cwd()): SpecDomain[] {
+  const specsDir = join(rootDir, "openspec", "specs")
   try {
     const dirs = readdirSync(specsDir, { withFileTypes: true })
       .filter(d => d.isDirectory())
@@ -53,7 +53,6 @@ function loadSpecDomains(): SpecDomain[] {
       const specPath = join(specsDir, name, "spec.md")
       try {
         const content = readFileSync(specPath, "utf-8")
-        // Extraire la première phrase du ## Purpose
         const purposeMatch = content.match(/^## Purpose\s*\n+(.+)/m)
         const purpose = purposeMatch
           ? purposeMatch[1].replace(/\[PARTIAL SPEC[^\]]*\]\s*/g, "").trim()
@@ -68,13 +67,12 @@ function loadSpecDomains(): SpecDomain[] {
   }
 }
 
-/** Lit le contenu d'une spec, tronqué à MAX_SPEC_CHARS. */
-function readSpec(domain: SpecDomain): string {
+/** Lit le contenu d'une spec, tronqué à maxChars. Exporté pour les tests. */
+export function readSpec(domain: SpecDomain, maxChars = MAX_SPEC_CHARS): string {
   try {
     const content = readFileSync(domain.path, "utf-8")
-    if (content.length <= MAX_SPEC_CHARS) return content
-    // Tronquer proprement à la fin d'une section
-    const truncated = content.slice(0, MAX_SPEC_CHARS)
+    if (content.length <= maxChars) return content
+    const truncated = content.slice(0, maxChars)
     const lastSection = truncated.lastIndexOf("\n##")
     return (lastSection > 0 ? truncated.slice(0, lastSection) : truncated) +
       `\n\n… (spec truncated — use get_spec ${domain.name} for full content)`
@@ -86,16 +84,19 @@ function readSpec(domain: SpecDomain): string {
 /**
  * Mappe un chemin de fichier source vers un domaine OpenSpec probable.
  * Utilise le mapping.json si disponible, sinon heuristique par répertoire.
+ * Exporté pour les tests.
  */
-function fileToSpecDomain(filePath: string, domains: SpecDomain[]): string | null {
-  // Tenter de lire le mapping.json généré par spec-gen
+export function fileToSpecDomain(
+  filePath: string,
+  domains: SpecDomain[],
+  rootDir = process.cwd(),
+): string | null {
   try {
     const raw = readFileSync(
-      join(process.cwd(), ".spec-gen", "analysis", "mapping.json"),
+      join(rootDir, ".spec-gen", "analysis", "mapping.json"),
       "utf-8",
     )
     const mapping = JSON.parse(raw)
-    // mapping peut avoir diverses formes — chercher par filePath
     const entries: any[] = Array.isArray(mapping) ? mapping : Object.values(mapping)
     const match = entries.find((e: any) =>
       e.file === filePath ||
@@ -105,12 +106,10 @@ function fileToSpecDomain(filePath: string, domains: SpecDomain[]): string | nul
     if (match?.domain || match?.spec) return match.domain ?? match.spec
   } catch { /* mapping non disponible */ }
 
-  // Heuristique : le nom du domaine apparaît dans le chemin du fichier
   for (const domain of domains) {
     if (filePath.toLowerCase().includes(domain.name.toLowerCase())) return domain.name
   }
 
-  // Heuristique : répertoire parent
   const parts = filePath.split("/")
   for (const part of parts) {
     const match = domains.find(d => d.name === part)

@@ -118,11 +118,12 @@ interface FileScore {
 /**
  * Read the dep-graph and score a file by its structural centrality.
  * Returns null if the file is not in the graph (new file — treat as unknown).
+ * Exported for testing.
  */
-function scoreFromDepGraph(filePath: string): FileScore | null {
+export function scoreFromDepGraph(filePath: string, rootDir = process.cwd()): FileScore | null {
   try {
     const raw = readFileSync(
-      join(process.cwd(), ".spec-gen", "analysis", "dependency-graph.json"),
+      join(rootDir, ".spec-gen", "analysis", "dependency-graph.json"),
       "utf-8",
     )
     const graph = JSON.parse(raw)
