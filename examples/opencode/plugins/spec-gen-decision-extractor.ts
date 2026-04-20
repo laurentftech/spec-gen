@@ -28,8 +28,8 @@ import {
   HUB_INDEGREE,
   HIGH_PAGERANK,
   HIGH_FILE_SCORE,
-} from './spec-gen-decision-extractor-helpers.js';
-import type { FileScore } from './spec-gen-decision-extractor-helpers.js';
+} from './lib/spec-gen-decision-extractor-helpers.js';
+import type { FileScore } from './lib/spec-gen-decision-extractor-helpers.js';
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 

@@ -200,12 +200,28 @@ function buildManifest(projectRoot: string): Record<ToolName, SkillEntry[]> {
         dest: join(projectRoot, '.opencode', 'plugins', 'spec-gen-decision-extractor.ts'),
       },
       {
-        src: join(ex, 'opencode', 'plugins', 'spec-gen-decision-extractor-helpers.ts'),
-        dest: join(projectRoot, '.opencode', 'plugins', 'spec-gen-decision-extractor-helpers.ts'),
+        src: join(ex, 'opencode', 'plugins', 'lib', 'spec-gen-decision-extractor-helpers.ts'),
+        dest: join(
+          projectRoot,
+          '.opencode',
+          'plugins',
+          'lib',
+          'spec-gen-decision-extractor-helpers.ts'
+        ),
       },
       {
         src: join(ex, 'opencode', 'plugins', 'spec-gen-context-injector.ts'),
         dest: join(projectRoot, '.opencode', 'plugins', 'spec-gen-context-injector.ts'),
+      },
+      {
+        src: join(ex, 'opencode', 'plugins', 'lib', 'spec-gen-context-injector-helpers.ts'),
+        dest: join(
+          projectRoot,
+          '.opencode',
+          'plugins',
+          'lib',
+          'spec-gen-context-injector-helpers.ts'
+        ),
       },
       // Sisyphus SDD system prompt
       {

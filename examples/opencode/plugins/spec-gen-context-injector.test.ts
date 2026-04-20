@@ -6,7 +6,7 @@ import {
   loadSpecDomains,
   readSpec,
   fileToSpecDomain,
-} from './spec-gen-context-injector.js';
+} from './lib/spec-gen-context-injector-helpers.js';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -74,7 +74,7 @@ describe('loadSpecDomains', () => {
     await createSpec(tmpDir, 'api', `# Api\n\n## Purpose\n\nProvides REST endpoints.\n`);
     const result = loadSpecDomains(tmpDir);
     expect(result).toHaveLength(2);
-    const names = result.map(d => d.name).sort();
+    const names = result.map((d) => d.name).sort();
     expect(names).toEqual(['api', 'auth']);
   });
 
@@ -87,7 +87,11 @@ describe('loadSpecDomains', () => {
   });
 
   it('extracts purpose even with [PARTIAL SPEC] prefix', async () => {
-    await createSpec(tmpDir, 'analyzer', `# Analyzer\n\n## Purpose\n\n[PARTIAL SPEC — file too large] Analyzes codebase.\n`);
+    await createSpec(
+      tmpDir,
+      'analyzer',
+      `# Analyzer\n\n## Purpose\n\n[PARTIAL SPEC — file too large] Analyzes codebase.\n`
+    );
     const result = loadSpecDomains(tmpDir);
     expect(result[0].purpose).toBe('Analyzes codebase.');
   });
@@ -177,13 +181,8 @@ describe('fileToSpecDomain', () => {
   });
 
   it('uses mapping.json when available (array form)', async () => {
-    const mapping = [
-      { file: 'src/core/analyzer/engine.ts', domain: 'analyzer' },
-    ];
-    await writeFile(
-      join(tmpDir, '.spec-gen', 'analysis', 'mapping.json'),
-      JSON.stringify(mapping),
-    );
+    const mapping = [{ file: 'src/core/analyzer/engine.ts', domain: 'analyzer' }];
+    await writeFile(join(tmpDir, '.spec-gen', 'analysis', 'mapping.json'), JSON.stringify(mapping));
     const result = fileToSpecDomain('src/core/analyzer/engine.ts', domains, tmpDir);
     expect(result).toBe('analyzer');
   });
@@ -192,29 +191,20 @@ describe('fileToSpecDomain', () => {
     const mapping = {
       'req-1': { filePath: 'src/api/server.ts', spec: 'api' },
     };
-    await writeFile(
-      join(tmpDir, '.spec-gen', 'analysis', 'mapping.json'),
-      JSON.stringify(mapping),
-    );
+    await writeFile(join(tmpDir, '.spec-gen', 'analysis', 'mapping.json'), JSON.stringify(mapping));
     const result = fileToSpecDomain('src/api/server.ts', domains, tmpDir);
     expect(result).toBe('api');
   });
 
   it('falls back to heuristic when mapping.json has no match', async () => {
     const mapping = [{ file: 'src/other.ts', domain: 'api' }];
-    await writeFile(
-      join(tmpDir, '.spec-gen', 'analysis', 'mapping.json'),
-      JSON.stringify(mapping),
-    );
+    await writeFile(join(tmpDir, '.spec-gen', 'analysis', 'mapping.json'), JSON.stringify(mapping));
     const result = fileToSpecDomain('src/auth/service.ts', domains, tmpDir);
     expect(result).toBe('auth');
   });
 
   it('handles malformed mapping.json without throwing', async () => {
-    await writeFile(
-      join(tmpDir, '.spec-gen', 'analysis', 'mapping.json'),
-      'not valid json',
-    );
+    await writeFile(join(tmpDir, '.spec-gen', 'analysis', 'mapping.json'), 'not valid json');
     const result = fileToSpecDomain('src/auth/service.ts', domains, tmpDir);
     expect(result).toBe('auth');
   });
