@@ -6,7 +6,7 @@ import {
   loadSpecDomains,
   readSpec,
   fileToSpecDomain,
-} from './lib/spec-gen-context-injector-helpers.js';
+} from './lib/spec-gen-context-injector-helpers.ts';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 

@@ -27,8 +27,8 @@ import {
   readSpec,
   fileToSpecDomain,
   MAX_FULL_SPECS,
-} from './lib/spec-gen-context-injector-helpers.js';
-import type { SpecDomain } from './lib/spec-gen-context-injector-helpers.js';
+} from './lib/spec-gen-context-injector-helpers.ts';
+import type { SpecDomain } from './lib/spec-gen-context-injector-helpers.ts';
 
 // ─── Plugin ──────────────────────────────────────────────────────────────────
 

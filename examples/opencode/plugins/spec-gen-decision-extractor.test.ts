@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { scoreFromDepGraph } from './lib/spec-gen-decision-extractor-helpers.js';
+import { scoreFromDepGraph } from './lib/spec-gen-decision-extractor-helpers.ts';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
