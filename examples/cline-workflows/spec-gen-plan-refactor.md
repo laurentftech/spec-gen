@@ -250,6 +250,22 @@ git log --oneline -1
 Note the hash here: <to be filled by execute workflow>
 ```
 
-Once the file is written, tell the user:
+Once the file is written, record the refactoring decision so it appears in the decisions workflow at commit time:
+
+```xml
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>record_decision</tool_name>
+  <arguments>{
+    "directory": "$DIRECTORY",
+    "title": "Refactor $TARGET_FUNCTION into smaller units ($STRATEGY)",
+    "rationale": "$PRIMARY_REASON from the Why section above",
+    "consequences": "Callers unchanged; complexity distributed across $N extracted helpers",
+    "affectedFiles": ["$TARGET_FILE"]
+  }</arguments>
+</use_mcp_tool>
+```
+
+Then tell the user:
 > "Plan written to `.spec-gen/refactor-plan.md`. Review it, then run
 > `/spec-gen-execute-refactor` to apply the changes."

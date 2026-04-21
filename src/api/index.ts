@@ -31,6 +31,7 @@ export { specGenDrift } from './drift.js';
 export { specGenRun } from './run.js';
 export { specGenAudit } from './audit.js';
 export { specGenGetSpecRequirements } from './specs.js';
+export { specGenRecordDecision, specGenConsolidateDecisions, specGenSyncDecisions } from './decisions.js';
 
 // API option/result types
 export type {
@@ -52,7 +53,7 @@ export type {
 } from './types.js';
 
 // Re-export key core types that consumers will need
-export type { AuditReport, DriftResult, DriftSeverity, SpecGenConfig } from '../types/index.js';
+export type { AuditReport, DriftResult, DriftSeverity, SpecGenConfig, PendingDecision, DecisionStore, DecisionStatus } from '../types/index.js';
 export type { RepositoryMap } from './types.js';
 export type { DependencyGraphResult } from '../core/analyzer/dependency-graph.js';
 export type { PipelineResult } from '../core/generator/spec-pipeline.js';

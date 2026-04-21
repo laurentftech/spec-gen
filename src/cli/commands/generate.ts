@@ -7,7 +7,7 @@
 
 import { Command } from 'commander';
 import { confirm } from '@inquirer/prompts';
-import { stat } from 'node:fs/promises';
+import { stat, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { logger } from '../../utils/logger.js';
 import { fileExists, formatDuration, formatAge, parseList, readJsonFile, resolveLLMProvider, estimateCost } from '../../utils/command-helpers.js';
@@ -66,7 +66,6 @@ import { createProgress } from '../../utils/progress.js';
 // ============================================================================
 
 interface ExtendedGenerateOptions extends GenerateOptions {
-  reanalyze?: boolean;
   merge?: boolean;
   noOverwrite?: boolean;
   yes?: boolean;
@@ -194,11 +193,6 @@ export const generateCommand = new Command('generate')
     parseList
   )
   .option(
-    '--reanalyze',
-    'Force fresh analysis even if recent exists',
-    false
-  )
-  .option(
     '--merge',
     'Use merge strategy for existing specs',
     false
@@ -250,7 +244,9 @@ Examples:
   $ spec-gen generate --adr-only     Only generate ADRs
   $ spec-gen generate -y             Skip confirmation prompts
   $ spec-gen generate                Auto-resumes from last completed stage if interrupted
-  $ spec-gen generate --force        Force full regeneration, ignoring cached stages
+  $ spec-gen generate --force        Re-run all LLM stages, clear generation cache, remove stale domains
+  $ spec-gen analyze --force && spec-gen generate --force
+                                     Full reset: fresh static analysis + full regeneration
 
 Output structure (OpenSpec format):
   openspec/
@@ -284,7 +280,6 @@ Each spec.md follows OpenSpec conventions:
       domains: options.domains ?? [],
       adr: options.adr ?? false,
       adrOnly: options.adrOnly ?? false,
-      reanalyze: options.reanalyze ?? false,
       merge: options.merge ?? false,
       noOverwrite: options.noOverwrite ?? false,
       yes: options.yes ?? false,
@@ -329,24 +324,20 @@ Each spec.md follows OpenSpec conventions:
       logger.section('Loading Analysis');
 
       const analysisPath = join(rootPath, opts.analysis);
+
+      // --force: clear intermediate stage files so no stale LLM output survives
+      if (options.force === true) {
+        const generationDir = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_GENERATION_SUBDIR);
+        await rm(generationDir, { recursive: true, force: true });
+        logger.discovery('--force: cleared generation cache');
+      }
+
       const analysisData = await loadAnalysis(analysisPath);
 
-      if (!analysisData || opts.reanalyze) {
-        if (opts.reanalyze) {
-          logger.discovery('Forced re-analysis requested');
-        } else {
-          logger.error('No analysis found. Run "spec-gen analyze" first.');
-          process.exitCode = 1;
-          return;
-        }
-
-        // Note: Re-analysis would be implemented here using the analyzer modules
-        // For now, we require existing analysis
-        if (!analysisData) {
-          logger.error('Analysis required. Run "spec-gen analyze" first.');
-          process.exitCode = 1;
-          return;
-        }
+      if (!analysisData) {
+        logger.error('No analysis found. Run "spec-gen analyze" first.');
+        process.exitCode = 1;
+        return;
       }
 
       const { repoStructure, llmContext, depGraph, age } = analysisData;

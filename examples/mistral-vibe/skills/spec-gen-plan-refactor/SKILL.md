@@ -303,7 +303,23 @@ Never advance to the next change without a green test gate.
 Hash: <to be filled by the execute workflow>
 ```
 
-Once the file is written:
+Once the file is written, record the refactoring decision so it appears in the decisions workflow at commit time:
+
+```xml
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>record_decision</tool_name>
+  <arguments>{
+    "directory": "$DIRECTORY",
+    "title": "Refactor $TARGET_FUNCTION into smaller units ($STRATEGY)",
+    "rationale": "$PRIMARY_REASON from the Why section above",
+    "consequences": "Callers unchanged; complexity distributed across $N extracted helpers",
+    "affectedFiles": ["$TARGET_FILE"]
+  }</arguments>
+</use_mcp_tool>
+```
+
+Then:
 > "Plan written to `.spec-gen/refactor-plan.md`. Review it, then run `/spec-gen-execute-refactor` to apply the changes."
 
 ---

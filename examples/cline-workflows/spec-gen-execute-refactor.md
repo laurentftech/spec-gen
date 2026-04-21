@@ -73,6 +73,24 @@ current commit hash.
 
 ## Step 4: Apply changes (one at a time)
 
+Before applying the first change, record the refactoring decision:
+
+```xml
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>record_decision</tool_name>
+  <arguments>{
+    "directory": "$DIRECTORY",
+    "title": "Refactor $TARGET_FUNCTION via $STRATEGY",
+    "rationale": "$PRIMARY_REASON from the plan's Why section",
+    "consequences": "Callers unchanged; complexity distributed across extracted helpers",
+    "affectedFiles": ["$TARGET_FILE"]
+  }</arguments>
+</use_mcp_tool>
+```
+
+Also call `record_decision` for any unexpected architectural choice that emerges mid-refactor (new module boundary discovered, shared interface change required, dependency introduced).
+
 **Before each change**, re-read `.spec-gen/refactor-plan.md` to confirm:
 - Which change you are on
 - Exactly what to extract, where to put it, and which call sites to update

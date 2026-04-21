@@ -30,7 +30,7 @@ describe('generateAiConfigs', () => {
   beforeEach(async () => { tmpDir = await createTempDir(); });
   afterEach(async () => { await rm(tmpDir, { recursive: true, force: true }); });
 
-  it('creates all 6 files when none exist and returns their relative paths', async () => {
+  it('creates all 7 files when none exist and returns their relative paths', async () => {
     const results = await generateAiConfigs({
       rootDir: tmpDir,
       analysisDir: '.spec-gen/analysis',
@@ -38,9 +38,10 @@ describe('generateAiConfigs', () => {
     });
 
     const rels = results.map(r => r.rel);
-    expect(results).toHaveLength(6);
+    expect(results).toHaveLength(7);
     expect(results.every(r => r.created)).toBe(true);
     expect(rels).toContain('CLAUDE.md');
+    expect(rels).toContain('AGENTS.md');
     expect(rels).toContain('.cursorrules');
     expect(rels).toContain('.clinerules/spec-gen.md');
     expect(rels).toContain('.github/copilot-instructions.md');
@@ -63,7 +64,7 @@ describe('generateAiConfigs', () => {
       projectName: 'my-project',
     });
 
-    expect(results).toHaveLength(6);
+    expect(results).toHaveLength(7);
     expect(results.every(r => !r.created)).toBe(true);
   });
 
@@ -182,11 +183,11 @@ describe('generateAiConfigs', () => {
       projectName: 'my-project',
     });
 
-    // All 6 returned, CLAUDE.md has created=false, the rest created=true
-    expect(results).toHaveLength(6);
+    // All 7 returned, CLAUDE.md has created=false, the rest created=true
+    expect(results).toHaveLength(7);
     const claudeResult = results.find(r => r.rel === 'CLAUDE.md');
     expect(claudeResult?.created).toBe(false);
-    expect(results.filter(r => r.created)).toHaveLength(5);
+    expect(results.filter(r => r.created)).toHaveLength(6);
 
     // Existing file content should be unchanged
     const content = await readFile(join(tmpDir, 'CLAUDE.md'), 'utf-8');

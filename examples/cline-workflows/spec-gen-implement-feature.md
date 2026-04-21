@@ -172,6 +172,26 @@ If `$ANTIPATTERNS` was loaded in Step 1, include any applicable patterns.
 This is not a gate — do not wait for user input. It is a mandatory self-check
 that must appear in the output before the first line of code is written.
 
+## Step 5c: Record the design decision
+
+Before writing any code, record the implementation approach if it represents a significant architectural choice:
+
+```xml
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>record_decision</tool_name>
+  <arguments>{
+    "directory": "$DIRECTORY",
+    "title": "$APPROACH_TITLE",
+    "rationale": "$WHY_THIS_APPROACH",
+    "consequences": "$TRADE_OFFS",
+    "affectedFiles": ["$TARGET_FILE"]
+  }</arguments>
+</use_mcp_tool>
+```
+
+Call this for: a non-obvious insertion point, a pattern chosen over alternatives, a new dependency introduced, or an interface contract established. Skip for trivial changes where the approach is self-evident (a one-liner, a config flag, an obvious helper).
+
 ## Step 6: Implement the feature
 
 Apply the changes incrementally:

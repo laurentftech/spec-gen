@@ -4,13 +4,9 @@ Extract living specifications from any codebase. Enforce them as code evolves. T
 
 ## The Problem
 
-Most software has no specification. The code is the spec — scattered across thousands of files, tribal knowledge, and documentation that was accurate six months ago. Tools like `openspec init` create empty scaffolding, but someone still has to fill it in. By the time specs are written manually, the code has already moved on.
+Most software has no specification. The code is the spec, scattered across thousands of files, tribal knowledge, and stale documentation. Tools like `openspec init` create empty scaffolding, but someone still has to write everything. By the time specs are written manually, the code has already changed. And by the time an AI agent has written the code, the architectural decisions behind it have been forgotten entirely.
 
-The same problem hits AI agents hard. Every new session starts from zero: the agent reads files, runs grep, tries to infer architecture from directory names, and burns thousands of tokens just answering "what does this code do and where should I touch it?" — before writing a single line. Token budgets are real costs, and discovery is pure waste.
-
-spec-gen solves both. It uses static analysis to understand your codebase structurally — call graph, dependency graph, domain clusters, critical hubs — then an LLM to extract what that code actually *does*, producing [OpenSpec](https://github.com/Fission-AI/OpenSpec)-compatible specifications grounded in reality, not aspiration. The result is absorbed by agents passively at session start, so they arrive with full architectural and business context already in place. Active MCP tools handle anything deeper: graph traversal, semantic search, insertion-point discovery, spec-drift checks.
-
-For human workflows: specs stay in sync via continuous drift detection, and `spec-gen test` tracks which spec scenarios have corresponding tests — with a coverage gate you can enforce in CI. AI agent skills (`spec-gen-write-tests`) write the actual tests.
+spec-gen closes this loop. It reverse-engineers structured specifications from existing codebases, continuously detects when code and specs fall out of sync, captures architectural decisions as agents work (and gates commits until they are reviewed), and exposes the entire analysis as an MCP server so agents can navigate your codebase with semantic search, call-graph expansion, and spec-linked context.
 
 ## Capabilities at a Glance
 
@@ -22,6 +18,7 @@ For human workflows: specs stay in sync via continuous drift detection, and `spe
 | Verify spec accuracy | `spec-gen verify` | Yes | Minutes |
 | Human-readable digest of all specs | `spec-gen digest` | No | Milliseconds |
 | Link drift to the tests that should run | `spec-gen drift --suggest-tests` | No | Milliseconds |
+| Track architectural decisions and gate commits | `spec-gen decisions` | Yes (consolidation) | Background |
 | Give agents pre-loaded architectural context | `spec-gen analyze` → `CODEBASE.md` | No | — |
 | Let agents navigate with graph-based tools | `spec-gen mcp` | No | — |
 | Inspect the dependency graph visually | `spec-gen view` | No | — |
@@ -153,7 +150,16 @@ Turns every spec scenario into an executable test skeleton — or a test with re
 - `--min-coverage <n>` exits non-zero when coverage drops below threshold — CI gate for spec adherence
 - Business-logic controls: annotate scenarios with `<!-- spec-gen-test: priority=high tags=smoke -->` directly in the spec; annotations are auto-generated during `spec-gen generate`
 
-**5. Drift Detection** (no API key needed)
+**5. Decisions** (API key required for consolidation)
+
+Tracks architectural decisions across the full development lifecycle:
+- Agents call `record_decision` during development — consolidation runs immediately in the background (no commit latency)
+- At commit time, a pre-commit hook gates the commit until all verified decisions are reviewed; it reads the already-consolidated store and adds no LLM latency
+- Three gate modes: interactive TUI (TTY), structured JSON for ACP-capable IDEs (Zed, PyCharm), or JSON for agents to present in chat
+- Approved decisions are written to `spec.md` files (as requirements) and `openspec/decisions/` as ADRs
+- A diff-based fallback extractor mines decisions from git changes when the agent produced no drafts
+
+**6. Drift Detection** (no API key needed)
 
 Compares git changes against spec file mappings to find divergence:
 - **Gap**: Code changed but its spec was not updated
@@ -178,6 +184,7 @@ graph TD
         API_VERIFY[specGenVerify]
         API_DRIFT[specGenDrift]
         API_RUN[specGenRun]
+        API_DECISIONS[specGenConsolidateDecisions / specGenSyncDecisions]
     end
 
     subgraph Core["Core Layer"]
@@ -214,10 +221,18 @@ graph TD
             DD -.->|optional| LE[LLM Enhancer]
         end
 
+        subgraph Decisions["Decisions -- LLM optional"]
+            DR[Decision Recorder]
+            DR --> DC[Consolidator]
+            DC -.->|LLM consolidate| DV[Verifier]
+            DV --> DS[Syncer]
+            GA -.->|fallback extractor| DC
+        end
+
         LLM[LLM Service -- Anthropic / OpenAI / Compatible]
     end
 
-    CMD --> API_INIT & API_ANALYZE & API_GENERATE & API_VERIFY & API_DRIFT
+    CMD --> API_INIT & API_ANALYZE & API_GENERATE & API_VERIFY & API_DRIFT & API_DECISIONS
     API_RUN --> API_INIT & API_ANALYZE & API_GENERATE
 
     API_INIT --> Init
@@ -225,10 +240,15 @@ graph TD
     API_GENERATE --> Generate
     API_VERIFY --> Verify
     API_DRIFT --> Drift
+    API_DECISIONS --> Decisions
 
     Generate --> LLM
     Verify --> LLM
     LE -.-> LLM
+    DC -.-> LLM
+    DV -.-> LLM
+
+    MCP([MCP / Agent]) -.->|record_decision| DR
 
     AG -->|analysis artifacts| SP
     AG -->|analysis artifacts| VE
@@ -244,11 +264,15 @@ graph TD
     ADR --> ADRS
     AG --> ANALYSIS
     DD --> REPORT
+    DS --> SPECS
+    DS --> ADRS
 ```
 
 ## Drift Detection
 
 Drift detection is the core of ongoing spec maintenance. It runs in milliseconds, needs no API key, and works entirely from git diffs and spec file mappings.
+
+> **Drift vs. Decisions**: these address different failure modes. Drift asks *"is this spec's source file coverage still accurate?"* — it fires when a spec-covered file changes without the spec being updated. The [decisions workflow](#what-it-does) asks *"has this architectural choice been reviewed?"* — it gates commits until recorded decisions are approved and written back as new requirements. Syncing a decision appends a requirement but does not update a spec's source file list, so drift can still fire on the same commit. Run both: they catch different things.
 
 ```bash
 $ spec-gen drift
@@ -451,12 +475,36 @@ spec-gen is designed to run in automated pipelines. The deterministic commands (
 
 ### Pre-Commit Hook
 
+spec-gen provides two pre-commit hooks that address spec alignment from opposite directions:
+
+| Hook | Direction | Speed | Installed via |
+|------|-----------|-------|---------------|
+| **Drift** | Reactive — code changed without spec | Milliseconds, no API key | `spec-gen drift --install-hook` |
+| **Decisions gate** | Proactive — pending decisions await review | Instant, no LLM | `spec-gen setup --tools claude` |
+
+**Drift hook** — blocks commits when code changes are not reflected in existing specs:
+
 ```bash
 spec-gen drift --install-hook     # Install
 spec-gen drift --uninstall-hook   # Remove
 ```
 
-The hook runs in static mode (fast, no API key needed) and blocks commits when drift is detected at warning level or above.
+**Decisions gate** — blocks commits until all recorded architectural decisions have been reviewed and approved. No LLM at commit time: consolidation runs in the background each time an agent calls `record_decision`, so by the time the hook fires, decisions are already verified.
+
+```bash
+spec-gen setup --tools claude         # Install (also installs Claude Code skills)
+spec-gen decisions --uninstall-hook   # Remove decisions hook only
+```
+
+**How they relate**: they address different failure modes and do not substitute for each other.
+
+The decisions gate asks: *"has this architectural choice been reviewed by a human?"* It operates on decisions recorded during development — it has no knowledge of which spec files cover which source files.
+
+The drift hook asks: *"has this source file's spec coverage been kept up to date?"* It compares git-changed files against each spec's source file list — it has no knowledge of recorded decisions.
+
+A commit can trigger drift without any decisions pending (a pure refactor touches a spec-covered file). A commit can have decisions synced without satisfying drift (syncing a decision appends a new requirement but does not update the spec's source file coverage metadata). Run both: decisions for design governance, drift as a coverage staleness check.
+
+Pending decisions are stored in `.spec-gen/decisions/pending.json` (auto-added to `.gitignore` on install).
 
 ### GitHub Actions / CI Pipelines
 
@@ -685,6 +733,8 @@ Priority: CLI flags > environment variables > config file > provider defaults.
 | `spec-gen test` | Generate spec-driven tests (Vitest / Playwright / pytest / GTest / Catch2) | No |
 | `spec-gen test --coverage` | Report which spec scenarios have corresponding tests | No |
 | `spec-gen digest` | Plain-English summary of all specs for human review | No |
+| `spec-gen decisions` | Manage architectural decisions: list, approve, reject, sync to specs and ADRs | No |
+| `spec-gen decisions --install-hook` | Install the pre-commit hook that gates commits until decisions are reviewed | No |
 | `spec-gen run` | Full pipeline: init, analyze, generate | Yes |
 | `spec-gen view` | Launch interactive graph & spec viewer in the browser | No |
 | `spec-gen setup` | Install workflow skills into the project (Vibe, Cline, GSD, BMAD) | No |
@@ -736,7 +786,7 @@ spec-gen generate [options]
   --no-overwrite         # Skip existing files
   --adr                  # Also generate ADRs
   --adr-only             # Generate only ADRs
-  --reanalyze            # Force fresh analysis even if recent exists
+  --force                # Re-run all LLM stages, clear generation cache, remove stale domains
   --analysis <path>      # Path to existing analysis directory
   --output-dir <path>    # Override openspec output location
   -y, --yes              # Skip confirmation prompts
@@ -775,7 +825,8 @@ spec-gen analyze [options]
 
 ```bash
 spec-gen setup [options]
-  --tools <list>   Comma-separated tools to install: vibe, cline, gsd, bmad (default: interactive prompt)
+  --tools <list>   Comma-separated tools to install: vibe, cline, claude, opencode, gsd, bmad, omoa (default: interactive prompt)
+  --force          Overwrite existing files (use after upgrading spec-gen)
   --dir <path>     Project root directory (default: current directory)
 ```
 
@@ -783,18 +834,40 @@ Installs workflow skills from the spec-gen package into the project. Skills are 
 
 Files installed:
 
-| Tool | Destination | Skills |
-|------|-------------|--------|
-| `vibe` | `.vibe/skills/spec-gen-{name}/SKILL.md` | analyze-codebase, brainstorm, debug, execute-refactor, generate, implement-story, plan-refactor |
-| `cline` | `.clinerules/workflows/spec-gen-{name}.md` | analyze-codebase, check-spec-drift, execute-refactor, implement-feature, plan-refactor, refactor-codebase |
-| `gsd` | `.claude/commands/gsd/spec-gen-{name}.md` | orient, drift |
-| `bmad` | `_bmad/spec-gen/{agents,tasks}/` | agents: architect, dev-brownfield — tasks: implement-story, onboarding, refactor, sprint-planning |
+| Tool | Destination | Content |
+|------|-------------|---------|
+| `vibe` | `.vibe/skills/spec-gen-{name}/SKILL.md` | 8 skills |
+| `cline` | `.clinerules/workflows/spec-gen-{name}.md` | 7 workflows |
+| `claude` | `.claude/skills/spec-gen-{name}/SKILL.md` + decisions pre-commit hook | 8 skills + commit gate |
+| `opencode` | `.opencode/skills/spec-gen-{name}/SKILL.md` + `.opencode/plugins/agent-guard.ts` | 8 skills + guard plugin |
+| `gsd` | `.claude/commands/gsd/spec-gen-{name}.md` | 2 commands |
+| `bmad` | `_bmad/spec-gen/{agents,tasks}/` | 2 agents, 4 tasks |
+| `omoa` | `.opencode/plugins/` + `.opencode/prompts/` | 4 SDD plugins + Sisyphus prompt (oh-my-openagent) |
+
+The `omoa` option is **auto-detected and pre-checked** in the interactive prompt when oh-my-openagent is found in the project or user config.
 
 Never overwrites existing files. Combine with `analyze --ai-configs` for a complete agent setup:
 
 ```bash
 spec-gen analyze --ai-configs   # project-specific context files
 spec-gen setup                   # workflow skills
+```
+
+### Decisions Options
+
+```bash
+spec-gen decisions [options]
+  --list                 # List decisions, optionally filtered by --status
+  --status <status>      # Filter by status: draft, consolidated, verified, approved, synced, phantom
+  --approve <id>         # Approve a decision by ID
+  --reject <id>          # Reject a decision by ID
+  --reason <text>        # Rejection reason (used with --reject)
+  --sync                 # Write approved decisions into specs and ADRs
+  --dry-run              # Preview sync without writing files
+  --gate                 # Run commit gate check (reads pending.json, no LLM — used by pre-commit hook)
+  --consolidate          # Manually trigger LLM consolidation + diff verification of drafts
+  --json                 # Machine-readable output
+  --uninstall-hook       # Remove decisions pre-commit hook (install via: spec-gen setup --tools claude)
 ```
 
 ### Verify Options
@@ -884,12 +957,18 @@ spec-gen setup                   # install workflow skills
 **`spec-gen setup`** copies static workflow assets from the spec-gen package that are identical across all projects. Run once at onboarding; re-run after upgrading spec-gen to get new or updated skills.
 
 ```
-spec-gen setup [--tools vibe,cline,gsd,bmad]
+spec-gen setup [--tools vibe,cline,claude,opencode,omoa,gsd,bmad]
 
-Mistral Vibe  ->  .vibe/skills/spec-gen-{name}/SKILL.md      (7 skills)
-Cline / Roo   ->  .clinerules/workflows/spec-gen-{name}.md   (6 workflows)
-GSD           ->  .claude/commands/gsd/spec-gen-{name}.md    (2 commands)
-BMAD          ->  _bmad/spec-gen/{agents,tasks}/              (2 agents, 4 tasks)
+Mistral Vibe  ->  .vibe/skills/spec-gen-{name}/SKILL.md       (8 skills)
+Cline / Roo   ->  .clinerules/workflows/spec-gen-{name}.md    (7 workflows)
+Claude Code   ->  .claude/skills/spec-gen-{name}/SKILL.md     (8 skills + decisions pre-commit hook)
+OpenCode      ->  .opencode/skills/spec-gen-{name}/SKILL.md   (8 skills)
+              ->  .opencode/plugins/agent-guard.ts             (guard plugin)
+oh-my-openagent -> .opencode/plugins/{anti-laziness,spec-gen-enforcer,
+              ->                      spec-gen-decision-extractor,spec-gen-context-injector}.ts
+              ->  .opencode/prompts/sisyphus-sdd.md            (SDD system prompt)
+GSD           ->  .claude/commands/gsd/spec-gen-{name}.md     (2 commands)
+BMAD          ->  _bmad/spec-gen/{agents,tasks}/               (2 agents, 4 tasks)
 ```
 
 Wire the generated digest into your agent's context:
@@ -980,6 +1059,40 @@ spec-gen analyze --ai-configs   # creates .vibe/skills/spec-gen.md
 ```
 
 Then invoke `/spec-gen` inside Vibe to get architecture context on demand.
+
+**OpenCode** — install skills and the agent-guard plugin:
+
+```bash
+spec-gen setup --tools opencode
+```
+
+This installs 8 workflow skills into `.opencode/skills/` and an `agent-guard.ts` plugin into `.opencode/plugins/`. OpenCode loads plugins from `.opencode/plugins/` automatically — no further configuration needed.
+
+The plugin does four things at runtime, with no LLM calls of its own:
+
+| Hook | Behaviour |
+|------|-----------|
+| `experimental.chat.system.transform` | Before any file change: prevents premature "Task completed". After work is done: reminds the agent to call `check_spec_drift`. |
+| `tool.execute.after` | Appends a `record_decision` nudge to the output of any write/edit that touches a structural file (`service/`, `domain/`, `core/`, `adapter/`). |
+| `experimental.session.compacting` | Injects pending decisions into the compaction context so they survive session summarisation. |
+| `tool.definition` | Enriches the `record_decision` tool description with the known spec domains for the current project. |
+
+**oh-my-openagent (SDD plugins)** — install four SDD-enforcement plugins for the [oh-my-openagent](https://github.com/code-yeongyu/oh-my-openagent) multi-model orchestration framework:
+
+```bash
+spec-gen setup --tools omoa
+```
+
+`setup` auto-detects an existing OMOA config and pre-checks the option. It installs four plugins into `.opencode/plugins/` and a system prompt into `.opencode/prompts/`:
+
+| Plugin | Behaviour |
+|--------|-----------|
+| `spec-gen-context-injector.ts` | Injects a compact OpenSpec domain index into every turn (`experimental.chat.system.transform`). At session compaction, injects the full content of active-domain specs to preserve architectural contracts across summarisation. Tracks which domains the agent touched via `tool.execute.after`. |
+| `spec-gen-enforcer.ts` | Adds a `record_decision` nudge when the agent writes structural files. Injects pending decisions at compaction. Checks the spec-drift gate on `session.idle`. |
+| `spec-gen-decision-extractor.ts` | On `session.idle`, spawns an OMOA Librarian sub-session to extract architectural decisions from the conversation and record them via `spec-gen decisions`. Falls back to a plain OpenAI-compatible HTTP call if Librarian is unavailable. Skips extraction for low-centrality files using the dependency-graph scores in `.spec-gen/analysis/dependency-graph.json`. |
+| `anti-laziness.ts` | Detects incomplete responses ("I'll let you handle…", "not possible") via `todo.updated` and `experimental.session.compacting`; reminds the agent to complete the task fully. |
+
+Wire the SDD prompt into your OMOA config's `prompt_append` for the Sisyphus agent so it inherits the full SDD workflow on every session start.
 
 ---
 
@@ -1091,7 +1204,7 @@ curl -sL https://raw.githubusercontent.com/clay-good/spec-gen/main/skills/opensp
 
 ### Tools
 
-All tools run on **pure static analysis** -- no LLM quota consumed.
+Most tools run on **pure static analysis** — no LLM quota consumed. Exceptions: `record_decision` consolidation (LLM optional, falls back to diff extraction) and `sync_decisions` (writes to files).
 
 **Run analysis**
 
@@ -1115,7 +1228,6 @@ All tools run on **pure static analysis** -- no LLM quota consumed.
 | `get_function_skeleton` | Noise-stripped view of a source file: logs, inline comments, and non-JSDoc block comments removed. Signatures, control flow, return/throw, and call expressions preserved. Returns reduction %. | No |
 | `get_file_dependencies` | Return the file-level import dependencies for a given source file (imports, imported-by, or both). | Yes |
 | `get_architecture_overview` | High-level cluster map: roles (entry layer, orchestrator, core utilities, API layer, internal), inter-cluster dependencies, global entry points, and critical hubs. No LLM required. | Yes |
-| `get_signatures` | Compact function/class signatures per file. Filter by path substring with `filePattern`. Useful for understanding a module's public API without reading full source. | Yes |
 
 **Stack inventory**
 
@@ -1131,14 +1243,12 @@ All tools run on **pure static analysis** -- no LLM quota consumed.
 
 | Tool | Description | Requires prior analysis |
 |------|-------------|:---:|
-| `get_call_graph` | Hub functions (high fan-in), entry points (no internal callers), and architectural layer violations. Supports TypeScript, JavaScript, Python, Go, Rust, Ruby, Java, C++. | Yes |
 | `get_refactor_report` | Prioritized list of functions with structural issues: unreachable code, hub overload (high fan-in), god functions (high fan-out), SRP violations, cyclic dependencies. | Yes |
 | `get_critical_hubs` | Highest-impact hub functions ranked by criticality. Each hub gets a stability score (0-100) and a recommended approach: extract, split, facade, or delegate. | Yes |
 | `get_god_functions` | Detect god functions (high fan-out, likely orchestrators) in the project or in a specific file, and return their call-graph neighborhood. Use this to identify which functions need to be refactored and understand what logical blocks to extract. | Yes |
 | `analyze_impact` | Deep impact analysis for a specific function: fan-in/fan-out, upstream call chain, downstream critical path, risk score (0-100), blast radius, and recommended strategy. | Yes |
 | `get_low_risk_refactor_candidates` | Safest functions to refactor first: low fan-in, low fan-out, not a hub, no cyclic involvement. Best starting point for incremental, low-risk sessions. | Yes |
 | `get_leaf_functions` | Functions that make no internal calls (leaves of the call graph). Zero downstream blast radius. Sorted by fan-in by default -- most-called leaves have the best unit-test ROI. | Yes |
-| `get_duplicate_report` | Detect duplicate code: Type 1 (exact clones), Type 2 (structural -- renamed variables), Type 3 (near-clones with Jaccard similarity >= 0.7). Groups sorted by impact. | Yes |
 
 **Specs**
 
@@ -1151,6 +1261,16 @@ All tools run on **pure static analysis** -- no LLM quota consumed.
 | `search_specs` | Semantic search over OpenSpec specifications to find requirements, design notes, and architecture decisions by meaning. Returns linked source files for graph highlighting. Use this when asked "which spec covers X?" or "where should we implement Z?". Requires a spec index built with `spec-gen analyze` or `--reindex-specs`. | Yes (generate) |
 | `list_spec_domains` | List all OpenSpec domains available in this project. Use this to discover what domains exist before doing a targeted `search_specs` call. | Yes (generate) |
 | `audit_spec_coverage` | Parity audit: uncovered functions (in call graph, no spec), hub gaps (high fan-in + no spec), orphan requirements (spec with no implementation found), and stale domains (source changed after spec). Run before starting a feature to understand coverage health. No LLM required. | Yes (analyze) |
+
+**Decisions**
+
+| Tool | Description | Requires prior analysis |
+|------|-------------|:---:|
+| `record_decision` | Record an architectural decision before writing code. Triggers background consolidation immediately — by commit time, decisions are already verified and the gate adds no LLM latency. | No |
+| `list_decisions` | List decisions in the store, optionally filtered by status (`draft`, `consolidated`, `verified`, `approved`, `synced`, `phantom`). | No |
+| `approve_decision` | Approve one or more decisions by ID, marking them ready to sync into specs and ADRs. | No |
+| `reject_decision` | Reject a decision by ID with a reason. Rejected decisions are excluded from sync. | No |
+| `sync_decisions` | Write approved decisions into OpenSpec spec.md files (as requirements) and create ADR files in `openspec/decisions/`. Append-only — never rewrites existing content. Pass `dryRun: true` to preview. | No |
 
 **Story Management**
 
@@ -1348,6 +1468,42 @@ storyFilePath  string   Path to the story file (relative to project root or abso
 description    string   Natural-language summary of the story for structural analysis
 ```
 
+**`record_decision`**
+```
+directory             string    Absolute path to the project directory
+title                 string    Short decision title (e.g. "Use Redis for session cache")
+rationale             string    Why this approach was chosen
+consequences          string    Trade-offs and impacts of this decision
+affectedFiles         string[]  Source files involved (relative paths)
+proposedRequirement   string    Optional: "The system SHALL …" requirement to add to specs
+supersedes            string    Optional: ID of a prior decision this replaces
+```
+
+**`list_decisions`**
+```
+directory  string   Absolute path to the project directory
+status     string   Optional filter: draft | consolidated | verified | approved | synced | phantom
+```
+
+**`approve_decision`**
+```
+directory  string    Absolute path to the project directory
+ids        string[]  Decision IDs to approve
+```
+
+**`reject_decision`**
+```
+directory  string   Absolute path to the project directory
+id         string   Decision ID to reject
+reason     string   Reason for rejection
+```
+
+**`sync_decisions`**
+```
+directory  string    Absolute path to the project directory
+dryRun     boolean   Preview changes without writing files (default: false)
+```
+
 ### Typical workflow
 
 **Scenario A -- Initial exploration**
@@ -1395,6 +1551,20 @@ description    string   Natural-language summary of the story for structural ana
    # orphan requirements. 0 LLM calls, ~200ms.
 2. If staleDomains includes your target: spec-gen generate --domains $DOMAIN
 3. If hubGaps includes a function you'll touch: flag it in your risk check
+```
+
+**Scenario F -- Decisions workflow**
+```
+1. record_decision({ directory, title, rationale, consequences, affectedFiles })
+   # Call this before writing code — captures the design choice
+2. [implement the feature / refactor]
+3. git commit  # decisions hook consolidates drafts, cross-checks against diff,
+               # blocks commit if unreviewed decisions remain
+4. list_decisions({ directory, status: "verified" })
+   # Review the consolidated + verified decisions
+5. approve_decision({ directory, ids: ["<id>"] })
+6. sync_decisions({ directory, dryRun: true })   # preview
+7. sync_decisions({ directory })                  # write to specs and ADRs
 ```
 
 ---

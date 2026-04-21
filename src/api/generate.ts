@@ -201,6 +201,7 @@ export async function specGenGenerate(options: GenerateApiOptions = {}): Promise
         filesSkipped: [],
         filesBackedUp: [],
         filesMerged: [],
+        domainsRemoved: [],
         configUpdated: false,
         validationErrors: [],
         warnings: [],
@@ -301,6 +302,7 @@ export async function specGenGenerate(options: GenerateApiOptions = {}): Promise
     createBackups: true,
     updateConfig: true,
     validateBeforeWrite: true,
+    cleanBeforeWrite: options.force === true,
   });
 
   const report = await writer.writeSpecs(generatedSpecs, pipelineResult.survey);

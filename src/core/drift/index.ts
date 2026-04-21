@@ -4,7 +4,7 @@
  * Detects when code changes diverge from existing OpenSpec specifications.
  */
 
-export { getChangedFiles, getFileDiff, isGitRepository, getCurrentBranch, resolveBaseRef, classifyFile } from './git-diff.js';
+export { getChangedFiles, getFileDiff, getCommitMessages, isGitRepository, getCurrentBranch, resolveBaseRef, classifyFile } from './git-diff.js';
 export type { GitDiffOptions, GitDiffResult } from './git-diff.js';
 
 export { buildSpecMap, matchFileToDomains, getSpecContent, parseSpecHeader, parseSpecReferences, inferDomainFromPath, buildADRMap, parseADRRelated } from './spec-mapper.js';

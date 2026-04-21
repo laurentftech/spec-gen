@@ -6,10 +6,11 @@
  *   - isCacheFresh
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { vi } from 'vitest';
 import {
   validateDirectory,
   sanitizeMcpError,
@@ -17,9 +18,11 @@ import {
   readCachedContext,
   isCacheFresh,
   loadMappingIndex,
+  clearMappingCache,
   specsForFile,
   functionsForDomain,
 } from './utils.js';
+import { logger } from '../../../utils/logger.js';
 import {
   SPEC_GEN_DIR,
   SPEC_GEN_ANALYSIS_SUBDIR,
@@ -61,6 +64,62 @@ describe('validateDirectory', () => {
     // Use process.cwd() which is definitely a valid directory
     const result = await validateDirectory('.');
     expect(result).toBe(process.cwd());
+  });
+});
+
+// ============================================================================
+// validateDirectory Logging
+// ============================================================================
+
+describe('validateDirectory logging', () => {
+  let tmpDir: string;
+  let debugSpy: ReturnType<typeof vi.spyOn>;
+  let successSpy: ReturnType<typeof vi.spyOn>;
+  let warningSpy: ReturnType<typeof vi.spyOn>;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), 'mcp-utils-logging-test-'));
+    debugSpy = vi.spyOn(logger, 'debug');
+    successSpy = vi.spyOn(logger, 'success');
+    warningSpy = vi.spyOn(logger, 'warning');
+    errorSpy = vi.spyOn(logger, 'error');
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('logs debug message on function entry', async () => {
+    await validateDirectory(tmpDir);
+    expect(debugSpy).toHaveBeenCalledWith(`Validating directory: ${tmpDir}`);
+  });
+
+  it('logs debug message for resolved path', async () => {
+    await validateDirectory(tmpDir);
+    expect(debugSpy).toHaveBeenCalledWith(`Resolved directory path: ${tmpDir}`);
+  });
+
+  it('logs success message on successful validation', async () => {
+    await validateDirectory(tmpDir);
+    expect(successSpy).toHaveBeenCalledWith(`Successfully validated directory: ${tmpDir}`);
+  });
+
+  it('logs warning message on invalid input', async () => {
+    await expect(validateDirectory('')).rejects.toThrow('directory parameter is required');
+    expect(warningSpy).toHaveBeenCalledWith(expect.stringContaining('directory parameter is required'));
+  });
+
+  it('logs error message when directory not found', async () => {
+    await expect(validateDirectory(join(tmpDir, 'nonexistent'))).rejects.toThrow('Directory not found');
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Directory not found'));
+  });
+
+  it('logs error message when path is not a directory', async () => {
+    const filePath = join(tmpDir, 'file.txt');
+    await writeFile(filePath, 'hello', 'utf-8');
+    await expect(validateDirectory(filePath)).rejects.toThrow('Not a directory');
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Not a directory'));
   });
 });
 
@@ -268,6 +327,132 @@ describe('loadMappingIndex', () => {
     await writeFile(join(dir, 'mapping.json'), 'not valid json', 'utf-8');
     const result = await loadMappingIndex(tmpDir);
     expect(result).toBeNull();
+  });
+
+  it('caches results and returns cached value on subsequent calls', async () => {
+    const dir = join(tmpDir, '.spec-gen', 'analysis');
+    await mkdir(dir, { recursive: true });
+    const mappingData = {
+      mappings: [
+        {
+          requirement: 'User auth',
+          domain: 'auth',
+          specFile: 'openspec/specs/auth/spec.md',
+          functions: [
+            { name: 'login', file: 'src/auth.ts', line: 10, kind: 'function', confidence: 'high' },
+          ],
+        },
+      ],
+    };
+    await writeFile(join(dir, 'mapping.json'), JSON.stringify(mappingData), 'utf-8');
+
+    // First call - should read from disk
+    const result1 = await loadMappingIndex(tmpDir);
+    expect(result1).not.toBeNull();
+    
+    // Second call - should return cached result
+    const result2 = await loadMappingIndex(tmpDir);
+    expect(result2).not.toBeNull();
+    
+    // Both results should be the same object (cached)
+    expect(result2).toBe(result1);
+  });
+
+  it('caches different directories separately', async () => {
+    const dir1 = join(tmpDir, '.spec-gen', 'analysis');
+    await mkdir(dir1, { recursive: true });
+    const mappingData1 = {
+      mappings: [
+        {
+          requirement: 'User auth',
+          domain: 'auth',
+          specFile: 'openspec/specs/auth/spec.md',
+          functions: [
+            { name: 'login', file: 'src/auth.ts', line: 10, kind: 'function', confidence: 'high' },
+          ],
+        },
+      ],
+    };
+    await writeFile(join(dir1, 'mapping.json'), JSON.stringify(mappingData1), 'utf-8');
+
+    const dir2 = join(tmpDir, 'other', '.spec-gen', 'analysis');
+    await mkdir(dir2, { recursive: true });
+    const mappingData2 = {
+      mappings: [
+        {
+          requirement: 'Payment processing',
+          domain: 'payments',
+          specFile: 'openspec/specs/payments/spec.md',
+          functions: [
+            { name: 'processPayment', file: 'src/payments.ts', line: 20, kind: 'function', confidence: 'high' },
+          ],
+        },
+      ],
+    };
+    await writeFile(join(dir2, 'mapping.json'), JSON.stringify(mappingData2), 'utf-8');
+
+    // Load both indices
+    const result1 = await loadMappingIndex(tmpDir);
+    const result2 = await loadMappingIndex(join(tmpDir, 'other'));
+    
+    expect(result1).not.toBeNull();
+    expect(result2).not.toBeNull();
+    
+    // Results should be different objects (different directories)
+    expect(result2).not.toBe(result1);
+    
+    // But each should be cached for their respective directory
+    const result1Cached = await loadMappingIndex(tmpDir);
+    const result2Cached = await loadMappingIndex(join(tmpDir, 'other'));
+    
+    expect(result1Cached).toBe(result1);
+    expect(result2Cached).toBe(result2);
+  });
+});
+
+// ============================================================================
+// clearMappingCache
+// ============================================================================
+
+describe('clearMappingCache', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), 'mcp-cache-clear-test-'));
+  });
+
+  it('clears the mapping cache', async () => {
+    const dir = join(tmpDir, '.spec-gen', 'analysis');
+    await mkdir(dir, { recursive: true });
+    const mappingData = {
+      mappings: [
+        {
+          requirement: 'User auth',
+          domain: 'auth',
+          specFile: 'openspec/specs/auth/spec.md',
+          functions: [
+            { name: 'login', file: 'src/auth.ts', line: 10, kind: 'function', confidence: 'high' },
+          ],
+        },
+      ],
+    };
+    await writeFile(join(dir, 'mapping.json'), JSON.stringify(mappingData), 'utf-8');
+
+    // Load and cache the index
+    const result1 = await loadMappingIndex(tmpDir);
+    expect(result1).not.toBeNull();
+    
+    // Verify it's cached
+    const result2 = await loadMappingIndex(tmpDir);
+    expect(result2).toBe(result1);
+    
+    // Clear the cache
+    clearMappingCache();
+    
+    // Next call should not return the cached result
+    const result3 = await loadMappingIndex(tmpDir);
+    expect(result3).not.toBe(result1);
+    expect(result3).not.toBeNull(); // Should still load from disk
   });
 });
 

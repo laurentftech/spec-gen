@@ -357,8 +357,37 @@ export async function handleOrient(
     }
   }
 
+  // ── Pending decisions (best-effort) ──────────────────────────────────────
+  interface DecisionSummary {
+    id: string;
+    title: string;
+    status: string;
+    affectedDomains: string[];
+  }
+  let pendingDecisions: DecisionSummary[] | undefined;
+  try {
+    const { loadDecisionStore } = await import('../../decisions/store.js');
+    const store = await loadDecisionStore(absDir);
+    const active = store.decisions.filter(
+      (d) => d.status !== 'synced' && d.status !== 'rejected',
+    );
+    if (active.length > 0) {
+      pendingDecisions = active.map((d) => ({
+        id: d.id,
+        title: d.title,
+        status: d.status,
+        affectedDomains: d.affectedDomains,
+      }));
+    }
+  } catch {
+    // non-fatal — decisions feature may not be initialised
+  }
+
   // ── Next steps ────────────────────────────────────────────────────────────
   const nextSteps: string[] = [];
+  nextSteps.push(
+    'Before making an architectural choice, call record_decision(title, rationale, consequences, affectedFiles) to document it',
+  );
   if (insertionPoints.length > 0) {
     nextSteps.push(
       `Call get_subgraph("${insertionPoints[0].name}") to trace the call neighbourhood`,
@@ -386,6 +415,7 @@ export async function handleOrient(
     callPaths,
     insertionPoints,
     ...(matchingSpecs !== undefined ? { matchingSpecs } : {}),
+    ...(pendingDecisions !== undefined ? { pendingDecisions } : {}),
     nextSteps,
   };
 }

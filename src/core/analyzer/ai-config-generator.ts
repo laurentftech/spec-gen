@@ -12,15 +12,16 @@
  * Returns the list of paths that were actually created.
  */
 
-import { writeFile, mkdir, access } from 'node:fs/promises';
+import { writeFile, mkdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
+import { fileExists } from '../../utils/command-helpers.js';
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
 /** Supported AI assistant targets */
-export type AiTool = 'claude' | 'cursor' | 'cline' | 'copilot' | 'windsurf' | 'vibe';
+export type AiTool = 'claude' | 'cursor' | 'cline' | 'copilot' | 'windsurf' | 'vibe' | 'agents';
 
 export interface AiConfigOptions {
   /** Absolute path to the project root */
@@ -57,6 +58,7 @@ export const AI_TOOL_TARGETS: ToolTarget[] = [
   { tool: 'copilot',  label: 'GitHub Copilot (.github/copilot-instructions.md)',  rel: '.github/copilot-instructions.md',        forClaude: false },
   { tool: 'windsurf', label: 'Windsurf       (.windsurf/rules.md)',               rel: '.windsurf/rules.md',                     forClaude: false },
   { tool: 'vibe',    label: 'Mistral Vibe   (.vibe/skills/spec-gen.md)',          rel: '.vibe/skills/spec-gen.md',               forClaude: false },
+  { tool: 'agents',  label: 'OpenAI Codex  (AGENTS.md)',                          rel: 'AGENTS.md',                              forClaude: false },
 ];
 
 // ============================================================================
@@ -77,6 +79,26 @@ const MCP_TOOLS_TABLE = `
 
 **On-demand** (when orient's results aren't enough):
 \`search_code\` · \`suggest_insertion_points\` · \`get_spec <domain>\` · \`search_specs\` · \`analyze_impact\` · \`get_function_body\` · \`get_function_skeleton\`
+
+## Architectural decisions
+
+When making a significant design choice, call \`record_decision\` **before** writing the code.
+
+Significant choices: data structure, library/dependency, API contract, auth strategy, module boundary, database schema, caching approach, error handling pattern.
+
+\`\`\`
+record_decision({
+  title: "Use JWTs for stateless auth",         // short imperative
+  rationale: "Avoids session store in infra",   // why this choice
+  consequences: "Tokens can't be revoked early", // trade-offs
+  affectedFiles: ["src/auth/middleware.ts"],    // optional
+  supersedes: "a1b2c3d4"                        // 8-char ID of prior decision being reversed
+})
+\`\`\`
+
+Decisions are consolidated in the background immediately after \`record_decision\` is called — the pre-commit gate reads the already-consolidated store and adds no LLM latency.
+
+**Performance note**: if you skip \`record_decision\`, the gate detects unrecorded source changes at commit time and triggers a slow LLM extraction on the *next* commit (~10-30s). Calling \`record_decision\` proactively keeps every commit instant. Do not record trivial choices (variable names, formatting).
 `.trim();
 
 function buildContent(analysisDir: string, projectName: string, forClaude: boolean): string {
@@ -96,15 +118,6 @@ function buildContent(analysisDir: string, projectName: string, forClaude: boole
 // ============================================================================
 // HELPERS
 // ============================================================================
-
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 async function writeIfAbsent(filePath: string, content: string): Promise<boolean> {
   if (await fileExists(filePath)) return false;

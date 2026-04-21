@@ -126,6 +126,7 @@ export interface GenerateOptions extends GlobalOptions {
   domains: string[];
   adr: boolean;
   adrOnly: boolean;
+  force?: boolean;
 }
 
 export interface VerifyOptions extends GlobalOptions {
@@ -381,4 +382,66 @@ export interface AuditReport {
   hubGaps: AuditUncoveredFunction[];
   orphanRequirements: AuditOrphanRequirement[];
   staleDomains: AuditStaleDomain[];
+}
+
+// ============================================================================
+// DECISIONS
+// ============================================================================
+
+export type DecisionStatus =
+  | 'draft'         // recorded by agent during dev session
+  | 'consolidated'  // LLM has merged/resolved drafts
+  | 'verified'      // cross-checked against diff — has code evidence
+  | 'phantom'       // recorded but no matching code change found
+  | 'approved'      // human/agent approved for sync
+  | 'rejected'      // human/agent rejected
+  | 'synced';       // written to spec files
+
+/** A single architectural decision recorded during a dev session. */
+export interface PendingDecision {
+  /** Stable 8-char ID: sha1(sessionId:domain:title).slice(0,8) */
+  id: string;
+  status: DecisionStatus;
+
+  // Content
+  title: string;
+  rationale: string;
+  consequences: string;
+  proposedRequirement: string | null;
+
+  // Context
+  affectedDomains: string[];
+  affectedFiles: string[];
+
+  /** ID of a prior decision this one supersedes (agent signals a reversal) */
+  supersedes?: string;
+
+  // Provenance
+  sessionId: string;
+  recordedAt: string;
+  consolidatedAt?: string;
+  verifiedAt?: string;
+
+  // Verification output
+  confidence: 'high' | 'medium' | 'low';
+  evidenceFile?: string;
+
+  // Review
+  reviewedAt?: string;
+  reviewNote?: string;
+
+  // Sync tracking
+  syncedAt?: string;
+  syncedToSpecs: string[];
+}
+
+/** Persistent store written to .spec-gen/decisions/pending.json */
+export interface DecisionStore {
+  version: '1';
+  /** Cleared when a new session starts (new commit cycle) */
+  sessionId: string;
+  updatedAt: string;
+  /** Set after consolidation runs — gate uses this to skip no_decisions_recorded warning */
+  lastConsolidatedAt?: string;
+  decisions: PendingDecision[];
 }

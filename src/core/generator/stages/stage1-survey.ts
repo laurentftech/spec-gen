@@ -16,8 +16,25 @@ import { PROMPTS } from '../prompts.js';
  * Build a concise structured hints section from pre-extracted analysis data.
  * Gives less capable models a head start on identifying schema/api files.
  */
-function buildStructuredHints(repoStructure: RepoStructure): string {
+function buildStructuredHints(
+  repoStructure: RepoStructure,
+  llmContext: LLMContext
+): string {
   const parts: string[] = [];
+
+  // Build signature density index: filePath → { classes: n, functions: n }
+  const signatureIndex = new Map<string, { classes: number; functions: number }>();
+  if (llmContext.signatures && llmContext.signatures.length > 0) {
+    for (const fileSig of llmContext.signatures) {
+      let classes = 0;
+      let functions = 0;
+      for (const entry of fileSig.entries) {
+        if (entry.kind === 'class') classes++;
+        else if (entry.kind === 'function' || entry.kind === 'method') functions++;
+      }
+      signatureIndex.set(fileSig.path, { classes, functions });
+    }
+  }
 
   const schemas = repoStructure.schemas ?? [];
   if (schemas.length > 0) {
@@ -26,17 +43,23 @@ function buildStructuredHints(repoStructure: RepoStructure): string {
       if (!byFile.has(s.file)) byFile.set(s.file, []);
       byFile.get(s.file)!.push(s.name);
     }
-    const lines = [...byFile.entries()].map(([f, names]) => `  ${f}: ${names.join(', ')}`);
-    parts.push(`Detected ORM schema tables (these files should be in schemaFiles):\n${lines.join('\n')}`);
+    const lines = [...byFile.entries()].map(([f, names]) => {
+      const stats = signatureIndex.get(f);
+      const density = stats && (stats.classes + stats.functions > 0)
+        ? `  [${stats.classes} class(es), ${stats.functions} function(s)]`
+        : '';
+      return `  ${f}: ${names.join(', ')}${density}`;
+    });
+    parts.push(`Detected data classes / ORM schema definitions:\n${lines.join('\n')}`);
   }
 
-  const routes = repoStructure.routeInventory?.routes ?? [];
-  if (routes.length > 0) {
-    const byFile = new Map<string, number>();
-    for (const r of routes) byFile.set(r.file, (byFile.get(r.file) ?? 0) + 1);
-    const lines = [...byFile.entries()].map(([f, n]) => `  ${f}: ${n} route(s)`);
-    parts.push(`Detected HTTP routes (these files should be in apiFiles):\n${lines.join('\n')}`);
-  }
+    const routes = repoStructure.routeInventory?.routes ?? [];
+    if (routes.length > 0) {
+      const byFile = new Map<string, number>();
+      for (const r of routes) byFile.set(r.file, (byFile.get(r.file) ?? 0) + 1);
+      const lines = [...byFile.entries()].map(([f, n]) => `  ${f}: ${n} route(s)`);
+      parts.push(`Detected HTTP route definitions:\n${lines.join('\n')}`);
+    }
 
   const components = repoStructure.uiComponents ?? [];
   if (components.length > 0) {
@@ -67,15 +90,15 @@ export async function runStage1(
   if (llmContext.signatures && llmContext.signatures.length > 0) {
     const chunks = formatSignatureMaps(llmContext.signatures, STAGE1_MAX_CHARS);
     if (chunks.length === 1) {
-      return runStage1WithSection(llm, options, saveResult, repoStructure, chunks[0], true);
+      return runStage1WithSection(llm, options, saveResult, repoStructure, chunks[0], true, llmContext);
     }
     logger.analysis(`Stage 1: ${chunks.length} signature chunks across ${llmContext.signatures.length} files`);
-    const results = await Promise.all(chunks.map((c: string) => runStage1WithSection(llm, options, saveResult, repoStructure, c, true)));
+    const results = await Promise.all(chunks.map((c: string) => runStage1WithSection(llm, options, saveResult, repoStructure, c, true, llmContext)));
     return mergeStage1Results(results);
   }
   // Legacy fallback — only the 20 files in phase2_deep are visible
   const section = llmContext.phase2_deep.files.map(f => `- ${f.path}`).join('\n');
-  return runStage1WithSection(llm, options, saveResult, repoStructure, section, false);
+  return runStage1WithSection(llm, options, saveResult, repoStructure, section, false, llmContext);
 }
 
 /**
@@ -88,6 +111,7 @@ export async function runStage1WithSection(
   repoStructure: RepoStructure,
   fileListingSection: string,
   isSignatures: boolean,
+  llmContext: LLMContext
 ): Promise<StageResult<ProjectSurveyResult>> {
   const startTime = Date.now();
 
@@ -108,14 +132,14 @@ Architecture Pattern: ${repoStructure.architecture.pattern}
  Detected Domains:
  ${repoStructure.domains.map(d => `- ${d.name}: ${d.files.length} files, entities: ${d.entities.join(', ')}`).join('\n')}
 
-Statistics:
-- Total files: ${repoStructure.statistics.totalFiles}
-- Analyzed files: ${repoStructure.statistics.analyzedFiles}
-- Node count: ${repoStructure.statistics.nodeCount}
-- Edge count: ${repoStructure.statistics.edgeCount}
-- Clusters: ${repoStructure.statistics.clusterCount}
+ Statistics:
+ - Total files: ${repoStructure.statistics.totalFiles}
+ - Analyzed files: ${repoStructure.statistics.analyzedFiles}
+ - Node count: ${repoStructure.statistics.nodeCount}
+ - Edge count: ${repoStructure.statistics.edgeCount}
+ - Clusters: ${repoStructure.statistics.clusterCount}
 
-${buildStructuredHints(repoStructure)}
+${buildStructuredHints(repoStructure, llmContext)}
 ${sectionLabel}
 ${fileListingSection}`;
 

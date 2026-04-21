@@ -226,6 +226,7 @@ export async function specGenRun(options: RunApiOptions = {}): Promise<RunResult
           filesSkipped: [],
           filesBackedUp: [],
           filesMerged: [],
+          domainsRemoved: [],
           configUpdated: false,
           validationErrors: [],
           warnings: [],

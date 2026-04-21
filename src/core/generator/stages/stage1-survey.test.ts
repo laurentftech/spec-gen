@@ -220,17 +220,18 @@ describe('Stage 1: Project Survey', () => {
   });
 
   describe('runStage1WithSection', () => {
-    it('returns successful StageResult with data', async () => {
-      mockProvider.setDefaultResponse(JSON.stringify(MOCK_SURVEY_RESULT));
+     it('returns successful StageResult with data', async () => {
+       mockProvider.setDefaultResponse(JSON.stringify(MOCK_SURVEY_RESULT));
 
-      const result = await runStage1WithSection(
-        llmService,
-        MOCK_PIPELINE_OPTIONS,
-        saveResult,
-        MOCK_REPO_STRUCTURE,
-        'file listing',
-        true
-      );
+       const result = await runStage1WithSection(
+         llmService,
+         MOCK_PIPELINE_OPTIONS,
+         saveResult,
+         MOCK_REPO_STRUCTURE,
+         'file listing',
+         true,
+         MOCK_LLM_CONTEXT_WITH_SIGNATURES
+       );
 
       expect(result).toEqual({
         stage: 'survey',
@@ -251,7 +252,8 @@ describe('Stage 1: Project Survey', () => {
         saveResult,
         MOCK_REPO_STRUCTURE,
         'file listing',
-        true
+        true,
+        MOCK_LLM_CONTEXT_WITH_SIGNATURES
       );
 
       expect(saveResult).toHaveBeenCalledWith('stage1-survey', expect.objectContaining({
@@ -269,24 +271,26 @@ describe('Stage 1: Project Survey', () => {
         saveResult,
         MOCK_REPO_STRUCTURE,
         'file listing',
-        true
+        true,
+        MOCK_LLM_CONTEXT_WITH_SIGNATURES
       );
 
       expect(saveResult).not.toHaveBeenCalled();
     });
 
-    it('handles LLM errors and returns failure StageResult', async () => {
-      const llmAny = llmService as any;
-      llmAny.completeJSON = vi.fn().mockRejectedValue(new Error('LLM timeout'));
+     it('handles LLM errors and returns failure StageResult', async () => {
+       const llmAny = llmService as any;
+       llmAny.completeJSON = vi.fn().mockRejectedValue(new Error('LLM timeout'));
 
-      const result = await runStage1WithSection(
-        llmService,
-        MOCK_PIPELINE_OPTIONS,
-        saveResult,
-        MOCK_REPO_STRUCTURE,
-        'file listing',
-        true
-      );
+       const result = await runStage1WithSection(
+         llmService,
+         MOCK_PIPELINE_OPTIONS,
+         saveResult,
+         MOCK_REPO_STRUCTURE,
+         'file listing',
+         true,
+         MOCK_LLM_CONTEXT_WITH_SIGNATURES
+       );
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('LLM timeout');
@@ -298,14 +302,15 @@ describe('Stage 1: Project Survey', () => {
     it('constructs correct userPrompt with signatures label when isSignatures=true', async () => {
       mockProvider.setDefaultResponse(JSON.stringify(MOCK_SURVEY_RESULT));
 
-      await runStage1WithSection(
-        llmService,
-        MOCK_PIPELINE_OPTIONS,
-        saveResult,
-        MOCK_REPO_STRUCTURE,
-        'signatures content',
-        true
-      );
+       await runStage1WithSection(
+         llmService,
+         MOCK_PIPELINE_OPTIONS,
+         saveResult,
+         MOCK_REPO_STRUCTURE,
+         'signatures content',
+         true,
+         MOCK_LLM_CONTEXT_WITH_SIGNATURES
+       );
 
       const request = mockProvider.callHistory[0];
       const userPrompt = request.userPrompt;
@@ -316,14 +321,15 @@ describe('Stage 1: Project Survey', () => {
     it('constructs correct userPrompt with file paths label when isSignatures=false', async () => {
       mockProvider.setDefaultResponse(JSON.stringify(MOCK_SURVEY_RESULT));
 
-      await runStage1WithSection(
-        llmService,
-        MOCK_PIPELINE_OPTIONS,
-        saveResult,
-        MOCK_REPO_STRUCTURE,
-        'file list',
-        false
-      );
+       await runStage1WithSection(
+         llmService,
+         MOCK_PIPELINE_OPTIONS,
+         saveResult,
+         MOCK_REPO_STRUCTURE,
+         'file list',
+         false,
+         MOCK_LLM_CONTEXT_LEGACY
+       );
 
       const request = mockProvider.callHistory[0];
       const userPrompt = request.userPrompt;
@@ -334,14 +340,15 @@ describe('Stage 1: Project Survey', () => {
     it('includes repo structure details in userPrompt', async () => {
       mockProvider.setDefaultResponse(JSON.stringify(MOCK_SURVEY_RESULT));
 
-      await runStage1WithSection(
-        llmService,
-        MOCK_PIPELINE_OPTIONS,
-        saveResult,
-        MOCK_REPO_STRUCTURE,
-        'files',
-        true
-      );
+       await runStage1WithSection(
+         llmService,
+         MOCK_PIPELINE_OPTIONS,
+         saveResult,
+         MOCK_REPO_STRUCTURE,
+         'files',
+         true,
+         MOCK_LLM_CONTEXT_WITH_SIGNATURES
+       );
 
       const request = mockProvider.callHistory[0];
       const userPrompt = request.userPrompt;

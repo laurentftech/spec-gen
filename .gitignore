@@ -29,7 +29,6 @@ __pycache__/
 build/
 develop-eggs/
 dist/
-
 eggs/
 .eggs/
 lib/
@@ -53,6 +52,9 @@ env/
 .ipynb_checkpoints
 .mypy_cache/
 *.spec
+
+# Exception: OpenCode plugin helpers (should be tracked)
+!examples/opencode/plugins/lib/
 
 # --------------------
 # Node/JS Specific
@@ -182,3 +184,9 @@ docker/
 docker-compose.yml
 ARCHITECTURE.md
 openspec/
+.opencode/
+.cursorrules
+.clinerules/spec-gen.md
+.windsurf/rules.md
+.github/copilot-instructions.md
+.spec-gen/decisions/

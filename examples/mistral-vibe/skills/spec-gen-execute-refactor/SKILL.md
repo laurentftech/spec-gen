@@ -126,6 +126,24 @@ Fill in the `Restore point` section of `.spec-gen/refactor-plan.md` with the cur
 
 ## Step 4 — Apply changes (mini-development loop)
 
+Before applying the first change, record the refactoring decision:
+
+```xml
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>record_decision</tool_name>
+  <arguments>{
+    "directory": "$DIRECTORY",
+    "title": "Refactor $TARGET_FUNCTION via $STRATEGY",
+    "rationale": "$PRIMARY_REASON from the plan's Why section",
+    "consequences": "Callers unchanged; complexity distributed across extracted helpers",
+    "affectedFiles": ["$TARGET_FILE"]
+  }</arguments>
+</use_mcp_tool>
+```
+
+Also call `record_decision` for any unexpected architectural choice that emerges mid-refactor (new module boundary discovered, shared interface change required, dependency introduced).
+
 For **each change** in the plan, execute the full mini-development cycle below.
 Do not move to the next change until the current one is marked ✅.
 

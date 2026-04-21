@@ -322,6 +322,24 @@ export async function getFileDiff(
 }
 
 /**
+ * Get commit messages between baseRef and HEAD as a single string.
+ * Returns empty string if no commits or git fails.
+ */
+export async function getCommitMessages(rootPath: string, baseRef: string): Promise<string> {
+  for (const separator of ['...', '..']) {
+    try {
+      const { stdout } = await execFileAsync(
+        'git',
+        ['log', '--oneline', `${baseRef}${separator}HEAD`],
+        { cwd: rootPath },
+      );
+      if (stdout.trim()) return stdout.trim();
+    } catch { /* try next separator */ }
+  }
+  return '';
+}
+
+/**
  * Get changed files between working tree and a base ref
  */
 export async function getChangedFiles(options: GitDiffOptions): Promise<GitDiffResult> {
