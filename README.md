@@ -961,9 +961,10 @@ spec-gen setup [--tools vibe,cline,claude,opencode,omoa,gsd,bmad]
 
 Mistral Vibe  ->  .vibe/skills/spec-gen-{name}/SKILL.md       (8 skills)
 Cline / Roo   ->  .clinerules/workflows/spec-gen-{name}.md    (7 workflows)
-Claude Code   ->  .claude/skills/spec-gen-{name}/SKILL.md     (8 skills + decisions pre-commit hook)
+Claude Code   ->  .claude/skills/spec-gen-{name}/SKILL.md     (8 skills + decisions pre-commit hook
+              ->                                                + PostToolUse auto-analyze hook)
 OpenCode      ->  .opencode/skills/spec-gen-{name}/SKILL.md   (8 skills)
-              ->  .opencode/plugins/agent-guard.ts             (guard plugin)
+              ->  .opencode/plugins/agent-guard.ts             (guard plugin + auto-analyze on file edits)
 oh-my-openagent -> .opencode/plugins/{anti-laziness,spec-gen-enforcer,
               ->                      spec-gen-decision-extractor,spec-gen-context-injector}.ts
               ->  .opencode/prompts/sisyphus-sdd.md            (SDD system prompt)
@@ -1147,7 +1148,7 @@ Add `--watch-auto` to your MCP config args:
 }
 ```
 
-The watcher starts automatically on the first tool call — no hardcoded path needed. It re-extracts signatures for any changed source file and patches `llm-context.json` within ~500 ms of a save. If an embedding server is reachable, it also re-embeds changed functions into the vector index automatically. The call graph is not rebuilt on every change; it stays current via the [post-commit hook](#cicd-integration) (`spec-gen analyze --force`).
+The watcher starts automatically on the first tool call — no hardcoded path needed. It re-extracts signatures for any changed source file and patches `llm-context.json` within ~500 ms of a save. If an embedding server is reachable, it also re-embeds changed functions into the vector index automatically. The call graph is rebuilt automatically after file edits via the PostToolUse hook (Claude Code) or the `agent-guard` plugin (OpenCode/KiloCode), both installed by `spec-gen setup`. Alternatively it stays current via the [post-commit hook](#cicd-integration) (`spec-gen analyze --force`).
 
 | Option | Default | Description |
 |---|---|---|
@@ -1210,7 +1211,7 @@ Most tools run on **pure static analysis** — no LLM quota consumed. Exceptions
 
 | Tool | Description | Requires prior analysis |
 |------|-------------|:---:|
-| `analyze_codebase` | Run full static analysis: repo structure, dependency graph, call graph (hub functions, entry points, layer violations), and top refactoring priorities. Results cached for 1 hour (`force: true` to bypass). | No |
+| `analyze_codebase` | Run full static analysis: repo structure, dependency graph, call graph (hub functions, entry points, layer violations), and top refactoring priorities. Results cached by content-hash fingerprint (mtime+size of source files); re-runs automatically when code changes. `force: true` bypasses the cache. | No |
 | `get_call_graph` | Hub functions (high fan-in), entry points (no internal callers), and architectural layer violations. Supports TypeScript, JavaScript, Python, Go, Rust, Ruby, Java, C++, Swift. | Yes |
 | `get_signatures` | Compact function/class signatures per file. Filter by path substring with `filePattern`. Useful for understanding a module's public API without reading full source. | Yes |
 | `get_duplicate_report` | Detect duplicate code: Type 1 (exact clones), Type 2 (structural -- renamed variables), Type 3 (near-clones with Jaccard similarity >= 0.7). Groups sorted by impact. | Yes |
@@ -1222,7 +1223,7 @@ Most tools run on **pure static analysis** — no LLM quota consumed. Exceptions
 | `orient` | **Single entry point for any new task.** Given a natural-language task description, returns in one call: relevant functions, source files, spec domains, call neighbourhoods, insertion-point candidates, and matching spec sections. Start here. | Yes (+ embedding) |
 | `search_code` | Natural-language semantic search over indexed functions. Returns the closest matches by meaning with similarity score, call-graph neighbourhood enrichment, and spec-linked peer functions. Falls back to BM25 keyword search when no embedding server is configured. | Yes (+ embedding) |
 | `suggest_insertion_points` | Semantic search over the vector index to find the best existing functions to extend or hook into when implementing a new feature. Returns ranked candidates with role and strategy. Falls back to BM25 keyword search when no embedding server is configured. | Yes (+ embedding) |
-| `get_subgraph` | Depth-limited subgraph centred on a function. Direction: `downstream` (what it calls), `upstream` (who calls it), or `both`. Output as JSON or Mermaid diagram. | Yes |
+| `get_subgraph` | Depth-limited subgraph centred on a function. Direction: `downstream` (what it calls), `upstream` (who calls it), or `both`. Output as JSON or Mermaid diagram. External leaf nodes (e.g. `fetch`, `psycopg2.execute`) appear as `[external]` with an `externalKind` field (`http`, `database`, `filesystem`, `stdlib`, `unknown`). Stdlib noise (`Array.isArray`, `os.path.join`, `std::string`) is filtered out automatically; only semantically meaningful externals are shown. | Yes |
 | `trace_execution_path` | Find all call-graph paths between two functions (DFS, configurable depth/max-paths). Use this when debugging: "how does request X reach function Y?" Returns shortest path, all paths sorted by hops, and a step-by-step chain per path. | Yes |
 | `get_function_body` | Return the exact source code of a named function in a file. | No |
 | `get_function_skeleton` | Noise-stripped view of a source file: logs, inline comments, and non-JSDoc block comments removed. Signatures, control flow, return/throw, and call expressions preserved. Returns reduction %. | No |
@@ -1706,6 +1707,7 @@ Static analysis output is stored in `.spec-gen/analysis/`:
 | `mapping.json` | Requirement->function mapping (produced by `generate`) |
 | `spec-snapshot.json` | Compact coverage summary: git state, per-domain coverage %, uncovered hub functions (auto-updated after `analyze` and `generate`) |
 | `audit-report.json` | Latest parity audit report (produced by `spec-gen audit`) |
+| `fingerprint.json` | Content-hash fingerprint (SHA-256 of all source file mtimes+sizes) used for cache invalidation |
 | `vector-index/` | LanceDB semantic index (produced by `--embed`) |
 
 `spec-gen analyze` also writes **`ARCHITECTURE.md`** to your project root -- a Markdown overview of module clusters, entry points, and critical hubs, refreshed on every run.
