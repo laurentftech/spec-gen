@@ -111,7 +111,7 @@ elif [ -f "./dist/cli/index.js" ]; then
   DECISIONS_EXIT=$?
 else
   SPEC_GEN=$(command -v spec-gen 2>/dev/null)
-  if [ -n "$SPEC_GEN" ]; then
+  if [ -n "$SPEC_GEN" ] && "$SPEC_GEN" decisions --help 2>&1 | grep -q -- '--gate'; then
     "$SPEC_GEN" decisions --gate 2>&1
     DECISIONS_EXIT=$?
   else
