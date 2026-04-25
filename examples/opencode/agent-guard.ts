@@ -23,6 +23,7 @@
  */
 
 import type { Plugin } from "@opencode-ai/plugin"
+import { spawn } from "node:child_process"
 import { readFile, readdir } from "node:fs/promises"
 import { join } from "node:path"
 
@@ -54,6 +55,26 @@ async function loadSpecDomains(directory: string): Promise<string[]> {
   } catch {
     return []
   }
+}
+
+// Tools that write files — trigger re-analysis so the call graph stays fresh.
+const EDIT_TOOL_RE = /write_file|edit_file|create_file|str_replace|insert|patch/i
+
+// In-memory debounce: spawn at most one analysis per 10 s regardless of edit rate.
+let lastAnalyzeMs = 0
+const ANALYZE_DEBOUNCE_MS = 10_000
+
+function spawnAnalyze(directory: string): void {
+  const now = Date.now()
+  if (now - lastAnalyzeMs < ANALYZE_DEBOUNCE_MS) return
+  lastAnalyzeMs = now
+  // Fire-and-forget: detached + unref so it survives plugin process exit.
+  const child = spawn("spec-gen", ["analyze", "--output", ".spec-gen/analysis"], {
+    detached: true,
+    stdio: "ignore",
+    cwd: directory,
+  })
+  child.unref()
 }
 
 export const AgentGuard: Plugin = async ({ directory }) => {
@@ -107,6 +128,11 @@ export const AgentGuard: Plugin = async ({ directory }) => {
         output.output +=
           "\n\n[spec-gen] Structural file modified. " +
           "Consider calling record_decision before continuing."
+      }
+
+      // Keep call graph fresh after every file edit (debounced 10 s).
+      if (EDIT_TOOL_RE.test(tool)) {
+        spawnAnalyze(directory)
       }
     },
 
