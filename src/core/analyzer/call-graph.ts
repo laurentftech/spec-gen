@@ -1732,9 +1732,9 @@ function isTestFile(filePath: string): boolean {
   return TEST_FILE_PATTERNS.some(p => p.test(filePath));
 }
 
-const EXTERNAL_HTTP_RE = /^(fetch|axios|got|superagent|node-fetch|ky|request|https?|xmlhttprequest|grpc|undici|requests|aiohttp|httpx|urllib|urllib2|urllib3|curl|curleasy|pycurl)$/;
-const EXTERNAL_DB_RE = /^(pg|mysql|mysql2|sqlite|sqlite3|redis|ioredis|mongoose|mongo|mongodb|prisma|knex|sequelize|typeorm|drizzle|cassandra|dynamodb|firestore|supabase|neo4j|influxdb|clickhouse|kysely|psycopg2|psycopg|sqlalchemy|pymysql|asyncpg|motor|aiomysql|tortoise)$/;
-const EXTERNAL_FS_RE = /^(fs|fsp|readfile|writefile|readdir|stat|mkdir|unlink|rename|copyfile|createreadstream|createwritestream|open|fopen|fread|fwrite|fclose|remove|ifstream|ofstream|fstream)$/;
+const EXTERNAL_HTTP_RE = /^(fetch|axios|got|superagent|node-fetch|ky|request|https?|xmlhttprequest|grpc|undici|requests|aiohttp|httpx|urllib|urllib2|urllib3|curl|curleasy|pycurl|http|httpclient|httpurlconnection|reqwest|hyper|ureq|isahc|surf|net|faraday|httparty|rest|typhoeus|excon|okhttp|retrofit|feign|resttemplate|webclient|urlsession|alamofire|moya)$/;
+const EXTERNAL_DB_RE = /^(pg|mysql|mysql2|sqlite|sqlite3|redis|ioredis|mongoose|mongo|mongodb|prisma|knex|sequelize|typeorm|drizzle|cassandra|dynamodb|firestore|supabase|neo4j|influxdb|clickhouse|kysely|psycopg2|psycopg|sqlalchemy|pymysql|asyncpg|motor|aiomysql|tortoise|sql|gorm|sqlx|pgx|bun|diesel|seaorm|rusqlite|activerecord|sequel|jdbc|hibernate|jpa|entitymanager|datasource|jdbctemplate|r2dbc|coredata|grdb|realm)$/;
+const EXTERNAL_FS_RE = /^(fs|fsp|readfile|writefile|readdir|stat|mkdir|unlink|rename|copyfile|createreadstream|createwritestream|open|fopen|fread|fwrite|fclose|remove|ifstream|ofstream|fstream|os|path|file)$/;
 const EXTERNAL_STDLIB_BASES = new Set([
   // JavaScript / Node.js
   'array', 'object', 'string', 'number', 'math', 'json', 'date', 'regexp',
@@ -1753,6 +1753,26 @@ const EXTERNAL_STDLIB_BASES = new Set([
   'calloc', 'realloc', 'free', 'memcpy', 'memmove', 'memset', 'memcmp',
   'strlen', 'strcpy', 'strncpy', 'strcat', 'strcmp', 'strncmp', 'strstr',
   'assert', 'abort', 'exit', 'atexit',
+  // Go
+  'fmt', 'log', 'sort', 'sync', 'atomic', 'bytes', 'errors', 'context',
+  'reflect', 'runtime', 'bufio', 'unicode', 'strings', 'strconv', 'math',
+  'rand', 'time', 'flag', 'testing',
+  // Rust
+  'vec', 'option', 'result', 'iter', 'collections', 'thread', 'env',
+  'cell', 'rc', 'arc', 'mutex', 'rwlock', 'channel', 'mpsc',
+  // Ruby
+  'integer', 'float', 'numeric', 'enumerable', 'comparable', 'kernel',
+  'module', 'class', 'basicobject', 'nilclass', 'trueclass', 'falseclass',
+  'symbol', 'regexp', 'range', 'proc', 'method', 'encoding',
+  // Java
+  'system', 'integer', 'long', 'double', 'boolean', 'character',
+  'list', 'arraylist', 'linkedlist', 'hashmap', 'treemap', 'hashset', 'treeset',
+  'optional', 'stream', 'arrays', 'collections', 'objects', 'math',
+  'thread', 'runnable', 'exception', 'runtimeexception', 'illegalargumentexception',
+  'stringbuilder', 'stringbuffer', 'scanner',
+  // Swift
+  'int', 'double', 'bool', 'dictionary', 'swift', 'foundation',
+  'dispatchqueue', 'notificationcenter', 'nsstring', 'nsarray', 'nsdictionary',
 ]);
 const EXTERNAL_NOISE_RECEIVERS = new Set([
   'response', 'body', 't', 'err', 'error', 'buf', 'str', 'res', 'req', 'data', 'result',
