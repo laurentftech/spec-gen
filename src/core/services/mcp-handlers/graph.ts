@@ -287,23 +287,26 @@ export async function handleGetSubgraph(
   }
 
   const nodeMap = new Map(cg.nodes.map(n => [n.id, n]));
-  const subNodes = Array.from(visitedIds)
+  const visibleNodes = Array.from(visitedIds)
     .map(id => nodeMap.get(id)!)
     .filter(Boolean)
     // stdlib nodes (Array.isArray, t.slice, …) are noise — exclude unless they are a seed
-    .filter(n => !n.isExternal || n.externalKind !== 'stdlib' || seeds.some(s => s.id === n.id))
-    .map(n => ({
-      name: n.isExternal ? `[external] ${n.name}` : n.name,
-      file: n.filePath,
-      className: n.className,
-      fanIn: n.fanIn, fanOut: n.fanOut, language: n.language,
-      isExternal: n.isExternal ?? false,
-      externalKind: n.externalKind,
-      isSeed: seeds.some(s => s.id === n.id),
-    }));
+    .filter(n => !n.isExternal || n.externalKind !== 'stdlib' || seeds.some(s => s.id === n.id));
+
+  const visibleIds = new Set(visibleNodes.map(n => n.id));
+
+  const subNodes = visibleNodes.map(n => ({
+    name: n.isExternal ? `[external] ${n.name}` : n.name,
+    file: n.filePath,
+    className: n.className,
+    fanIn: n.fanIn, fanOut: n.fanOut, language: n.language,
+    isExternal: n.isExternal ?? false,
+    externalKind: n.externalKind,
+    isSeed: seeds.some(s => s.id === n.id),
+  }));
 
   const subEdges = cg.edges
-    .filter(e => e.calleeId && visitedIds.has(e.callerId) && visitedIds.has(e.calleeId))
+    .filter(e => e.calleeId && visibleIds.has(e.callerId) && visibleIds.has(e.calleeId))
     .map(e => ({
       caller: nodeMap.get(e.callerId)?.name ?? e.callerId,
       callee: nodeMap.get(e.calleeId)?.isExternal
