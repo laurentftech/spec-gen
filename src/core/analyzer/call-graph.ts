@@ -1732,13 +1732,27 @@ function isTestFile(filePath: string): boolean {
   return TEST_FILE_PATTERNS.some(p => p.test(filePath));
 }
 
-const EXTERNAL_HTTP_RE = /^(fetch|axios|got|superagent|node-fetch|ky|request|https?|xmlhttprequest|grpc|undici)$/;
-const EXTERNAL_DB_RE = /^(pg|mysql|mysql2|sqlite|sqlite3|redis|ioredis|mongoose|mongo|mongodb|prisma|knex|sequelize|typeorm|drizzle|cassandra|dynamodb|firestore|supabase|neo4j|influxdb|clickhouse|kysely)$/;
-const EXTERNAL_FS_RE = /^(fs|fsp|readfile|writefile|readdir|stat|mkdir|unlink|rename|copyfile|createreadstream|createwritestream)$/;
+const EXTERNAL_HTTP_RE = /^(fetch|axios|got|superagent|node-fetch|ky|request|https?|xmlhttprequest|grpc|undici|requests|aiohttp|httpx|urllib|urllib2|urllib3|curl|curleasy|pycurl)$/;
+const EXTERNAL_DB_RE = /^(pg|mysql|mysql2|sqlite|sqlite3|redis|ioredis|mongoose|mongo|mongodb|prisma|knex|sequelize|typeorm|drizzle|cassandra|dynamodb|firestore|supabase|neo4j|influxdb|clickhouse|kysely|psycopg2|psycopg|sqlalchemy|pymysql|asyncpg|motor|aiomysql|tortoise)$/;
+const EXTERNAL_FS_RE = /^(fs|fsp|readfile|writefile|readdir|stat|mkdir|unlink|rename|copyfile|createreadstream|createwritestream|open|fopen|fread|fwrite|fclose|remove|ifstream|ofstream|fstream)$/;
 const EXTERNAL_STDLIB_BASES = new Set([
+  // JavaScript / Node.js
   'array', 'object', 'string', 'number', 'math', 'json', 'date', 'regexp',
   'promise', 'map', 'set', 'weakmap', 'weakset', 'symbol', 'reflect', 'proxy',
   'console', 'error', 'buffer', 'process', 'int8array', 'uint8array',
+  // Python
+  'os', 'sys', 're', 'io', 'abc', 'ast', 'csv', 'copy', 'enum', 'glob',
+  'gzip', 'hmac', 'html', 'http', 'logging', 'operator', 'pathlib', 'pickle',
+  'pprint', 'queue', 'random', 'shutil', 'signal', 'socket', 'ssl', 'struct',
+  'subprocess', 'tempfile', 'threading', 'time', 'traceback', 'typing', 'uuid',
+  'warnings', 'collections', 'functools', 'itertools', 'contextlib',
+  'dataclasses', 'unittest', 'hashlib', 'base64', 'binascii', 'codecs',
+  'inspect', 'importlib', 'weakref', 'gc', 'platform', 'shlex', 'textwrap',
+  // C / C++
+  'std', 'printf', 'fprintf', 'sprintf', 'snprintf', 'scanf', 'malloc',
+  'calloc', 'realloc', 'free', 'memcpy', 'memmove', 'memset', 'memcmp',
+  'strlen', 'strcpy', 'strncpy', 'strcat', 'strcmp', 'strncmp', 'strstr',
+  'assert', 'abort', 'exit', 'atexit',
 ]);
 const EXTERNAL_NOISE_RECEIVERS = new Set([
   'response', 'body', 't', 'err', 'error', 'buf', 'str', 'res', 'req', 'data', 'result',
