@@ -2014,6 +2014,9 @@ export class CallGraphBuilder {
     for (const edge of callsEdges) {
       const caller = allNodes.get(edge.callerId);
       if (!caller || !isTestFile(caller.filePath)) continue;
+      const callee = allNodes.get(edge.calleeId);
+      // Only emit tested_by when the production fn is internal (not external, not a test helper)
+      if (!callee || callee.isExternal || callee.isTest) continue;
       edges.push({
         kind: 'tested_by',
         callerId: edge.calleeId,
