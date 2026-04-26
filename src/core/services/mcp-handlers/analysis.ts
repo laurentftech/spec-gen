@@ -896,6 +896,13 @@ export async function handleGetMinimalContext(
   if (candidates.length === 0) return { error: `Function "${functionName}" not found. Run analyze_codebase first.` };
   const target = candidates[0];
 
+  // Risk-aware depth: high fan-in/out functions get more caller/callee context
+  const riskLevel: 'high' | 'medium' | 'low' =
+    target.fanIn >= 30 || target.fanOut >= 15 ? 'high' :
+    target.fanIn >= 15 || target.fanOut >= 8  ? 'medium' : 'low';
+  const callerLimit = riskLevel === 'high' ? 24 : riskLevel === 'medium' ? 18 : 12;
+  const calleeLimit = riskLevel === 'high' ? 24 : riskLevel === 'medium' ? 18 : 12;
+
   // Direct callers and callees from calls edges
   const callsEdges = cg.edges.filter(e => !e.kind || e.kind === 'calls');
 
@@ -926,7 +933,7 @@ export async function handleGetMinimalContext(
       return { name: n.name, file: relative(absDir, n.filePath), sig: sig(n), callType: edge?.callType ?? 'direct', isExternal: false };
     })
     .filter((n): n is NonNullable<typeof n> => !!n)
-    .slice(0, 12);
+    .slice(0, callerLimit);
 
   const callees = [...new Set(calleeIds)]
     .map(id => {
@@ -943,7 +950,7 @@ export async function handleGetMinimalContext(
       };
     })
     .filter((n): n is NonNullable<typeof n> => !!n)
-    .slice(0, 12);
+    .slice(0, calleeLimit);
 
   // Test coverage — distinguish import-based vs call-based tracing
   const seenTestNames = new Set<string>();
@@ -974,6 +981,7 @@ export async function handleGetMinimalContext(
       fanIn: target.fanIn,
       fanOut: target.fanOut,
       community: target.communityLabel ?? null,
+      riskLevel,
       body,
     },
     callers,
@@ -1163,11 +1171,11 @@ export async function handleDetectChanges(
 
   const callsEdges = cg.edges.filter(e => !e.kind || e.kind === 'calls');
 
-  // callerIndex: calleeId → callerIds (for upward BFS)
-  const callerIndex = new Map<string, string[]>();
+  // callerIndex: calleeId → [{id, callType}] — callType weights BFS contribution
+  const callerIndex = new Map<string, Array<{ id: string; callType?: string }>>();
   for (const e of callsEdges) {
     if (!callerIndex.has(e.calleeId)) callerIndex.set(e.calleeId, []);
-    callerIndex.get(e.calleeId)!.push(e.callerId);
+    callerIndex.get(e.calleeId)!.push({ id: e.callerId, callType: e.callType });
   }
 
   // calleeIndex: callerId → calleeIds (for boundary score)
@@ -1177,22 +1185,26 @@ export async function handleDetectChanges(
     calleeIndex.get(e.callerId)!.push(e.calleeId);
   }
 
-  // Distance-weighted BFS: Σ 1/d² over all transitive callers
+  // awaited callers are most sensitive to breakage; constructor callers least
+  const callTypeWeight = (ct?: string) =>
+    ct === 'awaited' ? 1.0 : ct === 'direct' ? 0.7 : ct === 'method' ? 0.6 : 0.5;
+
+  // Distance-weighted BFS: Σ weight/d² — clamped to prevent cross-repo drift
   const transitiveScore = (startId: string): number => {
-    const visited = new Map<string, number>(); // id → depth
+    const visited = new Set<string>();
     const queue: Array<{ id: string; depth: number }> = [{ id: startId, depth: 1 }];
     let score = 0;
     while (queue.length) {
       const { id, depth } = queue.shift()!;
-      for (const callerId of callerIndex.get(id) ?? []) {
-        if (!visited.has(callerId)) {
-          visited.set(callerId, depth);
-          score += 1 / (depth * depth);
-          queue.push({ id: callerId, depth: depth + 1 });
+      for (const caller of callerIndex.get(id) ?? []) {
+        if (!visited.has(caller.id)) {
+          visited.add(caller.id);
+          score += callTypeWeight(caller.callType) / (depth * depth);
+          queue.push({ id: caller.id, depth: depth + 1 });
         }
       }
     }
-    return score;
+    return Math.min(score, 10);
   };
 
   // Boundary score: outgoing edges to external nodes; http/db weighted 3×, others 1×; normalized
@@ -1220,18 +1232,23 @@ export async function handleDetectChanges(
     const n = nodeMap.get(id)!;
     const fnLength = Math.max(1, (n.endLine ?? n.startLine ?? 1) - (n.startLine ?? 1) + 1);
     const changed = fnChangedLineCount.get(id) ?? Math.round(fnLength * 0.5);
-    const changeScore = Math.min(changed / fnLength, 1);
-    const testCount = testedByMap.get(id)?.length ?? 0;
-    const coveragePenalty = 1 / (1 + Math.log(1 + testCount));
+    // Blend relative (sensitivity) + absolute (log scale) — prevents tiny fully-changed fns
+    // from outranking large ones; log(201)≈5.3 so 200 changed lines ≈ absScore 1.0
+    const relScore = changed / fnLength;
+    const absScore = Math.log(1 + changed) / Math.log(201);
+    const changeScore = Math.min(0.6 * relScore + 0.4 * absScore, 1);
+    const tests = testedByMap.get(id) ?? [];
+    // called-edges are direct proof; imported-only is weaker (survives vi.mock)
+    const effectiveTests = tests.reduce((s, t) => s + (t.confidence === 'called' ? 1.0 : 0.3), 0);
+    const coveragePenalty = 1 / (1 + Math.log(1 + effectiveTests));
     const tScore = transitiveScore(id);
     const bScore = boundaryScore(id);
-    const riskScore = Math.round((
-      Math.log(1 + n.fanIn) * 0.8 +
-      tScore * 1.2 +
-      bScore * 2.5 +
-      changeScore * 2.0 +
-      coveragePenalty * 2.0
-    ) * 100) / 100;
+    // Multiplicative model: risk = likelihood × impact
+    // Decouples change probability from structural blast radius; prevents correlated
+    // signals (fanIn ↔ transitive) from triple-stacking additively
+    const likelihood = changeScore * (1 + coveragePenalty);
+    const impact = Math.log(1 + n.fanIn) * 0.8 + tScore + bScore;
+    const riskScore = Math.round(likelihood * impact * 100) / 100;
     return {
       name: n.name,
       file: relative(absDir, n.filePath),
