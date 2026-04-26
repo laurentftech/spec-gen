@@ -60,7 +60,17 @@ Read the story file. Extract:
 </use_mcp_tool>
 ```
 
-For the top 2 functions returned, check risk:
+For the top 2 functions returned, get minimal context first (callers, callees, body, test coverage):
+
+```xml
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>get_minimal_context</tool_name>
+  <arguments>{"directory": "$PROJECT_ROOT", "functionName": "$FUNCTION_NAME"}</arguments>
+</use_mcp_tool>
+```
+
+Then check risk:
 
 ```xml
 <use_mcp_tool>

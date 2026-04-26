@@ -47,8 +47,18 @@ Call the spec-gen MCP tool `orient` with:
 }
 ```
 
-For the top 2 functions returned, check risk by calling the spec-gen MCP tool `analyze_impact` with:
+For the top 2 functions returned, get minimal context first (callers, callees, body, test coverage in one call):
 ```json
+// get_minimal_context
+{
+  "directory": "$PROJECT_ROOT",
+  "functionName": "$FUNCTION_NAME"
+}
+```
+
+Then check risk:
+```json
+// analyze_impact
 {
   "directory": "$PROJECT_ROOT",
   "symbol": "$FUNCTION_NAME",

@@ -91,7 +91,15 @@ Prefer candidates with higher coverage when scores are otherwise close.
 
 ## Step 4: Assess impact
 
-For the chosen function, get the full impact analysis.
+First, get condensed view (callers, callees, body, test coverage in one call):
+
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>get_minimal_context</tool_name>
+  <arguments>{"directory": "$DIRECTORY", "functionName": "$FUNCTION_NAME"}</arguments>
+</use_mcp_tool>
+
+Then get the full impact analysis:
 
 <use_mcp_tool>
   <server_name>spec-gen</server_name>

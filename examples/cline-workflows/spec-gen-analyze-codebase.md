@@ -81,8 +81,9 @@ Present a concise summary:
 ## Step 7: Suggest next steps
 
 Based on the analysis, guide the user through the natural next steps in order:
-1. Call `get_signatures` on the modules that contain the top issues to understand their public API
-2. Call `get_subgraph` on the highest-priority function to map its callers and callees
+1. Call `get_minimal_context` on the highest-priority function — returns callers, callees, body, and test coverage in one call (~300 tokens). Use instead of `get_subgraph` + `get_signatures` separately.
+2. Call `get_cluster` on any function to see its full community (tightly coupled neighbors across directories).
+3. Call `detect_changes` to rank recently changed functions by blast radius — spot riskiest commits before reviewing.
 3. Call `suggest_insertion_points` with a brief feature description to find where new
    logic should land — useful before starting any new work on this codebase
 4. If significant duplication was found, suggest consolidating clone groups before refactoring

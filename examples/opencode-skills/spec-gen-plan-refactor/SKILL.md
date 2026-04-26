@@ -109,7 +109,13 @@ If **all candidates are below 40%**:
 
 ---
 
-## Step 4 — Analyze impact
+## Step 4 — Get minimal context + analyze impact
+
+First, get condensed view (callers, callees, body, test coverage) in one call:
+
+Call the spec-gen MCP tool `get_minimal_context` with `{"directory": "$DIRECTORY", "functionName": "$FUNCTION_NAME"}`.
+
+Then get the full impact analysis:
 
 Call the spec-gen MCP tool `analyze_impact` with `{"directory": "$DIRECTORY", "symbol": "$FUNCTION_NAME"}`.
 

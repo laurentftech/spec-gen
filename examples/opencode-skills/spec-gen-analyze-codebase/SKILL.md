@@ -82,8 +82,9 @@ Present a concise summary:
 
 Based on the analysis, guide the user through the natural next actions in order:
 
-1. Call `get_signatures` on the modules containing the top issues to understand their public API
-2. Call `get_subgraph` on the highest-priority function to map its callers and callees
+1. Call `get_minimal_context` on the highest-priority function — returns callers, callees, body, and test coverage in one call (~300 tokens). Use instead of `get_subgraph` + `get_signatures` separately.
+2. Call `get_cluster` on any function to see its full community (tightly coupled neighbors across directories).
+3. Call `detect_changes` to rank recently changed functions by blast radius — spot riskiest commits before reviewing.
 3. If significant duplication was found, suggest consolidating clone groups **before** refactoring
 4. Suggest running `/spec-gen-plan-refactor` once the user has enough context to act, then `/spec-gen-execute-refactor` to apply the plan
 5. If the project has OpenSpec specs, call `list_spec_domains` then `search_specs` to enable
