@@ -1030,22 +1030,17 @@ export async function handleDetectChanges(
   // Get git diff — changed file paths and line ranges
   const ref = base ?? 'HEAD';
   let diffOutput: string;
+  const GIT = process.env.GIT_EXEC_PATH ? `${process.env.GIT_EXEC_PATH}/git` : 'git';
+  const execOpts = { cwd: absDir, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, PATH: process.env.PATH ?? '/usr/bin:/bin:/usr/local/bin' } };
   try {
-    const { stdout } = await execFileAsync(
-      'git', ['diff', '--unified=0', ref, '--', '.'],
-      { cwd: absDir, maxBuffer: 4 * 1024 * 1024 },
-    );
+    const { stdout } = await execFileAsync(GIT, ['diff', '--unified=0', ref, '--', '.'], execOpts);
     diffOutput = stdout;
     if (!diffOutput.trim()) {
-      // Try staged changes
-      const { stdout: staged } = await execFileAsync(
-        'git', ['diff', '--unified=0', '--cached', '--', '.'],
-        { cwd: absDir, maxBuffer: 4 * 1024 * 1024 },
-      );
+      const { stdout: staged } = await execFileAsync(GIT, ['diff', '--unified=0', '--cached', '--', '.'], execOpts);
       diffOutput = staged;
     }
-  } catch {
-    return { error: 'git diff failed. Ensure directory is a git repository.' };
+  } catch (err) {
+    return { error: `git diff failed: ${(err as Error).message}` };
   }
 
   if (!diffOutput.trim()) return { changedFunctions: [], message: 'No changes detected.' };
