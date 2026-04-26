@@ -1119,9 +1119,9 @@ export class AnalysisArtifactGenerator {
           }
         }
 
-        // Call graph — all supported languages, exclude test files
+        // Call graph — all supported languages, include test files so tested_by edges are derived
         const lang = detectLanguage(file.path);
-        if (!isTest && CALL_GRAPH_LANGS.has(lang)) {
+        if (CALL_GRAPH_LANGS.has(lang)) {
           callGraphFiles.push({ path: file.absolutePath, content, language: lang });
         }
       } catch {

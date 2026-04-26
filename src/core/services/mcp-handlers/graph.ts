@@ -504,7 +504,7 @@ export async function handleGetLeafFunctions(
 
   const cg = ctx.callGraph as SerializedCallGraph;
   const hasOutgoing = new Set(cg.edges.filter(e => e.calleeId).map(e => e.callerId));
-  let leaves = cg.nodes.filter(n => !n.isExternal && !hasOutgoing.has(n.id));
+  let leaves = cg.nodes.filter(n => !n.isExternal && !n.isTest && !hasOutgoing.has(n.id));
 
   if (filePattern) leaves = leaves.filter(n => n.filePath.includes(filePattern));
 
@@ -554,7 +554,7 @@ export async function handleGetCriticalHubs(
   );
 
   const hubs = cg.nodes
-    .filter(n => !n.isExternal && (n.fanIn ?? 0) >= minFanIn)
+    .filter(n => !n.isExternal && !n.isTest && (n.fanIn ?? 0) >= minFanIn)
     .map(n => {
       const fanIn        = n.fanIn  ?? 0;
       const fanOut       = n.fanOut ?? 0;
@@ -595,7 +595,7 @@ export async function handleGetCriticalHubs(
     .slice(0, limit);
 
   return {
-    totalHubs: cg.nodes.filter(n => !n.isExternal && (n.fanIn ?? 0) >= minFanIn).length,
+    totalHubs: cg.nodes.filter(n => !n.isExternal && !n.isTest && (n.fanIn ?? 0) >= minFanIn).length,
     returned: hubs.length, minFanIn, hubs,
     guidance: 'Start with hubs that have the highest stabilityScore (easiest wins). Defer hubs with stabilityScore < 30 until their dependencies are cleaner.',
   };
@@ -620,7 +620,7 @@ export async function handleGetGodFunctions(
   if (filePath) {
     candidates = getFileGodFunctions(cg, filePath, fanOutThreshold);
   } else {
-    candidates = cg.nodes.filter(n => !n.isExternal && n.fanOut >= fanOutThreshold);
+    candidates = cg.nodes.filter(n => !n.isExternal && !n.isTest && n.fanOut >= fanOutThreshold);
   }
 
   if (candidates.length === 0) {

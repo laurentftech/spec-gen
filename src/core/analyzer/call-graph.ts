@@ -74,6 +74,8 @@ export interface FunctionNode {
   isExternal?: boolean;
   /** Classification of external node — used to filter stdlib noise from views */
   externalKind?: ExternalKind;
+  /** True for nodes whose source file is a test file (*.test.ts, *_test.py, etc.) */
+  isTest?: boolean;
 }
 
 /** Broad category of an external (unresolved) call */
@@ -2023,9 +2025,13 @@ export class CallGraphBuilder {
     }
 
     // Pass 4: Derive hub functions, entry points, layer violations
-    // External nodes are excluded from structural stats — they are leaf placeholders
+    // External and test nodes are excluded from structural stats
     const nodes = Array.from(allNodes.values());
-    const internalNodes = nodes.filter(n => !n.isExternal);
+    // Mark test-file nodes so consumers can filter them
+    for (const n of nodes) {
+      if (!n.isExternal && isTestFile(n.filePath)) n.isTest = true;
+    }
+    const internalNodes = nodes.filter(n => !n.isExternal && !n.isTest);
 
     const hubFunctions = internalNodes
       .filter(n => n.fanIn >= HUB_THRESHOLD)
