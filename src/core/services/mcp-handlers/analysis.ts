@@ -7,7 +7,9 @@
  */
 
 import { readFile, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import {
   DEFAULT_MAX_FILES,
   DEFAULT_DRIFT_MAX_FILES,
@@ -861,4 +863,273 @@ export async function handleGetTestCoverage(args: {
   });
 
   return report as unknown as Record<string, unknown>;
+}
+
+// ============================================================================
+// get_minimal_context
+// ============================================================================
+
+/**
+ * Return the bare minimum an agent needs to safely modify a function:
+ * its signature + body, direct callers (signatures), direct callees (signatures),
+ * and which test files cover it. Typically 200-600 tokens vs orient's 2000+.
+ */
+export async function handleGetMinimalContext(
+  directory: string,
+  functionName: string,
+  filePath?: string,
+): Promise<unknown> {
+  const absDir = await validateDirectory(directory);
+  const ctx = await readCachedContext(absDir);
+  if (!ctx?.callGraph) return { error: 'No call graph. Run analyze_codebase first.' };
+
+  const cg = ctx.callGraph as SerializedCallGraph;
+  const nodeMap = new Map(cg.nodes.map(n => [n.id, n]));
+
+  // Find target node(s)
+  const candidates = cg.nodes.filter(n =>
+    n.name === functionName &&
+    !n.isExternal && !n.isTest &&
+    (!filePath || n.filePath.endsWith(filePath)),
+  );
+  if (candidates.length === 0) return { error: `Function "${functionName}" not found. Run analyze_codebase first.` };
+  const target = candidates[0];
+
+  // Direct callers and callees from calls edges
+  const callsEdges = cg.edges.filter(e => !e.kind || e.kind === 'calls');
+  const callerIds = callsEdges.filter(e => e.calleeId === target.id).map(e => e.callerId);
+  const calleeIds = callsEdges.filter(e => e.callerId === target.id).map(e => e.calleeId);
+
+  const sig = (n: (typeof cg.nodes)[0]) =>
+    n.signature ?? n.name + (n.isExternal ? ' [external]' : '');
+
+  const callers = [...new Set(callerIds)]
+    .map(id => nodeMap.get(id))
+    .filter((n): n is NonNullable<typeof n> => !!n && !n.isExternal)
+    .slice(0, 12)
+    .map(n => ({ name: n.name, file: relative(absDir, n.filePath), sig: sig(n) }));
+
+  const callees = [...new Set(calleeIds)]
+    .map(id => nodeMap.get(id))
+    .filter((n): n is NonNullable<typeof n> => !!n)
+    .slice(0, 12)
+    .map(n => ({
+      name: n.isExternal ? `[external] ${n.name}` : n.name,
+      file: n.isExternal ? 'external' : relative(absDir, n.filePath),
+      sig: sig(n),
+      kind: n.externalKind,
+    }));
+
+  // Test coverage
+  const testedBy = cg.edges
+    .filter(e => e.kind === 'tested_by' && e.callerId === target.id)
+    .map(e => e.calleeName)
+    .filter((v, i, a) => a.indexOf(v) === i);
+
+  // Function body (byte-range slice from source)
+  let body: string | null = null;
+  try {
+    const src = await readFile(target.filePath, 'utf-8');
+    body = src.slice(target.startIndex, target.endIndex);
+  } catch { /* source unavailable */ }
+
+  return {
+    function: {
+      name: target.name,
+      file: relative(absDir, target.filePath),
+      signature: target.signature ?? target.name,
+      language: target.language,
+      className: target.className ?? null,
+      startLine: target.startLine ?? null,
+      fanIn: target.fanIn,
+      fanOut: target.fanOut,
+      community: target.communityLabel ?? null,
+      body,
+    },
+    callers,
+    callees,
+    testedBy,
+  };
+}
+
+// ============================================================================
+// get_cluster
+// ============================================================================
+
+/**
+ * Return all functions in the same community as the given function.
+ * Communities are computed via label propagation on the call graph at analyze time.
+ * Useful for understanding the "cluster" of related functions without traversing the graph.
+ */
+export async function handleGetCluster(
+  directory: string,
+  functionName: string,
+): Promise<unknown> {
+  const absDir = await validateDirectory(directory);
+  const ctx = await readCachedContext(absDir);
+  if (!ctx?.callGraph) return { error: 'No call graph. Run analyze_codebase first.' };
+
+  const cg = ctx.callGraph as SerializedCallGraph;
+
+  // Find the target node
+  const target = cg.nodes.find(n => n.name === functionName && !n.isExternal && !n.isTest);
+  if (!target) return { error: `Function "${functionName}" not found.` };
+  if (!target.communityId) return { error: `No community data. Re-run analyze_codebase.` };
+
+  // All nodes in same community
+  const members = cg.nodes
+    .filter(n => n.communityId === target.communityId && !n.isExternal && !n.isTest)
+    .sort((a, b) => b.fanIn - a.fanIn);
+
+  // Internal edges within community
+  const memberIds = new Set(members.map(n => n.id));
+  const internalEdges = cg.edges
+    .filter(e => (!e.kind || e.kind === 'calls') && memberIds.has(e.callerId) && memberIds.has(e.calleeId))
+    .length;
+
+  // Files the community spans
+  const files = [...new Set(members.map(n => relative(absDir, n.filePath)))].sort();
+
+  return {
+    communityLabel: target.communityLabel,
+    communityId: target.communityId,
+    stats: {
+      members: members.length,
+      files: files.length,
+      internalEdges,
+    },
+    files,
+    functions: members.map(n => ({
+      name: n.name,
+      file: relative(absDir, n.filePath),
+      signature: n.signature ?? n.name,
+      fanIn: n.fanIn,
+      fanOut: n.fanOut,
+    })),
+  };
+}
+
+// ============================================================================
+// detect_changes
+// ============================================================================
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * Detect recently changed functions and rank them by blast radius (fanIn of callers via BFS).
+ * Runs git diff to find changed files/lines, maps to function nodes, scores by impact.
+ */
+export async function handleDetectChanges(
+  directory: string,
+  base?: string,
+): Promise<unknown> {
+  const absDir = await validateDirectory(directory);
+  const ctx = await readCachedContext(absDir);
+  if (!ctx?.callGraph) return { error: 'No call graph. Run analyze_codebase first.' };
+
+  // Get git diff — changed file paths and line ranges
+  const ref = base ?? 'HEAD';
+  let diffOutput: string;
+  try {
+    const { stdout } = await execFileAsync(
+      'git', ['diff', '--unified=0', ref, '--', '.'],
+      { cwd: absDir, maxBuffer: 4 * 1024 * 1024 },
+    );
+    diffOutput = stdout;
+    if (!diffOutput.trim()) {
+      // Try staged changes
+      const { stdout: staged } = await execFileAsync(
+        'git', ['diff', '--unified=0', '--cached', '--', '.'],
+        { cwd: absDir, maxBuffer: 4 * 1024 * 1024 },
+      );
+      diffOutput = staged;
+    }
+  } catch {
+    return { error: 'git diff failed. Ensure directory is a git repository.' };
+  }
+
+  if (!diffOutput.trim()) return { changedFunctions: [], message: 'No changes detected.' };
+
+  // Parse changed file→line ranges from unified diff
+  const changedLines = new Map<string, Array<[number, number]>>(); // absFilePath → [[start,end],…]
+  let curFile: string | null = null;
+  for (const line of diffOutput.split('\n')) {
+    const fileMatch = line.match(/^\+\+\+ b\/(.+)$/);
+    if (fileMatch) { curFile = join(absDir, fileMatch[1]); continue; }
+    const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
+    if (hunkMatch && curFile) {
+      const start = parseInt(hunkMatch[1], 10);
+      const count = hunkMatch[2] !== undefined ? parseInt(hunkMatch[2], 10) : 1;
+      if (count === 0) continue; // deletion only, no added lines
+      if (!changedLines.has(curFile)) changedLines.set(curFile, []);
+      changedLines.get(curFile)!.push([start, start + count - 1]);
+    }
+  }
+
+  const cg = ctx.callGraph as SerializedCallGraph;
+  const nodeMap = new Map(cg.nodes.map(n => [n.id, n]));
+
+  // Map changed line ranges to function nodes via startLine
+  const changedFnIds = new Set<string>();
+  for (const [filePath, ranges] of changedLines) {
+    const fileNodes = cg.nodes.filter(n => n.filePath === filePath && !n.isExternal && !n.isTest && n.startLine);
+    for (const node of fileNodes) {
+      for (const [start, end] of ranges) {
+        if (node.startLine! <= end && (node.startLine! >= start || node.fanOut > 0)) {
+          changedFnIds.add(node.id);
+        }
+      }
+    }
+    // If no line match found for the file, include all functions in the file as changed
+    if (fileNodes.length > 0 && !fileNodes.some(n => changedFnIds.has(n.id))) {
+      for (const n of fileNodes) changedFnIds.add(n.id);
+    }
+  }
+
+  if (changedFnIds.size === 0) {
+    return { changedFunctions: [], message: 'Changed files found but no matching function nodes. Re-run analyze_codebase.' };
+  }
+
+  // BFS blast radius: count all transitive callers of each changed function
+  const callsEdges = cg.edges.filter(e => !e.kind || e.kind === 'calls');
+  const callerIndex = new Map<string, string[]>(); // calleeId → callerIds
+  for (const e of callsEdges) {
+    if (!callerIndex.has(e.calleeId)) callerIndex.set(e.calleeId, []);
+    callerIndex.get(e.calleeId)!.push(e.callerId);
+  }
+
+  const blastRadius = (startId: string): number => {
+    const visited = new Set<string>();
+    const queue = [startId];
+    while (queue.length) {
+      const id = queue.shift()!;
+      for (const callerId of callerIndex.get(id) ?? []) {
+        if (!visited.has(callerId)) { visited.add(callerId); queue.push(callerId); }
+      }
+    }
+    return visited.size;
+  };
+
+  const scored = [...changedFnIds].map(id => {
+    const n = nodeMap.get(id)!;
+    const radius = blastRadius(id);
+    return {
+      name: n.name,
+      file: relative(absDir, n.filePath),
+      startLine: n.startLine ?? null,
+      fanIn: n.fanIn,
+      blastRadius: radius,
+      riskScore: n.fanIn + radius * 2, // callers here + transitive callers weighted more
+      testedBy: cg.edges
+        .filter(e => e.kind === 'tested_by' && e.callerId === id)
+        .map(e => e.calleeName)
+        .filter((v, i, a) => a.indexOf(v) === i),
+    };
+  }).sort((a, b) => b.riskScore - a.riskScore);
+
+  return {
+    base: ref,
+    totalChanged: scored.length,
+    changedFunctions: scored,
+  };
 }

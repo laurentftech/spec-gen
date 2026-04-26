@@ -77,6 +77,12 @@ export interface FunctionNode {
   externalKind?: ExternalKind;
   /** True for nodes whose source file is a test file (*.test.ts, *_test.py, etc.) */
   isTest?: boolean;
+  /** 1-based line number of the function start (computed from startIndex at build time) */
+  startLine?: number;
+  /** Label-propagation community ID (canonical node id of the community representative) */
+  communityId?: string;
+  /** Human-readable community label (name of the hub function in the community) */
+  communityLabel?: string;
 }
 
 /** Broad category of an external (unresolved) call */
@@ -1849,7 +1855,21 @@ export class CallGraphBuilder {
           continue;
         }
 
+        // Compute startLine (1-based) from byte offset — cheap, done once at build time
+        const lineOffsets = [0];
+        for (let i = 0; i < file.content.length; i++) {
+          if (file.content[i] === '\n') lineOffsets.push(i + 1);
+        }
+        const byteToLine = (offset: number): number => {
+          let lo = 0, hi = lineOffsets.length - 1;
+          while (lo < hi) {
+            const mid = (lo + hi + 1) >> 1;
+            if (lineOffsets[mid] <= offset) lo = mid; else hi = mid - 1;
+          }
+          return lo + 1;
+        };
         for (const node of result.nodes) {
+          node.startLine = byteToLine(node.startIndex);
           allNodes.set(node.id, node);
         }
         allRawEdges.push(...result.rawEdges);
@@ -2137,7 +2157,64 @@ export class CallGraphBuilder {
     const totalFanIn = internalNodes.reduce((s, n) => s + n.fanIn, 0);
     const totalFanOut = internalNodes.reduce((s, n) => s + n.fanOut, 0);
 
-    // Pass 5: Build class hierarchy (inheritance + grouping)
+    // Pass 5: Label-propagation community detection (internal non-test nodes only)
+    // Each node starts with its own label; iteratively adopts the most common neighbor label.
+    // Converges in ~10 passes for typical codebases. External/test nodes get no community.
+    {
+      const callsEdgesOnly = edges.filter(e => !e.kind || e.kind === 'calls');
+      const label = new Map<string, string>();
+      for (const n of internalNodes) label.set(n.id, n.id);
+
+      // Build adjacency for internal nodes (bidirectional — community ignores direction)
+      const neighbors = new Map<string, string[]>();
+      for (const n of internalNodes) neighbors.set(n.id, []);
+      for (const e of callsEdgesOnly) {
+        if (label.has(e.callerId) && label.has(e.calleeId)) {
+          neighbors.get(e.callerId)!.push(e.calleeId);
+          neighbors.get(e.calleeId)!.push(e.callerId);
+        }
+      }
+
+      for (let iter = 0; iter < 15; iter++) {
+        let changed = false;
+        // Deterministic order each iteration (sorted) avoids oscillation
+        const order = [...internalNodes].sort((a, b) => a.id < b.id ? -1 : 1);
+        for (const n of order) {
+          const nbrs = neighbors.get(n.id)!;
+          if (nbrs.length === 0) continue;
+          const counts = new Map<string, number>();
+          for (const nbId of nbrs) {
+            const l = label.get(nbId) ?? nbId;
+            counts.set(l, (counts.get(l) ?? 0) + 1);
+          }
+          let best = label.get(n.id)!;
+          let bestCnt = 0;
+          for (const [l, c] of counts) {
+            if (c > bestCnt || (c === bestCnt && l < best)) { best = l; bestCnt = c; }
+          }
+          if (best !== label.get(n.id)) { label.set(n.id, best); changed = true; }
+        }
+        if (!changed) break;
+      }
+
+      // Name each community by its highest-fanIn member
+      const communityMembers = new Map<string, FunctionNode[]>();
+      for (const n of internalNodes) {
+        const l = label.get(n.id)!;
+        if (!communityMembers.has(l)) communityMembers.set(l, []);
+        communityMembers.get(l)!.push(n);
+      }
+      for (const members of communityMembers.values()) {
+        const hub = members.slice().sort((a, b) => b.fanIn - a.fanIn)[0];
+        const communityLabel = hub.name;
+        for (const n of members) {
+          n.communityId = label.get(n.id)!;
+          n.communityLabel = communityLabel;
+        }
+      }
+    }
+
+    // Pass 6: Build class hierarchy (inheritance + grouping)
     const relationships = await extractClassRelationships(files);
     const { classes, inheritanceEdges } = buildClassNodes(allNodes, relationships);
 
