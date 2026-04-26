@@ -56,6 +56,24 @@ For the top 2 functions returned, get minimal context first (callers, callees, b
 }
 ```
 
+**What to read from the result before proceeding:**
+- `function.riskLevel` — `"high"` means fanIn ≥ 30 or fanOut ≥ 15; the tool expanded caller/callee lists to 24. All shown entries are in scope.
+- `callers[*].callType` — all `"awaited"` = async interface frozen; changing signature or return type breaks every caller. Mixed = looser coupling.
+- `callees[*].isExternal: true` — function touches HTTP/DB boundary; new code paths may fail silently in tests (mocked) but loudly in production.
+- `testedBy[*].confidence` — `"called"` = direct test (strong). `"imported"` = test imports module only; `vi.mock()` can nullify it. Only `"imported"` entries = treat as effectively untested.
+
+If `riskLevel` is `"high"` or any callee is external, check the cluster:
+```json
+// get_cluster
+{
+  "directory": "$PROJECT_ROOT",
+  "functionName": "$FUNCTION_NAME"
+}
+```
+- `clusterDensity < 0.05` → sparse, change is isolated, proceed
+- `clusterDensity 0.05–0.15` → check `internalCallGraph` for transitively dependent functions
+- `clusterDensity > 0.15` → dense cluster; coordinate the whole cluster or discuss scope with user
+
 Then check risk:
 ```json
 // analyze_impact
