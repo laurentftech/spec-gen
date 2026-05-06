@@ -501,6 +501,12 @@ export const SHALLOW_FUNCTION_DEPTH_MAX = 2;
 /** Score bonus for shallow functions with issues */
 export const SHALLOW_FUNCTION_SCORE_BONUS = 0.5;
 
+/** McCabe cyclomatic complexity threshold above which a function is flagged (≥10 = complex) */
+export const HIGH_COMPLEXITY_THRESHOLD = 10;
+
+/** Priority score boost for high-complexity functions */
+export const HIGH_COMPLEXITY_SCORE_BOOST = 1.5;
+
 // ============================================================================
 // DECISIONS
 // ============================================================================

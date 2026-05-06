@@ -85,6 +85,8 @@ export interface FunctionNode {
   communityId?: string;
   /** Human-readable community label (name of the hub function in the community) */
   communityLabel?: string;
+  /** McCabe cyclomatic complexity computed from AST body slice (1 = linear, ≥10 = complex) */
+  cyclomaticComplexity?: number;
 }
 
 /** Broad category of an external (unresolved) call */
@@ -1813,6 +1815,23 @@ function getOrCreateExternalNode(name: string, nodes: Map<string, FunctionNode>)
 }
 
 // ============================================================================
+// CYCLOMATIC COMPLEXITY
+// ============================================================================
+
+const CC_PATTERN_PYTHON = /\bif\s|\belif\s|\bwhile\s|\bfor\s|\bexcept\b|\band\s|\bor\s/g;
+const CC_PATTERN_DEFAULT = /\bif\s*\(|\bwhile\s*\(|\bfor\s*[(]|\bdo\s*[{]|\bcase\s+|\bcatch\s*\(|&&|\|\|/g;
+
+/**
+ * McCabe cyclomatic complexity via regex over function body.
+ * CC = 1 + decision points (if, while, for, case, catch, &&, ||).
+ * Approximate (regex, not AST), suitable for triage/ranking.
+ */
+export function computeCyclomaticComplexity(body: string, language: string): number {
+  const source = language === 'Python' ? CC_PATTERN_PYTHON.source : CC_PATTERN_DEFAULT.source;
+  return 1 + (body.match(new RegExp(source, 'g'))?.length ?? 0);
+}
+
+// ============================================================================
 // CALL GRAPH BUILDER
 // ============================================================================
 
@@ -2217,7 +2236,18 @@ export class CallGraphBuilder {
       }
     }
 
-    // Pass 6: Build class hierarchy (inheritance + grouping)
+    // Pass 6: Cyclomatic complexity — regex over body slice for each internal node
+    for (const node of allNodes.values()) {
+      if (node.isExternal || node.startIndex === undefined || node.endIndex === undefined) continue;
+      const content = fileContents.get(node.filePath);
+      if (!content) continue;
+      node.cyclomaticComplexity = computeCyclomaticComplexity(
+        content.slice(node.startIndex, node.endIndex),
+        node.language,
+      );
+    }
+
+    // Pass 7: Build class hierarchy (inheritance + grouping)
     const relationships = await extractClassRelationships(files);
     const { classes, inheritanceEdges } = buildClassNodes(allNodes, relationships);
 

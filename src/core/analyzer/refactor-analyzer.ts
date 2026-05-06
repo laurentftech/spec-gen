@@ -30,6 +30,8 @@ import {
   CLONE_GROUP_MEMBERSHIP_SCORE,
   SHALLOW_FUNCTION_DEPTH_MAX,
   SHALLOW_FUNCTION_SCORE_BONUS,
+  HIGH_COMPLEXITY_THRESHOLD,
+  HIGH_COMPLEXITY_SCORE_BOOST,
 } from '../../constants.js';
 import type { SerializedCallGraph, FunctionNode } from './call-graph.js';
 import type { DuplicateDetectionResult } from './duplicate-detector.js';
@@ -74,7 +76,8 @@ export type RefactorIssue =
   | 'high_fan_out'
   | 'multi_requirement'
   | 'in_cycle'
-  | 'in_clone_group';
+  | 'in_clone_group'
+  | 'high_complexity';
 
 export interface RefactorEntry {
   function: string;
@@ -89,6 +92,8 @@ export interface RefactorEntry {
   /** Requirement names this function is mapped to */
   requirements: string[];
   issues: RefactorIssue[];
+  /** McCabe cyclomatic complexity (undefined if analysis pre-dates this feature) */
+  cyclomaticComplexity?: number;
   /** Composite priority score for sorting (higher = more urgent) */
   priorityScore: number;
 }
@@ -110,6 +115,7 @@ export interface RefactorReport {
     srpViolations: number;
     cycleParticipants: number;
     cyclesDetected: number;
+    highComplexity: number;
   };
   /** Functions with at least one issue, sorted by priorityScore descending */
   priorities: RefactorEntry[];
@@ -342,6 +348,10 @@ export function analyzeForRefactoring(
       issues.push('in_cycle');
     }
     
+    if ((node.cyclomaticComplexity ?? 0) >= HIGH_COMPLEXITY_THRESHOLD) {
+      issues.push('high_complexity');
+    }
+
     // Check if this function appears in any clone group
     if (duplicates && duplicates.cloneGroups.length > 0) {
       const functionKey = `${node.name}@${node.filePath}`;
@@ -376,6 +386,7 @@ export function analyzeForRefactoring(
       sccSize,
       requirements,
       issues,
+      ...(node.cyclomaticComplexity !== undefined ? { cyclomaticComplexity: node.cyclomaticComplexity } : {}),
       priorityScore,
     });
   }
@@ -409,6 +420,7 @@ export function analyzeForRefactoring(
   const highFanOutCount = entries.filter(e => e.issues.includes('high_fan_out')).length;
   const srpCount = entries.filter(e => e.issues.includes('multi_requirement')).length;
   const cycleParticipants = entries.filter(e => e.issues.includes('in_cycle')).length;
+  const highComplexityCount = entries.filter(e => e.issues.includes('high_complexity')).length;
 
   return {
     generatedAt: new Date().toISOString(),
@@ -421,6 +433,7 @@ export function analyzeForRefactoring(
       srpViolations: srpCount,
       cycleParticipants,
       cyclesDetected: cycles.length,
+      highComplexity: highComplexityCount,
     },
     priorities: withIssues,
     cycles,
@@ -459,6 +472,9 @@ function computePriorityScore(
 
   // Clone groups: per clone group membership
   if (issues.includes('in_clone_group')) score += CLONE_GROUP_MEMBERSHIP_SCORE;
+
+  // High complexity: proportional to excess above threshold
+  if (issues.includes('high_complexity')) score += HIGH_COMPLEXITY_SCORE_BOOST;
 
   // Depth bonus: shallower functions are more impactful to refactor
   if (depth >= 0 && depth <= SHALLOW_FUNCTION_DEPTH_MAX && issues.length > 0) score += SHALLOW_FUNCTION_SCORE_BONUS;
