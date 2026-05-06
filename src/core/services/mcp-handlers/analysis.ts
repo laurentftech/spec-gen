@@ -27,6 +27,7 @@ import {
   ARTIFACT_SCHEMA_INVENTORY,
   ARTIFACT_UI_INVENTORY,
   ARTIFACT_ENV_INVENTORY,
+  ARTIFACT_EXTERNAL_PACKAGES,
 } from '../../../constants.js';
 import { runAnalysis } from '../../../cli/commands/analyze.js';
 import { analyzeForRefactoring } from '../../analyzer/refactor-analyzer.js';
@@ -746,6 +747,32 @@ export async function handleGetEnvVars(
 
   const envVars = await extractEnvVars(filePaths, absDir);
   return { cached: false, total: envVars.length, envVars };
+}
+
+// ============================================================================
+// EXTERNAL PACKAGES HANDLER
+// ============================================================================
+
+/**
+ * Return direct external dependencies from package manifests
+ * (package.json, pyproject.toml, requirements.txt, Cargo.toml, go.mod).
+ * Falls back to live extraction if cached artifact is absent.
+ */
+export async function handleGetExternalPackages(
+  directory: string,
+): Promise<Record<string, unknown>> {
+  const absDir = await validateDirectory(directory);
+  const artifactPath = join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_EXTERNAL_PACKAGES);
+
+  try {
+    const raw = await readFile(artifactPath, 'utf-8');
+    const result = JSON.parse(raw) as Record<string, unknown>;
+    return { cached: true, ...result };
+  } catch { /* not cached */ }
+
+  const { extractExternalPackages } = await import('../../analyzer/external-packages.js');
+  const result = await extractExternalPackages(absDir);
+  return { cached: false, ...result };
 }
 
 /**

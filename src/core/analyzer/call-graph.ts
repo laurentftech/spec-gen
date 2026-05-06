@@ -147,7 +147,7 @@ export interface InheritanceEdge {
   parentId: string;
   /** ClassNode id of the child / derived / implementor */
   childId: string;
-  kind: 'extends' | 'implements' | 'embeds';
+  kind: 'extends' | 'implements' | 'embeds' | 'overrides';
 }
 
 export interface CallGraphResult {
@@ -1726,6 +1726,28 @@ function buildClassNodes(
       seenEdges.add(edgeId);
       inheritanceEdges.push({ id: edgeId, parentId: parent.id, childId: cls.id, kind: 'implements' });
     }
+  }
+
+  // OVERRIDES edges: child defines method with same name as parent — language-agnostic
+  const methodNameSet = new Map<string, Set<string>>();
+  for (const [id, cls] of classMap) {
+    const names = new Set<string>();
+    for (const memberId of cls.methodIds) {
+      const fn = allNodes.get(memberId);
+      if (fn && !fn.isExternal) names.add(fn.name);
+    }
+    methodNameSet.set(id, names);
+  }
+  const extendsEdges = inheritanceEdges.filter(e => e.kind === 'extends');
+  for (const edge of extendsEdges) {
+    const childNames = methodNameSet.get(edge.childId);
+    const parentNames = methodNameSet.get(edge.parentId);
+    if (!childNames || !parentNames) continue;
+    if (![...childNames].some(n => parentNames.has(n))) continue;
+    const overrideId = `${edge.parentId}=>${edge.childId}:overrides`;
+    if (seenEdges.has(overrideId)) continue;
+    seenEdges.add(overrideId);
+    inheritanceEdges.push({ id: overrideId, parentId: edge.parentId, childId: edge.childId, kind: 'overrides' });
   }
 
   return { classes: Array.from(classMap.values()), inheritanceEdges };
