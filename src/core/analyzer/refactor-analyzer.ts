@@ -473,8 +473,11 @@ function computePriorityScore(
   // Clone groups: per clone group membership
   if (issues.includes('in_clone_group')) score += CLONE_GROUP_MEMBERSHIP_SCORE;
 
-  // High complexity: proportional to excess above threshold
-  if (issues.includes('high_complexity')) score += HIGH_COMPLEXITY_SCORE_BOOST;
+  // High complexity: base boost + proportional to excess above threshold (capped at 3×)
+  if (issues.includes('high_complexity')) {
+    const excess = Math.max(0, (node.cyclomaticComplexity ?? HIGH_COMPLEXITY_THRESHOLD) - HIGH_COMPLEXITY_THRESHOLD);
+    score += HIGH_COMPLEXITY_SCORE_BOOST * (1 + Math.min(excess / 10, 2));
+  }
 
   // Depth bonus: shallower functions are more impactful to refactor
   if (depth >= 0 && depth <= SHALLOW_FUNCTION_DEPTH_MAX && issues.length > 0) score += SHALLOW_FUNCTION_SCORE_BONUS;

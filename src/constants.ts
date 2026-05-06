@@ -507,8 +507,11 @@ export const SHALLOW_FUNCTION_SCORE_BONUS = 0.5;
 /** McCabe cyclomatic complexity threshold above which a function is flagged (≥10 = complex) */
 export const HIGH_COMPLEXITY_THRESHOLD = 10;
 
-/** Priority score boost for high-complexity functions */
+/** Base priority score boost for high-complexity functions (scales with excess above threshold) */
 export const HIGH_COMPLEXITY_SCORE_BOOST = 1.5;
+
+/** Cap on the distance-weighted transitive caller score in detect_changes risk model */
+export const TRANSITIVE_SCORE_MAX = 10;
 
 // ============================================================================
 // DECISIONS

@@ -28,6 +28,7 @@ import {
   ARTIFACT_UI_INVENTORY,
   ARTIFACT_ENV_INVENTORY,
   ARTIFACT_EXTERNAL_PACKAGES,
+  TRANSITIVE_SCORE_MAX,
 } from '../../../constants.js';
 import { runAnalysis } from '../../../cli/commands/analyze.js';
 import { analyzeForRefactoring } from '../../analyzer/refactor-analyzer.js';
@@ -1212,9 +1213,10 @@ export async function handleDetectChanges(
     calleeIndex.get(e.callerId)!.push(e.calleeId);
   }
 
-  // awaited callers are most sensitive to breakage; constructor callers least
+  // awaited callers most sensitive; callback least (detached, survives interface change)
   const callTypeWeight = (ct?: string) =>
-    ct === 'awaited' ? 1.0 : ct === 'direct' ? 0.7 : ct === 'method' ? 0.6 : 0.5;
+    ct === 'awaited' ? 1.0 : ct === 'direct' ? 0.7 : ct === 'method' ? 0.6 :
+    ct === 'callback' ? 0.4 : 0.5; // 0.5 default covers 'constructor' and unknown
 
   // Distance-weighted BFS: Σ weight/d² — clamped to prevent cross-repo drift
   const transitiveScore = (startId: string): number => {
@@ -1231,7 +1233,7 @@ export async function handleDetectChanges(
         }
       }
     }
-    return Math.min(score, 10);
+    return Math.min(score, TRANSITIVE_SCORE_MAX);
   };
 
   // Boundary score: outgoing edges to external nodes; http/db weighted 3×, others 1×; normalized

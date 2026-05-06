@@ -1,14 +1,14 @@
 /**
  * External package extractor.
  *
- * Parses package manifests (npm, pip, cargo, go, cmake) to build a flat list
+ * Parses package manifests (npm, pip, cargo, go) to build a flat list
  * of direct dependencies. No LLM required — pure filesystem reads.
  */
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-export type PackageEcosystem = 'npm' | 'pypi' | 'cargo' | 'go' | 'maven' | 'cmake';
+export type PackageEcosystem = 'npm' | 'pypi' | 'cargo' | 'go';
 
 export interface ExternalPackage {
   name: string;
@@ -49,28 +49,40 @@ async function parsePyproject(rootDir: string): Promise<ExternalPackage[]> {
   try {
     const raw = await readFile(join(rootDir, 'pyproject.toml'), 'utf-8');
     const out: ExternalPackage[] = [];
-    // [project] dependencies = ["requests>=2.0", ...]
-    const depsBlock = raw.match(/^\[project\][\s\S]*?dependencies\s*=\s*\[([^\]]*)\]/m);
-    if (depsBlock) {
-      for (const line of depsBlock[1].split('\n')) {
+
+    // PEP 621: [project] dependencies = ["requests>=2.0", ...]
+    const pep621Block = raw.match(/^\[project\]\s*\n([\s\S]*?)(?=^\[)/m);
+    const depsMatch = pep621Block
+      ? pep621Block[1].match(/^dependencies\s*=\s*\[([^\]]*)\]/m)
+      : raw.match(/^dependencies\s*=\s*\[([^\]]*)\]/m);
+    if (depsMatch) {
+      for (const line of depsMatch[1].split('\n')) {
         const m = line.match(/["']([a-zA-Z0-9_.-]+)([^"']*)?["']/);
         if (m) out.push({ name: m[1], version: m[2]?.trim() ?? '*', ecosystem: 'pypi', isDev: false });
       }
     }
-    // [project.optional-dependencies] / [tool.poetry.dev-dependencies]
-    const devBlock = raw.match(/\[tool\.poetry\.dev-dependencies\]([\s\S]*?)(?=\[|$)/m);
-    if (devBlock) {
-      for (const line of devBlock[1].split('\n')) {
+
+    // Poetry: [tool.poetry.dependencies] (prod) and [tool.poetry.dev-dependencies] (dev)
+    for (const [section, isDev] of [
+      ['tool\\.poetry\\.dependencies', false],
+      ['tool\\.poetry\\.dev-dependencies', true],
+      ['tool\\.poetry\\.group\\.dev\\.dependencies', true],
+    ] as const) {
+      const block = raw.match(new RegExp(`\\[${section}\\]([\\s\\S]*?)(?=\\[|$)`));
+      if (!block) continue;
+      for (const line of block[1].split('\n')) {
         const m = line.match(/^(\w[\w-]*)\s*=\s*["']([^"']+)["']/);
-        if (m) out.push({ name: m[1], version: m[2], ecosystem: 'pypi', isDev: true });
+        // skip python version constraint line
+        if (m && m[1] !== 'python') out.push({ name: m[1], version: m[2], ecosystem: 'pypi', isDev });
       }
     }
+
     return out;
   } catch { return []; }
 }
 
 async function parseRequirements(rootDir: string): Promise<ExternalPackage[]> {
-  const candidates = ['requirements.txt', 'requirements/base.txt', 'requirements/prod.txt'];
+  const candidates = ['requirements.txt', 'requirements/base.txt', 'requirements/prod.txt', 'requirements/dev.txt'];
   const out: ExternalPackage[] = [];
   for (const candidate of candidates) {
     try {
