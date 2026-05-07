@@ -1227,8 +1227,9 @@ Most tools run on **pure static analysis** — no LLM quota consumed. Exceptions
 | `search_code` | Natural-language semantic search over indexed functions. Returns the closest matches by meaning with similarity score, call-graph neighbourhood enrichment, and spec-linked peer functions. Falls back to BM25 keyword search when no embedding server is configured. | Yes (+ embedding) |
 | `suggest_insertion_points` | Semantic search over the vector index to find the best existing functions to extend or hook into when implementing a new feature. Returns ranked candidates with role and strategy. Falls back to BM25 keyword search when no embedding server is configured. | Yes (+ embedding) |
 | `get_subgraph` | Depth-limited subgraph centred on a function. Direction: `downstream` (what it calls), `upstream` (who calls it), or `both`. Output as JSON or Mermaid diagram. External leaf nodes (e.g. `fetch`, `psycopg2.execute`) appear as `[external]` with an `externalKind` field (`http`, `database`, `filesystem`, `stdlib`, `unknown`). Stdlib noise (`Array.isArray`, `os.path.join`, `std::string`) is filtered out automatically; only semantically meaningful externals are shown. | Yes |
-| `get_minimal_context` | Return the minimum context needed to safely modify a function: its body, direct callers (signatures only), direct callees (signatures only), and which test files cover it via `tested_by` edges. Use this instead of `orient` when you already know exactly which function to modify — typically 200–600 tokens vs `orient`'s 2 000+. | Yes |
-| `get_cluster` | Return all functions in the same community (label-propagation cluster) as the given function. Tightly coupled functions land in the same cluster regardless of directory. Use this to understand the blast-radius neighbourhood without manual graph traversal. | Yes |
+| `get_minimal_context` | Return the minimum context needed to safely modify a function: body, direct callers and callees with `callType` (`direct|method|awaited|constructor|callback`) and `isExternal`, test files via `tested_by` edges with `confidence` (`called|imported`), and a `riskLevel` (`high|medium|low`). Use this instead of `orient` when you already know exactly which function to modify — typically 200–600 tokens vs `orient`'s 2 000+. | Yes |
+| `get_cluster` | Return all functions in the same community (label-propagation cluster) as the given function. Includes `clusterDensity = uniqueInternalEdges / (m×(m−1))` — decision guide: `< 0.05` change is isolated, `0.05–0.15` check `internalCallGraph`, `> 0.15` coordinate whole cluster. | Yes |
+| `search_unified` | Search both code functions and spec requirements in one call, then cross-boost results linked through `mapping.json` — a function that implements a matching requirement ranks higher than one found by code search alone. Returns results typed as `"code"`, `"spec"`, or `"both"` with a `mappingBoost` score. Use when you want to know where something is implemented AND what the spec says about it simultaneously. | Yes (+ embedding + generate) |
 | `trace_execution_path` | Find all call-graph paths between two functions (DFS, configurable depth/max-paths). Use this when debugging: "how does request X reach function Y?" Returns shortest path, all paths sorted by hops, and a step-by-step chain per path. | Yes |
 | `get_function_body` | Return the exact source code of a named function in a file. | No |
 | `get_function_skeleton` | Noise-stripped view of a source file: logs, inline comments, and non-JSDoc block comments removed. Signatures, control flow, return/throw, and call expressions preserved. Returns reduction %. | No |
@@ -1274,6 +1275,13 @@ Most tools run on **pure static analysis** — no LLM quota consumed. Exceptions
 | `search_specs` | Semantic search over OpenSpec specifications to find requirements, design notes, and architecture decisions by meaning. Returns linked source files for graph highlighting. Use this when asked "which spec covers X?" or "where should we implement Z?". Requires a spec index built with `spec-gen analyze` or `--reindex-specs`. | Yes (generate) |
 | `list_spec_domains` | List all OpenSpec domains available in this project. Use this to discover what domains exist before doing a targeted `search_specs` call. | Yes (generate) |
 | `audit_spec_coverage` | Parity audit: uncovered functions (in call graph, no spec), hub gaps (high fan-in + no spec), orphan requirements (spec with no implementation found), and stale domains (source changed after spec). Run before starting a feature to understand coverage health. No LLM required. | Yes (analyze) |
+
+**Tests**
+
+| Tool | Description | Requires prior analysis |
+|------|-------------|:---:|
+| `generate_tests` | Generate spec-driven test skeletons from OpenSpec `#### Scenario:` blocks. A THEN-clause pattern engine emits real assertions for common patterns (HTTP status codes, property presence, error messages) without LLM. Pass `useLlm:true` to enrich unmatched clauses from mapped function source. Supports Vitest, Playwright, pytest, Google Test, Catch2 (auto-detected). Defaults to `dryRun:true`. | Yes (generate) |
+| `get_test_coverage` | Report which OpenSpec scenarios have test coverage. Scans test files for `// spec-gen:` metadata tags emitted by `generate_tests`. Returns coverage % by domain, uncovered scenarios, and drift flags. Pass `minCoverage` to enforce a CI gate. | Yes (generate) |
 
 **Decisions**
 
@@ -1414,6 +1422,32 @@ base       string   Git ref to diff against (default: HEAD). Use "HEAD~1" for la
 **`get_external_packages`**
 ```
 directory  string   Absolute path to the project directory
+```
+
+**`search_unified`**
+```
+directory  string   Absolute path to the project directory
+query      string   Natural language query, e.g. "validate user authentication"
+limit      number   Maximum number of results (default: 10)
+language   string   Filter code results by language (e.g. "TypeScript")
+domain     string   Filter spec results by domain name
+section    string   Filter spec results by section type: "requirements" | "purpose" | etc.
+```
+
+**`generate_tests`**
+```
+directory   string    Absolute path to the project directory
+domains     string[]  Only generate tests for these spec domains (omit for all)
+framework   string    "vitest" | "playwright" | "pytest" | "gtest" | "catch2" | "auto" (default: auto)
+useLlm      boolean   Use LLM to fill assertions the pattern engine cannot match
+dryRun      boolean   Preview without writing files (default: true)
+```
+
+**`get_test_coverage`**
+```
+directory    string    Absolute path to the project directory
+domains      string[]  Only check these spec domains (omit for all)
+minCoverage  number    Report belowThreshold:true if coverage drops below this percentage
 ```
 
 **`get_function_skeleton`**
