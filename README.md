@@ -122,7 +122,8 @@ Scans your codebase using pure static analysis:
 - Builds a full call graph with **`tested_by` edges** derived from import analysis: each test file's imports map to the production functions it covers, making coverage queries accurate even for mock-heavy suites where call edges don't reach the unit under test
 - Runs **label-propagation community detection** on the call graph to group tightly coupled functions into clusters regardless of directory — powering `get_cluster` and the community colours in the graph viewer
 - Clusters related files into structural business domains automatically
-- Extracts DB schema tables (Prisma, TypeORM, Drizzle, SQLAlchemy), HTTP routes (Express, NestJS, Next.js, FastAPI, Flask), UI components (React, Vue, Svelte, Angular), middleware chains, and environment variables — saved as structured JSON artifacts in `.spec-gen/analysis/`
+- Extracts DB schema tables (Prisma, TypeORM, Drizzle, SQLAlchemy), HTTP routes (Express, NestJS, Next.js, FastAPI, Flask), UI components (React, Vue, Svelte, Angular), middleware chains, environment variables, and direct package dependencies (npm, pypi, cargo, go) — saved as structured JSON artifacts in `.spec-gen/analysis/`
+- Computes **McCabe cyclomatic complexity** for every function (CC = 1 + branching keywords); functions with CC ≥ 10 are flagged as `high_complexity` in `get_refactor_report`
 - Generates AI tool config files (`CLAUDE.md`, `.cursorrules`, `.clinerules/`, `.vibe/skills/`, etc.) with `--ai-configs`
 - Produces structured context that makes LLM generation more accurate
 
@@ -1243,18 +1244,19 @@ Most tools run on **pure static analysis** — no LLM quota consumed. Exceptions
 | `get_ui_components` | Detected UI components with framework, props, and source file. Supports React, Vue, Svelte, and Angular. | Yes |
 | `get_env_vars` | Env vars referenced in source code with `required` (no fallback) and `hasDefault` flags. Supports JS/TS, Python, Go, and Ruby. | Yes |
 | `get_middleware_inventory` | Detected middleware with type (auth/cors/rate-limit/validation/logging/error-handler) and framework. | Yes |
+| `get_external_packages` | Direct dependencies parsed from package manifests (npm, pypi, cargo, go). Returns name, version, ecosystem, and `isDev` flag per package. Uses cached artifact when available; falls back to live extraction. | No |
 
 **Change analysis**
 
 | Tool | Description | Requires prior analysis |
 |------|-------------|:---:|
-| `detect_changes` | Detect recently changed functions and rank them by blast radius. Runs `git diff` against a base ref, maps changed lines to call-graph nodes, scores each function by `fanIn + transitive callers` (highest = riskiest to break), and reports test coverage per changed function via `tested_by` edges. First tool to run on any code-review or pre-merge check. | Yes |
+| `detect_changes` | Detect recently changed functions and rank them by risk. Runs `git diff` against a base ref, maps changed lines to call-graph nodes, and scores each function with a multiplicative model: `riskScore = likelihood × impact`. Likelihood combines a semantic change-type modifier (`signature` ×1.5 / `logic` ×1.0 / `config` ×0.4) with a coverage penalty. Impact combines log fan-in, distance-weighted transitive callers (by `callType`), and boundary score (HTTP/DB callees). Each result includes `changeType`, `reason` (human-readable justification), and `testedBy` with confidence. First tool to run on any code-review or pre-merge check. | Yes |
 
 **Code quality**
 
 | Tool | Description | Requires prior analysis |
 |------|-------------|:---:|
-| `get_refactor_report` | Prioritized list of functions with structural issues: unreachable code, hub overload (high fan-in), god functions (high fan-out), SRP violations, cyclic dependencies. | Yes |
+| `get_refactor_report` | Prioritized list of functions with structural issues: unreachable code, hub overload (high fan-in), god functions (high fan-out), SRP violations, cyclic dependencies, and high cyclomatic complexity (McCabe CC ≥ 10). `cyclomaticComplexity` is returned per function; `stats.highComplexity` gives the project-wide count. | Yes |
 | `get_critical_hubs` | Highest-impact hub functions ranked by criticality. Each hub gets a stability score (0-100) and a recommended approach: extract, split, facade, or delegate. | Yes |
 | `get_god_functions` | Detect god functions (high fan-out, likely orchestrators) in the project or in a specific file, and return their call-graph neighborhood. Use this to identify which functions need to be refactored and understand what logical blocks to extract. | Yes |
 | `analyze_impact` | Deep impact analysis for a specific function: fan-in/fan-out, upstream call chain, downstream critical path, risk score (0-100), blast radius, and recommended strategy. | Yes |
@@ -1407,6 +1409,11 @@ functionName  string   Function name to look up the community for
 ```
 directory  string   Absolute path to the project directory
 base       string   Git ref to diff against (default: HEAD). Use "HEAD~1" for last commit, "main" for branch diff.
+```
+
+**`get_external_packages`**
+```
+directory  string   Absolute path to the project directory
 ```
 
 **`get_function_skeleton`**
@@ -1750,6 +1757,7 @@ Static analysis output is stored in `.spec-gen/analysis/`:
 | `spec-snapshot.json` | Compact coverage summary: git state, per-domain coverage %, uncovered hub functions (auto-updated after `analyze` and `generate`) |
 | `audit-report.json` | Latest parity audit report (produced by `spec-gen audit`) |
 | `fingerprint.json` | Content-hash fingerprint (SHA-256 of all source file mtimes+sizes) used for cache invalidation |
+| `external-packages.json` | Direct dependencies parsed from package manifests (produced by `analyze_codebase`) |
 | `vector-index/` | LanceDB semantic index (produced by `--embed`) |
 
 `spec-gen analyze` also writes **`ARCHITECTURE.md`** to your project root -- a Markdown overview of module clusters, entry points, and critical hubs, refreshed on every run.
