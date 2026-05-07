@@ -1127,6 +1127,74 @@ function runGit(args: string[], cwd: string): Promise<string> {
   });
 }
 
+// ── change-type classifier ────────────────────────────────────────────────────
+// Signature line patterns across languages (TS/JS, Python, Go, Rust, Java/C++)
+const SIG_PATTERN =
+  /^\s*(export\s+)?(default\s+)?(async\s+)?function\b|\bdef\s+\w+\s*[([:]|\bfunc\s+(\([^)]*\)\s*)?\w+\s*\(|\bfn\s+\w+\b|\bclass\s+\w+/;
+// Control-flow keywords (broad, multi-language)
+const LOGIC_PATTERN =
+  /\b(if|else|for|while|switch|try|catch|throw|return|yield|await|break|continue|elif|except|raise|match|case)\b/;
+
+type ChangeType = 'signature' | 'logic' | 'config';
+
+function classifyChangeType(
+  node: { startLine?: number; endLine?: number },
+  addedLines: Map<number, string>,
+): ChangeType {
+  const fnStart = node.startLine ?? 1;
+  const fnEnd = node.endLine ?? fnStart;
+  const linesInFn: string[] = [];
+  for (const [ln, content] of addedLines) {
+    if (ln >= fnStart && ln <= fnEnd) linesInFn.push(content);
+  }
+  if (linesInFn.length === 0) return 'logic';
+  // Signature change: function's own declaration line was modified
+  const sigLine = addedLines.get(fnStart);
+  if (sigLine !== undefined && SIG_PATTERN.test(sigLine)) return 'signature';
+  // Logic change: any added line has a control-flow keyword
+  if (linesInFn.some(l => LOGIC_PATTERN.test(l))) return 'logic';
+  return 'config';
+}
+
+const CHANGE_TYPE_MULTIPLIER: Record<ChangeType, number> = {
+  signature: 1.5, // breaking-change candidate
+  logic: 1.0,     // default
+  config: 0.4,    // literal / comment / config tweak
+};
+
+function buildReason(params: {
+  changeType: ChangeType;
+  directCallers: Array<{ callType?: string }>;
+  tests: Array<{ confidence: 'imported' | 'called' }>;
+  bScore: number;
+  fanIn: number;
+}): string {
+  const { changeType, directCallers, tests, bScore, fanIn } = params;
+  const parts: string[] = [];
+
+  if (changeType === 'signature') parts.push('signature change');
+  else if (changeType === 'config') parts.push('config/literal change');
+
+  if (fanIn > 0) {
+    const awaitedCount = directCallers.filter(c => c.callType === 'awaited').length;
+    const total = directCallers.length || fanIn;
+    if (awaitedCount === total && awaitedCount > 0) parts.push('all callers awaited');
+    else if (awaitedCount > 0) parts.push(`${awaitedCount} awaited callers`);
+    else parts.push(`${fanIn} callers`);
+  }
+
+  const calledTests = tests.filter(t => t.confidence === 'called').length;
+  if (tests.length === 0) parts.push('no tests');
+  else if (calledTests === 0) parts.push('import-only tests');
+  else parts.push(`${calledTests} direct test${calledTests > 1 ? 's' : ''}`);
+
+  if (bScore >= 0.67) parts.push('HTTP/DB boundary');
+  else if (bScore > 0) parts.push('external boundary');
+
+  return parts.join(' · ') || 'low-risk change';
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Detect recently changed functions and rank them by blast radius (fanIn of callers via BFS).
  * Runs git diff to find changed files/lines, maps to function nodes, scores by impact.
@@ -1152,21 +1220,34 @@ export async function handleDetectChanges(
 
   if (!diffOutput.trim()) return { changedFunctions: [], message: 'No changes detected.' };
 
-  // Parse changed file→line ranges from unified diff
-  const changedLines = new Map<string, Array<[number, number]>>(); // absFilePath → [[start,end],…]
+  // Parse unified diff: collect line ranges AND added-line content per file.
+  // --unified=0 means no context lines; only '+' and '-' lines appear in hunks.
+  const changedFileData = new Map<string, {
+    ranges: Array<[number, number]>;
+    addedLines: Map<number, string>; // new-file line# → content
+  }>();
   let curFile: string | null = null;
+  let newLineNum = 0;
   for (const line of diffOutput.split('\n')) {
     const fileMatch = line.match(/^\+\+\+ b\/(.+)$/);
-    if (fileMatch) { curFile = join(absDir, fileMatch[1]); continue; }
+    if (fileMatch) { curFile = join(absDir, fileMatch[1]); newLineNum = 0; continue; }
     const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
     if (hunkMatch && curFile) {
-      const start = parseInt(hunkMatch[1], 10);
+      newLineNum = parseInt(hunkMatch[1], 10);
       const count = hunkMatch[2] !== undefined ? parseInt(hunkMatch[2], 10) : 1;
-      if (count === 0) continue; // deletion only, no added lines
-      if (!changedLines.has(curFile)) changedLines.set(curFile, []);
-      changedLines.get(curFile)!.push([start, start + count - 1]);
+      if (count === 0) continue;
+      if (!changedFileData.has(curFile)) changedFileData.set(curFile, { ranges: [], addedLines: new Map() });
+      changedFileData.get(curFile)!.ranges.push([newLineNum, newLineNum + count - 1]);
+      continue;
     }
+    if (!curFile || !changedFileData.has(curFile)) continue;
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      changedFileData.get(curFile)!.addedLines.set(newLineNum++, line.slice(1));
+    }
+    // '-' lines don't advance new-file position; no context lines with --unified=0
   }
+  // Backward-compat: changedLines used by the node-overlap loop below
+  const changedLines = new Map([...changedFileData.entries()].map(([k, v]) => [k, v.ranges]));
 
   const cg = ctx.callGraph as SerializedCallGraph;
   const nodeMap = new Map(cg.nodes.map(n => [n.id, n]));
@@ -1265,7 +1346,10 @@ export async function handleDetectChanges(
     // from outranking large ones; log(201)≈5.3 so 200 changed lines ≈ absScore 1.0
     const relScore = changed / fnLength;
     const absScore = Math.log(1 + changed) / Math.log(201);
-    const changeScore = Math.min(0.6 * relScore + 0.4 * absScore, 1);
+    const rawChangeScore = Math.min(0.6 * relScore + 0.4 * absScore, 1);
+    // Semantic modifier: signature changes are higher risk than config/literal tweaks
+    const changeType = classifyChangeType(n, changedFileData.get(n.filePath)?.addedLines ?? new Map());
+    const changeScore = Math.min(rawChangeScore * CHANGE_TYPE_MULTIPLIER[changeType], 1);
     const tests = testedByMap.get(id) ?? [];
     // called-edges are direct proof; imported-only is weaker (survives vi.mock)
     const effectiveTests = tests.reduce((s, t) => s + (t.confidence === 'called' ? 1.0 : 0.3), 0);
@@ -1278,6 +1362,8 @@ export async function handleDetectChanges(
     const likelihood = changeScore * (1 + coveragePenalty);
     const impact = Math.log(1 + n.fanIn) * 0.8 + tScore + bScore;
     const riskScore = Math.round(likelihood * impact * 100) / 100;
+    const directCallers = callerIndex.get(id) ?? [];
+    const reason = buildReason({ changeType, directCallers, tests, bScore, fanIn: n.fanIn });
     return {
       name: n.name,
       file: relative(absDir, n.filePath),
@@ -1285,7 +1371,9 @@ export async function handleDetectChanges(
       endLine: n.endLine ?? null,
       fanIn: n.fanIn,
       blastRadius: Math.round(tScore * 100) / 100,
+      changeType,
       riskScore,
+      reason,
       testedBy: testedByMap.get(id) ?? [],
     };
   }).sort((a, b) => b.riskScore - a.riskScore);
