@@ -275,7 +275,7 @@ graph TD
 
 ## Known Limitations
 
-- **Full re-analyze required**: no incremental graph update. Run `spec-gen analyze` after significant refactors.
+- **Call graph is not incrementally updated**: `--watch-auto` re-indexes signatures on save (~500ms), but the call graph itself is rebuilt by the post-commit hook (`spec-gen analyze --force`) or manually. Structural changes (new functions, moved files) are not reflected until the next analyze run.
 - **Static analysis only**: dynamic dispatch, runtime metaprogramming, and `eval`-based patterns are not captured in the call graph.
 - **LLM spec quality varies**: generated specs reflect the model's understanding. Review sections covering complex business logic before treating them as authoritative.
 - **Embedding is optional**: without an embedding endpoint, `orient` and `search_code` fall back to BM25 keyword search (still useful, less accurate for semantic queries).
