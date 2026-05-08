@@ -190,10 +190,12 @@ export async function handleOrient(
   ]);
 
   // ── Build call graph adjacency maps ───────────────────────────────────────
+  // When edgeStore is available: skip upfront full-scan, use targeted DB queries per function.
+  // Fallback: scan all edges in memory (no DB — legacy path).
   const callerMap = new Map<string, CallNeighbour[]>();
   const calleeMap = new Map<string, CallNeighbour[]>();
 
-  if (llmCtx?.callGraph) {
+  if (llmCtx?.callGraph && !llmCtx.edgeStore) {
     const cg = llmCtx.callGraph;
     const nodeById = new Map(cg.nodes.map(n => [n.id, n]));
     for (const n of cg.nodes) {
@@ -273,12 +275,26 @@ export async function handleOrient(
     .map(([domain, { specFile, matchCount }]) => ({ domain, specFile, matchCount }));
 
   // ── Call paths for each top function ──────────────────────────────────────
-  const callPaths: OrientCallPath[] = topResults.map(r => ({
-    function: r.record.name,
-    filePath: r.record.filePath,
-    callers: (callerMap.get(r.record.id) ?? []).slice(0, 5),
-    callees: (calleeMap.get(r.record.id) ?? []).slice(0, 5),
-  }));
+  const callPaths: OrientCallPath[] = topResults.map(r => {
+    if (llmCtx?.edgeStore) {
+      const es = llmCtx.edgeStore;
+      const callers = es.getCallers(r.record.id)
+        .map(e => { const n = es.getNode(e.callerId); return n && !n.isExternal ? { name: n.name, filePath: n.filePath } : null; })
+        .filter((x): x is CallNeighbour => x !== null)
+        .slice(0, 5);
+      const callees = es.getCallees(r.record.id)
+        .map(e => { const n = es.getNode(e.calleeId); return n && !n.isExternal ? { name: n.name, filePath: n.filePath } : null; })
+        .filter((x): x is CallNeighbour => x !== null)
+        .slice(0, 5);
+      return { function: r.record.name, filePath: r.record.filePath, callers, callees };
+    }
+    return {
+      function: r.record.name,
+      filePath: r.record.filePath,
+      callers: (callerMap.get(r.record.id) ?? []).slice(0, 5),
+      callees: (calleeMap.get(r.record.id) ?? []).slice(0, 5),
+    };
+  });
 
   // ── Insertion points (lightweight: reuse rawResults with structural scoring) ──
   // Normalise search scores to [0, 1] for compositeScore (scores are RRF/BM25: higher = better)

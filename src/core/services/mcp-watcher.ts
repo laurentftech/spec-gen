@@ -168,13 +168,17 @@ export class McpWatcher {
           store.deleteOutgoingEdgesForFile(cf);
         }
 
-        // Re-parse changedFile + callerFiles and insert fresh edges
-        const newEdges = await buildEdgeSubset(absPath, content, callerFiles);
+        // Delete nodes for changedFile (callerFiles nodes are untouched — their functions didn't change)
+        store.deleteNodesForFile(absPath);
+
+        // Re-parse changedFile + callerFiles: get fresh edges + updated nodes for changedFile
+        const { edges: newEdges, nodes: newNodes } = await buildGraphSubset(absPath, content, callerFiles);
+        store.insertNodes(newNodes);
         store.insertEdges(newEdges);
         store.setFileHash(absPath, newHash);
 
         process.stderr.write(
-          `[mcp-watcher] updated edges: ${rel} (+${newEdges.length} edges, ${callerFiles.length} callers re-parsed)\n`
+          `[mcp-watcher] updated graph: ${rel} (+${newNodes.length} nodes, +${newEdges.length} edges, ${callerFiles.length} callers re-parsed)\n`
         );
       } finally {
         store.close();
@@ -268,16 +272,20 @@ function isTestFile(relPath: string): boolean {
 }
 
 /**
- * Re-parse changedFile + up to CALLER_REPARSE_LIMIT callerFiles using CallGraphBuilder
- * to get fresh edges for the affected subset.
+ * Re-parse changedFile + up to CALLER_REPARSE_LIMIT callerFiles.
+ * Returns fresh edges (all files in subset) and nodes (changedFile only —
+ * callerFiles nodes are untouched since their function signatures didn't change).
  */
-async function buildEdgeSubset(
+async function buildGraphSubset(
   changedPath: string,
   changedContent: string,
   callerFiles: string[]
-): Promise<import('../analyzer/call-graph.js').CallEdge[]> {
+): Promise<{
+  edges: import('../analyzer/call-graph.js').CallEdge[];
+  nodes: import('../analyzer/call-graph.js').FunctionNode[];
+}> {
   const lang = detectLanguage(changedPath);
-  if (!CALL_GRAPH_LANGS.has(lang)) return [];
+  if (!CALL_GRAPH_LANGS.has(lang)) return { edges: [], nodes: [] };
 
   const { CallGraphBuilder } = await import('../analyzer/call-graph.js');
   const files: Array<{ path: string; content: string; language: string }> = [
@@ -297,5 +305,9 @@ async function buildEdgeSubset(
 
   const builder = new CallGraphBuilder();
   const result = await builder.build(files);
-  return result.edges;
+
+  // Only return nodes from changedFile — callerFiles nodes are already in DB and unchanged
+  const changedNodes = Array.from(result.nodes.values()).filter(n => n.filePath === changedPath);
+
+  return { edges: result.edges, nodes: changedNodes };
 }
