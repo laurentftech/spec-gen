@@ -78,6 +78,9 @@ export const ARTIFACT_REFACTOR_PRIORITIES = 'refactor-priorities.json';
 /** Filename for the content-hash fingerprint used for cache invalidation */
 export const ARTIFACT_FINGERPRINT = 'fingerprint.json';
 
+/** Filename for the SQLite call-graph edge store */
+export const ARTIFACT_CALL_GRAPH_DB = 'call-graph.db';
+
 /** Filename for the repository map artifact (saved by RepositoryMapper) */
 export const ARTIFACT_REPOSITORY_MAP = 'repository-map.json';
 

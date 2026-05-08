@@ -6,6 +6,7 @@
  */
 
 import { writeFile, mkdir, readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { join, basename } from 'node:path';
 import {
   TOKENS_PER_CHAR_DEFAULT,
@@ -19,6 +20,7 @@ import {
   ARTIFACT_SCHEMA_INVENTORY,
   ARTIFACT_ROUTE_INVENTORY,
   ARTIFACT_UI_INVENTORY,
+  ARTIFACT_CALL_GRAPH_DB,
 } from '../../constants.js';
 import type { ScoredFile, ProjectType } from '../../types/index.js';
 import type { RepositoryMap } from './repository-mapper.js';
@@ -366,6 +368,16 @@ export class AnalysisArtifactGenerator {
     }
 
     await Promise.all(saves);
+
+    // Write SQLite edge store alongside JSON artifacts (additive, non-fatal)
+    if (artifacts.llmContext.callGraph) {
+      try {
+        const dbPath = join(this.options.outputDir, ARTIFACT_CALL_GRAPH_DB);
+        await writeEdgesToSQLite(artifacts.llmContext.callGraph, dbPath);
+      } catch {
+        // Non-fatal — JSON artifacts are the source of truth
+      }
+    }
 
     return artifacts;
   }
@@ -1188,6 +1200,106 @@ export class AnalysisArtifactGenerator {
     };
   }
 
+}
+
+// ============================================================================
+// SQLITE EDGE STORE
+// ============================================================================
+
+/**
+ * Writes call graph edges + inheritance edges + file hashes to a SQLite DB.
+ * Additive alongside llm-context.json — backward compat preserved.
+ * Uses better-sqlite3 (synchronous API, fast bulk inserts via transactions).
+ */
+export async function writeEdgesToSQLite(
+  callGraph: import('./call-graph.js').SerializedCallGraph,
+  dbPath: string
+): Promise<void> {
+  // Dynamic require to avoid top-level native module load on import
+  const require = createRequire(import.meta.url);
+  // better-sqlite3 exports a constructor via CommonJS — dynamic require needed for native module
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
+  const DatabaseCtor = require('better-sqlite3') as any;
+  const db: import('better-sqlite3').Database = new DatabaseCtor(dbPath) as import('better-sqlite3').Database;
+  try {
+    db.pragma('journal_mode = WAL');
+    db.pragma('synchronous = NORMAL');
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS edges (
+        caller_id   TEXT NOT NULL,
+        caller_file TEXT NOT NULL,
+        callee_id   TEXT NOT NULL,
+        callee_file TEXT,
+        callee_name TEXT NOT NULL,
+        line        INTEGER,
+        confidence  TEXT,
+        kind        TEXT,
+        call_type   TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_caller_id   ON edges(caller_id);
+      CREATE INDEX IF NOT EXISTS idx_callee_id   ON edges(callee_id);
+      CREATE INDEX IF NOT EXISTS idx_caller_file ON edges(caller_file);
+      CREATE INDEX IF NOT EXISTS idx_callee_file ON edges(callee_file);
+
+      CREATE TABLE IF NOT EXISTS inheritance_edges (
+        parent_id TEXT NOT NULL,
+        child_id  TEXT NOT NULL,
+        kind      TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_inh_parent ON inheritance_edges(parent_id);
+      CREATE INDEX IF NOT EXISTS idx_inh_child  ON inheritance_edges(child_id);
+
+      CREATE TABLE IF NOT EXISTS file_hashes (
+        file_path    TEXT PRIMARY KEY,
+        content_hash TEXT NOT NULL,
+        updated_at   INTEGER NOT NULL
+      );
+    `);
+
+    // Full rebuild — drop existing data and re-insert
+    db.exec('DELETE FROM edges; DELETE FROM inheritance_edges;');
+
+    const insertEdge = db.prepare(`
+      INSERT INTO edges (caller_id, caller_file, callee_id, callee_file, callee_name, line, confidence, kind, call_type)
+      VALUES (@callerId, @callerFile, @calleeId, @calleeFile, @calleeName, @line, @confidence, @kind, @callType)
+    `);
+
+    const insertInheritance = db.prepare(`
+      INSERT INTO inheritance_edges (parent_id, child_id, kind) VALUES (@parentId, @childId, @kind)
+    `);
+
+    const insertEdges = db.transaction((edges: import('./call-graph.js').CallEdge[]) => {
+      for (const e of edges) {
+        const callerFile = e.callerId.includes('::') ? e.callerId.split('::')[0] : e.callerId;
+        const calleeFile = e.calleeId.includes('::') ? e.calleeId.split('::')[0] : null;
+        insertEdge.run({
+          callerId:   e.callerId,
+          callerFile,
+          calleeId:   e.calleeId,
+          calleeFile,
+          calleeName: e.calleeName,
+          line:       e.line ?? null,
+          confidence: e.confidence,
+          kind:       e.kind ?? null,
+          callType:   e.callType ?? null,
+        });
+      }
+    });
+
+    const insertInheritanceEdges = db.transaction(
+      (edges: import('./call-graph.js').InheritanceEdge[]) => {
+        for (const e of edges) {
+          insertInheritance.run({ parentId: e.parentId, childId: e.childId, kind: e.kind ?? null });
+        }
+      }
+    );
+
+    insertEdges(callGraph.edges);
+    insertInheritanceEdges(callGraph.inheritanceEdges);
+  } finally {
+    db.close();
+  }
 }
 
 // ============================================================================
