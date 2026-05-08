@@ -372,7 +372,7 @@ export class AnalysisArtifactGenerator {
     if (artifacts.llmContext.callGraph) {
       try {
         const dbPath = join(this.options.outputDir, ARTIFACT_CALL_GRAPH_DB);
-        await writeEdgesToSQLite(artifacts.llmContext.callGraph, dbPath);
+        await writeEdgesToSQLite(artifacts.llmContext.callGraph, dbPath, this.options.rootDir);
       } catch {
         // Non-fatal — JSON artifacts are the source of truth
       }
@@ -1133,7 +1133,7 @@ export class AnalysisArtifactGenerator {
         // Call graph — all supported languages, exclude test files
         const lang = detectLanguage(file.path);
         if (!isTest && CALL_GRAPH_LANGS.has(lang)) {
-          callGraphFiles.push({ path: file.absolutePath, content, language: lang });
+          callGraphFiles.push({ path: file.path, content, language: lang });
         }
       } catch {
         // skip unreadable files
@@ -1212,21 +1212,38 @@ export class AnalysisArtifactGenerator {
  */
 export async function writeEdgesToSQLite(
   callGraph: import('./call-graph.js').SerializedCallGraph,
-  dbPath: string
+  dbPath: string,
+  rootPath?: string
 ): Promise<void> {
   const { EdgeStore } = await import('../services/edge-store.js');
   const store = EdgeStore.open(dbPath);
   try {
-    // Full rebuild — drop all graph data and re-insert from the fresh analyze result
     store.clearAll();
 
-    const hubIds   = new Set(callGraph.hubFunctions.map(n => n.id));
-    const entryIds = new Set(callGraph.entryPoints.map(n => n.id));
+    // Normalize absolute paths to relative — vector index uses relative IDs; DB must match.
+    const prefix = rootPath ? (rootPath.endsWith('/') ? rootPath : rootPath + '/') : '';
+    const norm = (s: string): string => (prefix && s.startsWith(prefix)) ? s.slice(prefix.length) : s;
 
-    store.insertNodes(callGraph.nodes, hubIds, entryIds);
-    store.insertEdges(callGraph.edges);
-    store.insertInheritanceEdges(callGraph.inheritanceEdges);
-    store.insertClasses(callGraph.classes);
+    const nodes = prefix
+      ? callGraph.nodes.map(n => ({ ...n, id: norm(n.id), filePath: norm(n.filePath) }))
+      : callGraph.nodes;
+    const edges = prefix
+      ? callGraph.edges.map(e => ({ ...e, callerId: norm(e.callerId), calleeId: norm(e.calleeId) }))
+      : callGraph.edges;
+    const classes = prefix
+      ? callGraph.classes.map(c => ({ ...c, id: norm(c.id), filePath: norm(c.filePath), methodIds: c.methodIds.map(norm) }))
+      : callGraph.classes;
+    const inheritanceEdges = prefix
+      ? callGraph.inheritanceEdges.map(e => ({ ...e, parentId: norm(e.parentId), childId: norm(e.childId) }))
+      : callGraph.inheritanceEdges;
+
+    const hubIds   = new Set(callGraph.hubFunctions.map(n => norm(n.id)));
+    const entryIds = new Set(callGraph.entryPoints.map(n => norm(n.id)));
+
+    store.insertNodes(nodes, hubIds, entryIds);
+    store.insertEdges(edges);
+    store.insertInheritanceEdges(inheritanceEdges);
+    store.insertClasses(classes);
   } finally {
     store.close();
   }

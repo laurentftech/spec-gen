@@ -155,13 +155,14 @@ export class McpWatcher {
       try {
         // Content hash — skip entirely on no-op IDE autosaves
         const newHash = createHash('sha256').update(content).digest('hex');
-        if (store.getFileHash(absPath) === newHash) return;
+        if (store.getFileHash(rel) === newHash) return;
 
         // Reverse lookup BEFORE delete so we know which files call into this one
-        const callerFiles = store.getCallerFiles(absPath);
+        // callerFiles are relative paths (DB stores relative paths)
+        const callerFiles = store.getCallerFiles(rel);
 
         // Remove all edges touching changedFile
-        store.deleteEdgesForFile(absPath);
+        store.deleteEdgesForFile(rel);
 
         // Remove callerFiles' outgoing edges (they may reference old function names)
         for (const cf of callerFiles.slice(0, CALLER_REPARSE_LIMIT)) {
@@ -169,13 +170,13 @@ export class McpWatcher {
         }
 
         // Delete nodes for changedFile (callerFiles nodes are untouched — their functions didn't change)
-        store.deleteNodesForFile(absPath);
+        store.deleteNodesForFile(rel);
 
         // Re-parse changedFile + callerFiles: get fresh edges + updated nodes for changedFile
-        const { edges: newEdges, nodes: newNodes } = await buildGraphSubset(absPath, content, callerFiles);
+        const { edges: newEdges, nodes: newNodes } = await buildGraphSubset(rel, content, callerFiles, this.rootPath);
         store.insertNodes(newNodes);
         store.insertEdges(newEdges);
-        store.setFileHash(absPath, newHash);
+        store.setFileHash(rel, newHash);
 
         process.stderr.write(
           `[mcp-watcher] updated graph: ${rel} (+${newNodes.length} nodes, +${newEdges.length} edges, ${callerFiles.length} callers re-parsed)\n`
@@ -277,26 +278,28 @@ function isTestFile(relPath: string): boolean {
  * callerFiles nodes are untouched since their function signatures didn't change).
  */
 async function buildGraphSubset(
-  changedPath: string,
+  changedRel: string,
   changedContent: string,
-  callerFiles: string[]
+  callerFiles: string[],
+  rootDir: string,
 ): Promise<{
   edges: import('../analyzer/call-graph.js').CallEdge[];
   nodes: import('../analyzer/call-graph.js').FunctionNode[];
 }> {
-  const lang = detectLanguage(changedPath);
+  const lang = detectLanguage(changedRel);
   if (!CALL_GRAPH_LANGS.has(lang)) return { edges: [], nodes: [] };
 
   const { CallGraphBuilder } = await import('../analyzer/call-graph.js');
+  // Use relative paths as node IDs (consistent with analyze output)
   const files: Array<{ path: string; content: string; language: string }> = [
-    { path: changedPath, content: changedContent, language: lang },
+    { path: changedRel, content: changedContent, language: lang },
   ];
 
   for (const cf of callerFiles.slice(0, CALLER_REPARSE_LIMIT)) {
     const cfLang = detectLanguage(cf);
     if (!CALL_GRAPH_LANGS.has(cfLang)) continue;
     try {
-      const cfContent = await readFile(cf, 'utf-8');
+      const cfContent = await readFile(join(rootDir, cf), 'utf-8');
       files.push({ path: cf, content: cfContent, language: cfLang });
     } catch {
       // skip unreadable files
@@ -307,7 +310,7 @@ async function buildGraphSubset(
   const result = await builder.build(files);
 
   // Only return nodes from changedFile — callerFiles nodes are already in DB and unchanged
-  const changedNodes = Array.from(result.nodes.values()).filter(n => n.filePath === changedPath);
+  const changedNodes = Array.from(result.nodes.values()).filter(n => n.filePath === changedRel);
 
   return { edges: result.edges, nodes: changedNodes };
 }

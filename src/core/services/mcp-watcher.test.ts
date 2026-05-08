@@ -255,11 +255,11 @@ describe('McpWatcher.handleChange', () => {
     const ctx = makeContext();
     const { rootPath, outputPath } = await setupProject(ctx);
 
-    // Seed the DB with a stale edge from src/a.ts to src/b.ts
+    // Seed the DB with a stale edge from src/a.ts to src/b.ts (relative paths — DB convention)
     const store = EdgeStore.open(EdgeStore.dbPath(outputPath));
     const staleEdge: CallEdge = {
-      callerId: join(rootPath, 'src/a.ts') + '::foo',
-      calleeId: join(rootPath, 'src/b.ts') + '::bar',
+      callerId: 'src/a.ts::foo',
+      calleeId: 'src/b.ts::bar',
       calleeName: 'bar',
       confidence: 'name_only',
     };
@@ -277,7 +277,7 @@ describe('McpWatcher.handleChange', () => {
 
     // Stale edge (foo → bar) should be gone since we deleted edges for src/a.ts
     const store2 = EdgeStore.open(EdgeStore.dbPath(outputPath));
-    const { outgoing } = store2.getEdgesForFile(srcFile);
+    const { outgoing } = store2.getEdgesForFile('src/a.ts');
     store2.close();
     // baz() doesn't call anything → 0 outgoing edges; stale edge was removed
     expect(outgoing.filter(e => e.calleeName === 'bar')).toHaveLength(0);
@@ -292,10 +292,10 @@ describe('McpWatcher.handleChange', () => {
     const content = 'export function stable() {}';
     await writeFile(srcFile, content, 'utf-8');
 
-    // Seed hash cache with the same content
+    // Seed hash cache with the same content (relative path — DB convention)
     const store = EdgeStore.open(EdgeStore.dbPath(outputPath));
     const { createHash } = await import('node:crypto');
-    store.setFileHash(srcFile, createHash('sha256').update(content).digest('hex'));
+    store.setFileHash('src/stable.ts', createHash('sha256').update(content).digest('hex'));
     store.close();
 
     const before = await readFile(contextPath, 'utf-8');
