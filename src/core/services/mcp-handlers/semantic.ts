@@ -180,7 +180,7 @@ export async function handleSearchCode(
   type Neighbour = { name: string; filePath: string };
   let callerMap: Map<string, Neighbour[]> | undefined;
   let calleeMap: Map<string, Neighbour[]> | undefined;
-  if (llmCtx?.callGraph) {
+  if (llmCtx?.callGraph && !llmCtx.edgeStore) {
     const cg = llmCtx.callGraph;
     const nodeMap = new Map(cg.nodes.map((n) => [n.id, n]));
     callerMap = new Map(cg.nodes.map((n) => [n.id, [] as Neighbour[]]));
@@ -241,8 +241,16 @@ export async function handleSearchCode(
       isEntryPoint: r.record.isEntryPoint,
       linkedSpecs: mappingIdx ? specsForFile(mappingIdx, r.record.filePath) : undefined,
       // Graph neighbourhood: callers and callees in the call graph
-      callers: callerMap?.get(r.record.id),
-      callees: calleeMap?.get(r.record.id),
+      callers: llmCtx?.edgeStore
+        ? llmCtx.edgeStore.getCallers(r.record.id)
+            .map(e => { const n = llmCtx!.edgeStore!.getNode(e.callerId); return n && !n.isExternal ? { name: n.name, filePath: n.filePath } : null; })
+            .filter((x): x is Neighbour => x !== null)
+        : callerMap?.get(r.record.id),
+      callees: llmCtx?.edgeStore
+        ? llmCtx.edgeStore.getCallees(r.record.id)
+            .map(e => { const n = llmCtx!.edgeStore!.getNode(e.calleeId); return n && !n.isExternal ? { name: n.name, filePath: n.filePath } : null; })
+            .filter((x): x is Neighbour => x !== null)
+        : calleeMap?.get(r.record.id),
     })),
     ...(specPeers.length > 0 ? { specLinkedFunctions: specPeers } : {}),
   };
@@ -335,25 +343,31 @@ export async function handleSuggestInsertionPoints(
   // RIG-13 — Graph expansion: add depth-1 callers of semantic seed functions.
   // Callers (orchestrators) are likely to be the right insertion point for a new feature:
   // they coordinate the domain logic and control the execution flow.
-  if (llmCtx?.callGraph) {
+  if (llmCtx?.callGraph || llmCtx?.edgeStore) {
     const cg = llmCtx.callGraph;
-    const nodeById = new Map(cg.nodes.map((n) => [n.id, n]));
-    // Build callerOf: nodeId → caller node ids
+    const nodeById = cg ? new Map(cg.nodes.map((n) => [n.id, n])) : null;
+    // Build callerOf: nodeId → caller node ids (JSON path only — DB path queries per-seed below)
     const callerOf = new Map<string, string[]>();
-    for (const e of cg.edges) {
-      if (!e.calleeId) continue;
-      const list = callerOf.get(e.calleeId) ?? [];
-      list.push(e.callerId);
-      callerOf.set(e.calleeId, list);
+    if (cg && !llmCtx.edgeStore) {
+      for (const e of cg.edges) {
+        if (!e.calleeId) continue;
+        const list = callerOf.get(e.calleeId) ?? [];
+        list.push(e.callerId);
+        callerOf.set(e.calleeId, list);
+      }
     }
 
     const seedIds = new Set(rawResults.map((r) => r.record.id));
     const existingIds = new Set(candidates.map((c) => `${c.filePath}::${c.name}`));
 
     for (const seedResult of rawResults) {
-      const callerIds = callerOf.get(seedResult.record.id) ?? [];
+      const callerIds = llmCtx.edgeStore
+        ? llmCtx.edgeStore.getCallers(seedResult.record.id).map(e => e.callerId)
+        : callerOf.get(seedResult.record.id) ?? [];
       for (const callerId of callerIds) {
-        const callerNode = nodeById.get(callerId);
+        const callerNode = llmCtx.edgeStore
+          ? llmCtx.edgeStore.getNode(callerId)
+          : nodeById?.get(callerId);
         if (!callerNode) continue;
         const key = `${callerNode.filePath}::${callerNode.name}`;
         if (existingIds.has(key) || seedIds.has(callerId)) continue;
