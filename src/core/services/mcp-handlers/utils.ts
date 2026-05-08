@@ -6,7 +6,11 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { extname, join, relative, resolve, sep } from 'node:path';
 import type { LLMContext } from '../../analyzer/artifact-generator.js';
+import { EdgeStore } from '../edge-store.js';
 import { ANALYSIS_STALE_THRESHOLD_MS, ARTIFACT_FINGERPRINT, ARTIFACT_LLM_CONTEXT, SPEC_GEN_ANALYSIS_SUBDIR, SPEC_GEN_DIR } from '../../../constants.js';
+
+/** LLMContext with optional SQLite edge store attached (present when call-graph.db exists). */
+export type CachedContext = LLMContext & { edgeStore?: EdgeStore };
 import { logger } from '../../../utils/logger.js';
 
 /**
@@ -100,35 +104,33 @@ export function safeJoin(absDir: string, filePath: string): string {
   return resolved;
 }
 
-export async function readCachedContext(directory: string, timeout?: number): Promise<LLMContext | null> {
+export async function readCachedContext(directory: string, timeout?: number): Promise<CachedContext | null> {
+  const analysisDir = join(directory, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+
+  async function load(): Promise<CachedContext | null> {
+    try {
+      const raw = await readFile(join(analysisDir, ARTIFACT_LLM_CONTEXT), 'utf-8');
+      const ctx = JSON.parse(raw) as CachedContext;
+      // Attach EdgeStore when call-graph.db is present (incremental edge updates)
+      if (EdgeStore.exists(analysisDir)) {
+        ctx.edgeStore = EdgeStore.open(EdgeStore.dbPath(analysisDir));
+      }
+      return ctx;
+    } catch {
+      return null;
+    }
+  }
+
   if (timeout !== undefined && timeout > 0) {
     return Promise.race([
-      (async () => {
-        try {
-          const raw = await readFile(
-            join(directory, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_LLM_CONTEXT),
-            'utf-8'
-          );
-          return JSON.parse(raw) as LLMContext;
-        } catch {
-          return null;
-        }
-      })(),
-      new Promise<null>((_, reject) => 
+      load(),
+      new Promise<null>((_, reject) =>
         setTimeout(() => reject(new Error(`readCachedContext timed out after ${timeout}ms`)), timeout)
-      )
+      ),
     ]);
   }
 
-  try {
-    const raw = await readFile(
-      join(directory, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_LLM_CONTEXT),
-      'utf-8'
-    );
-    return JSON.parse(raw) as LLMContext;
-  } catch {
-    return null;
-  }
+  return load();
 }
 
 // ============================================================================
