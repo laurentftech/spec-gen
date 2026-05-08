@@ -118,6 +118,16 @@ describe('EdgeStore', () => {
     });
   });
 
+  describe('deleteOutgoingEdgesForFile', () => {
+    it('removes only outgoing edges, leaving incoming intact', () => {
+      // src/a.ts has outgoing edge to src/b.ts and incoming from src/c.ts
+      store.deleteOutgoingEdgesForFile('src/a.ts');
+      expect(store.getEdgesForFile('src/a.ts').outgoing).toHaveLength(0);
+      // incoming from c → a should still be present
+      expect(store.getEdgesForFile('src/a.ts').incoming).toHaveLength(1);
+    });
+  });
+
   describe('insertEdges', () => {
     it('inserts edges that are then queryable', () => {
       const newEdge: CallEdge = { callerId: 'src/d.ts::qux', calleeId: 'src/a.ts::foo', calleeName: 'foo', confidence: 'same_file' };

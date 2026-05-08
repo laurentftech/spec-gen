@@ -82,6 +82,11 @@ export class EdgeStore {
     this.db.prepare('DELETE FROM edges WHERE caller_file = ? OR callee_file = ?').run(file, file);
   }
 
+  /** Remove only outgoing edges from this file (edges to other files remain intact). */
+  deleteOutgoingEdgesForFile(file: string): void {
+    this.db.prepare('DELETE FROM edges WHERE caller_file = ?').run(file);
+  }
+
   /** Bulk-insert edges in a single transaction. */
   insertEdges(edges: CallEdge[]): void {
     const stmt = this.db.prepare(`

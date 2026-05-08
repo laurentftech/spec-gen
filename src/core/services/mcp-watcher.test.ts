@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { LLMContext } from '../analyzer/artifact-generator.js';
 import type { SerializedCallGraph } from '../analyzer/call-graph.js';
+import { EdgeStore } from './edge-store.js';
+import type { CallEdge } from '../analyzer/call-graph.js';
 
 // ── chokidar mock (prevents real FS watcher from opening) ────────────────────
 
@@ -245,6 +247,66 @@ describe('McpWatcher.handleChange', () => {
     const watcher = new McpWatcher({ rootPath, outputPath });
     await expect(watcher.handleChange(srcFile)).resolves.not.toThrow();
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('run analyze first'));
+  });
+
+  // ── SQLite edge update path ───────────────────────────────────────────────────
+
+  it('updates edges in call-graph.db when DB is present and content changed', async () => {
+    const ctx = makeContext();
+    const { rootPath, outputPath } = await setupProject(ctx);
+
+    // Seed the DB with a stale edge from src/a.ts to src/b.ts
+    const store = EdgeStore.open(EdgeStore.dbPath(outputPath));
+    const staleEdge: CallEdge = {
+      callerId: join(rootPath, 'src/a.ts') + '::foo',
+      calleeId: join(rootPath, 'src/b.ts') + '::bar',
+      calleeName: 'bar',
+      confidence: 'name_only',
+    };
+    store.insertEdges([staleEdge]);
+    store.close();
+
+    await mkdir(join(rootPath, 'src'), { recursive: true });
+    const srcFile = join(rootPath, 'src', 'a.ts');
+    // New content: foo no longer exists, only baz
+    await writeFile(srcFile, 'export function baz() {}', 'utf-8');
+
+    const { McpWatcher } = await import('./mcp-watcher.js');
+    const watcher = new McpWatcher({ rootPath, outputPath });
+    await watcher.handleChange(srcFile);
+
+    // Stale edge (foo → bar) should be gone since we deleted edges for src/a.ts
+    const store2 = EdgeStore.open(EdgeStore.dbPath(outputPath));
+    const { outgoing } = store2.getEdgesForFile(srcFile);
+    store2.close();
+    // baz() doesn't call anything → 0 outgoing edges; stale edge was removed
+    expect(outgoing.filter(e => e.calleeName === 'bar')).toHaveLength(0);
+  });
+
+  it('skips re-index when file content is unchanged (hash cache hit)', async () => {
+    const ctx = makeContext();
+    const { rootPath, outputPath, contextPath } = await setupProject(ctx);
+
+    await mkdir(join(rootPath, 'src'), { recursive: true });
+    const srcFile = join(rootPath, 'src', 'stable.ts');
+    const content = 'export function stable() {}';
+    await writeFile(srcFile, content, 'utf-8');
+
+    // Seed hash cache with the same content
+    const store = EdgeStore.open(EdgeStore.dbPath(outputPath));
+    const { createHash } = await import('node:crypto');
+    store.setFileHash(srcFile, createHash('sha256').update(content).digest('hex'));
+    store.close();
+
+    const before = await readFile(contextPath, 'utf-8');
+
+    const { McpWatcher } = await import('./mcp-watcher.js');
+    const watcher = new McpWatcher({ rootPath, outputPath });
+    await watcher.handleChange(srcFile);
+
+    // llm-context.json must not be written (early return on hash hit)
+    const after = await readFile(contextPath, 'utf-8');
+    expect(after).toBe(before);
   });
 });
 
