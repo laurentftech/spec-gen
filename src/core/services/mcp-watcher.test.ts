@@ -107,6 +107,48 @@ describe('McpWatcher.handleChange', () => {
     expect(updated.callGraph).toEqual(cg);
   });
 
+  it('preserves non-empty callGraph edges when patching signatures', async () => {
+    const cg = makeCallGraph();
+    cg.edges = [
+      { callerId: 'src/a.ts::foo', calleeId: 'src/b.ts::bar', calleeName: 'bar', confidence: 'name_only' },
+    ];
+    cg.stats.totalEdges = 1;
+    const ctx = makeContext({ callGraph: cg });
+    const { rootPath, outputPath, contextPath } = await setupProject(ctx);
+
+    // Change a file unrelated to the edge above
+    const srcFile = join(rootPath, 'other.ts');
+    await writeFile(srcFile, 'export function baz() {}', 'utf-8');
+
+    const { McpWatcher } = await import('./mcp-watcher.js');
+    const watcher = new McpWatcher({ rootPath, outputPath });
+    await watcher.handleChange(srcFile);
+
+    const updated = JSON.parse(await readFile(contextPath, 'utf-8')) as LLMContext;
+    expect(updated.callGraph?.edges).toHaveLength(1);
+    expect(updated.callGraph?.edges?.[0].callerId).toBe('src/a.ts::foo');
+    expect(updated.callGraph?.edges?.[0].calleeId).toBe('src/b.ts::bar');
+    expect(updated.callGraph?.edges?.[0].calleeName).toBe('bar');
+  });
+
+  it('updates signatures when call-graph.db is absent (backward compat)', async () => {
+    // No call-graph.db present — SQLite edge store not yet initialized.
+    // Signature updates must still work regardless of DB presence.
+    const ctx = makeContext();
+    const { rootPath, outputPath, contextPath } = await setupProject(ctx);
+
+    await mkdir(join(rootPath, 'src'), { recursive: true });
+    const srcFile = join(rootPath, 'src', 'service.ts');
+    await writeFile(srcFile, 'export function doWork() { return 1; }', 'utf-8');
+
+    const { McpWatcher } = await import('./mcp-watcher.js');
+    const watcher = new McpWatcher({ rootPath, outputPath });
+    await watcher.handleChange(srcFile);
+
+    const updated = JSON.parse(await readFile(contextPath, 'utf-8')) as LLMContext;
+    expect(updated.signatures?.some(s => s.path === 'src/service.ts')).toBe(true);
+  });
+
   it('replaces an existing signature entry for the same file', async () => {
     const ctx = makeContext({
       signatures: [{ path: 'src/foo.ts', language: 'TypeScript', entries: [] }],
