@@ -1,8 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { classifyRole, deriveStrategy, buildReason, compositeScore } from './semantic.js';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { EdgeStore } from '../edge-store.js';
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -688,5 +690,100 @@ describe('handleGetSpec — with mapping', () => {
     expect(Array.isArray(result.linkedFunctions)).toBe(true);
     const fns = result.linkedFunctions as Array<{ name: string }>;
     expect(fns.some(f => f.name === 'checkAuth')).toBe(true);
+  });
+});
+
+// ============================================================================
+// TESTS — edgeStore fast paths
+// ============================================================================
+
+describe('handleSearchCode — edgeStore fast path', () => {
+  let tmpDir: string;
+  let store: EdgeStore;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'semantic-edgestore-test-'));
+    const analysisDir = join(tmpDir, '.spec-gen', 'analysis');
+    rmSync(analysisDir, { recursive: true, force: true });
+    mkdirSync(analysisDir, { recursive: true });
+    // Write minimal llm-context.json (no callGraph — edgeStore is the only source)
+    writeFileSync(
+      join(analysisDir, 'llm-context.json'),
+      JSON.stringify({ phase1_survey: { purpose: '', files: [], totalTokens: 0 }, phase2_deep: { purpose: '', files: [], totalTokens: 0 }, phase3_validation: { purpose: '', files: [], totalTokens: 0 } })
+    );
+    store = EdgeStore.open(join(analysisDir, 'call-graph.db'));
+    store.insertNodes([
+      { id: 'src/a.ts::doA', name: 'doA', filePath: 'src/a.ts', isAsync: false, language: 'TypeScript', startIndex: 0, endIndex: 10, fanIn: 1, fanOut: 0 },
+      { id: 'src/b.ts::doB', name: 'doB', filePath: 'src/b.ts', isAsync: false, language: 'TypeScript', startIndex: 0, endIndex: 10, fanIn: 0, fanOut: 1 },
+    ]);
+    store.insertEdges([{ callerId: 'src/b.ts::doB', calleeId: 'src/a.ts::doA', calleeName: 'doA', confidence: 'import' }]);
+    store.close();
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('enriches results with callers from edgeStore (not JSON scan)', async () => {
+    vi.doMock('../../analyzer/vector-index.js', () => ({
+      VectorIndex: {
+        exists: vi.fn().mockReturnValue(true),
+        search: vi.fn().mockResolvedValue([{ score: 0.9, record: makeRecord({ id: 'src/a.ts::doA' }) }]),
+      },
+    }));
+    vi.doMock('../../analyzer/embedding-service.js', () => ({
+      EmbeddingService: { fromEnv: vi.fn().mockReturnValue({}), fromConfig: vi.fn() },
+    }));
+
+    const { handleSearchCode } = await import('./semantic.js');
+    const result = await handleSearchCode(tmpDir, 'doA') as Record<string, unknown>;
+    const results = result.results as Array<Record<string, unknown>>;
+    const callers = results[0].callers as Array<{ name: string }> | undefined;
+    expect(callers).toBeDefined();
+    expect(callers?.some(c => c.name === 'doB')).toBe(true);
+  });
+});
+
+describe('handleSuggestInsertionPoints — edgeStore RIG-13 fast path', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'semantic-suggest-edgestore-test-'));
+    const analysisDir = join(tmpDir, '.spec-gen', 'analysis');
+    mkdirSync(analysisDir, { recursive: true });
+    writeFileSync(
+      join(analysisDir, 'llm-context.json'),
+      JSON.stringify({ phase1_survey: { purpose: '', files: [], totalTokens: 0 }, phase2_deep: { purpose: '', files: [], totalTokens: 0 }, phase3_validation: { purpose: '', files: [], totalTokens: 0 } })
+    );
+    // orchestrator → handler (caller expands handler's insertion candidates)
+    const s = EdgeStore.open(join(analysisDir, 'call-graph.db'));
+    s.insertNodes([
+      { id: 'src/a.ts::handler',     name: 'handler',     filePath: 'src/a.ts', isAsync: false, language: 'TypeScript', startIndex: 0, endIndex: 10, fanIn: 1, fanOut: 0 },
+      { id: 'src/b.ts::orchestrate', name: 'orchestrate', filePath: 'src/b.ts', isAsync: false, language: 'TypeScript', startIndex: 0, endIndex: 10, fanIn: 0, fanOut: 5 },
+    ]);
+    s.insertEdges([{ callerId: 'src/b.ts::orchestrate', calleeId: 'src/a.ts::handler', calleeName: 'handler', confidence: 'import' }]);
+    s.close();
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('RIG-13 expands results with caller from edgeStore', async () => {
+    vi.doMock('../../analyzer/vector-index.js', () => ({
+      VectorIndex: {
+        exists: vi.fn().mockReturnValue(true),
+        search: vi.fn().mockResolvedValue([{ score: 0.8, record: makeRecord({ id: 'src/a.ts::handler', name: 'handler', filePath: 'src/a.ts', fanOut: 0 }) }]),
+      },
+    }));
+    vi.doMock('../../analyzer/embedding-service.js', () => ({
+      EmbeddingService: { fromEnv: vi.fn().mockReturnValue({}), fromConfig: vi.fn() },
+    }));
+
+    const { handleSuggestInsertionPoints } = await import('./semantic.js');
+    const result = await handleSuggestInsertionPoints(tmpDir, 'add logging') as Record<string, unknown>;
+    const candidates = result.candidates as Array<{ name: string }>;
+    // orchestrate should appear as a RIG-13 expanded candidate
+    expect(candidates.some(p => p.name === 'orchestrate')).toBe(true);
   });
 });

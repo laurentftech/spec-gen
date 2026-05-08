@@ -4,7 +4,11 @@
  * Plus error-path tests for the async handlers.
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { EdgeStore } from '../edge-store.js';
 
 // Mock node:fs/promises so handleGetFileDependencies can be tested without disk I/O.
 // Default: readFile throws (simulates missing dep-graph file).
@@ -564,5 +568,128 @@ describe('handleGetFileDependencies — direction branches', () => {
     await mockDepGraph();
     const result = await handleGetFileDependencies('/proj', 'src/nonexistent.ts') as { error: string };
     expect(result.error).toContain('File not found in dependency graph');
+  });
+});
+
+// ============================================================================
+// EdgeStore fast paths — handleGetSubgraph + handleAnalyzeImpact
+// ============================================================================
+
+describe('handleGetSubgraph — edgeStore fast path', () => {
+  let dir: string;
+  let store: EdgeStore;
+
+  // Graph: entry → middle → leaf (downstream chain)
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'graph-subgraph-test-'));
+    store = EdgeStore.open(join(dir, 'call-graph.db'));
+    store.insertNodes([
+      makeNode({ id: 'src/a.ts::entry',  fanOut: 1 }),
+      makeNode({ id: 'src/b.ts::middle', fanOut: 1 }),
+      makeNode({ id: 'src/c.ts::leaf',   fanOut: 0 }),
+    ]);
+    store.insertEdges([
+      makeEdge('src/a.ts::entry',  'src/b.ts::middle'),
+      makeEdge('src/b.ts::middle', 'src/c.ts::leaf'),
+    ]);
+  });
+
+  afterEach(() => {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('finds seed via searchNodes (indexed) and returns downstream subgraph', async () => {
+    vi.mocked(readCachedContext).mockResolvedValueOnce({ edgeStore: store } as never);
+    const result = await handleGetSubgraph(dir, 'entry', 'downstream', 2) as Record<string, unknown>;
+
+    const nodes = result.nodes as Array<{ name: string }>;
+    expect(nodes.map(n => n.name)).toContain('entry');
+    expect(nodes.map(n => n.name)).toContain('middle');
+    expect(nodes.map(n => n.name)).toContain('leaf');
+  });
+
+  it('subgraph edges connect visited nodes correctly', async () => {
+    vi.mocked(readCachedContext).mockResolvedValueOnce({ edgeStore: store } as never);
+    const result = await handleGetSubgraph(dir, 'entry', 'downstream', 2) as Record<string, unknown>;
+
+    const edges = result.edges as Array<{ caller: string; callee: string }>;
+    expect(edges.some(e => e.caller === 'entry' && e.callee === 'middle')).toBe(true);
+    expect(edges.some(e => e.caller === 'middle' && e.callee === 'leaf')).toBe(true);
+  });
+
+  it('upstream direction returns callers only', async () => {
+    vi.mocked(readCachedContext).mockResolvedValueOnce({ edgeStore: store } as never);
+    const result = await handleGetSubgraph(dir, 'leaf', 'upstream', 2) as Record<string, unknown>;
+
+    const nodes = result.nodes as Array<{ name: string }>;
+    const names = nodes.map(n => n.name);
+    expect(names).toContain('leaf');
+    expect(names).toContain('middle');
+    expect(names).toContain('entry');
+  });
+
+  it('depth limit is respected', async () => {
+    vi.mocked(readCachedContext).mockResolvedValueOnce({ edgeStore: store } as never);
+    const result = await handleGetSubgraph(dir, 'entry', 'downstream', 1) as Record<string, unknown>;
+
+    const nodes = result.nodes as Array<{ name: string }>;
+    const names = nodes.map(n => n.name);
+    expect(names).toContain('entry');
+    expect(names).toContain('middle');
+    expect(names).not.toContain('leaf'); // depth 1 stops at middle
+  });
+
+  it('returns error when function name not found', async () => {
+    vi.mocked(readCachedContext).mockResolvedValueOnce({ edgeStore: store } as never);
+    const result = await handleGetSubgraph(dir, 'nonexistent', 'downstream', 2) as { error: string };
+    expect(result.error).toContain('nonexistent');
+  });
+});
+
+describe('handleAnalyzeImpact — edgeStore fast path', () => {
+  let dir: string;
+  let store: EdgeStore;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'graph-impact-test-'));
+    store = EdgeStore.open(join(dir, 'call-graph.db'));
+    store.insertNodes([
+      makeNode({ id: 'src/a.ts::entry',  fanOut: 2 }),
+      makeNode({ id: 'src/b.ts::middle', fanIn: 1, fanOut: 1 }),
+      makeNode({ id: 'src/c.ts::leaf',   fanIn: 1, fanOut: 0 }),
+    ]);
+    store.insertEdges([
+      makeEdge('src/a.ts::entry',  'src/b.ts::middle'),
+      makeEdge('src/b.ts::middle', 'src/c.ts::leaf'),
+    ]);
+  });
+
+  afterEach(() => {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('computes downstream blast radius via lazy BFS', async () => {
+    vi.mocked(readCachedContext).mockResolvedValueOnce({ edgeStore: store } as never);
+    const result = await handleAnalyzeImpact(dir, 'entry', 2) as Record<string, unknown>;
+
+    const blast = result.blastRadius as { total: number; downstream: number; upstream: number };
+    expect(blast.downstream).toBe(2); // middle + leaf
+    expect(blast.upstream).toBe(0);   // nothing calls entry
+  });
+
+  it('computes upstream chain for a leaf node', async () => {
+    vi.mocked(readCachedContext).mockResolvedValueOnce({ edgeStore: store } as never);
+    const result = await handleAnalyzeImpact(dir, 'leaf', 2) as Record<string, unknown>;
+
+    const blast = result.blastRadius as { total: number; upstream: number };
+    expect(blast.upstream).toBe(2); // middle + entry call into leaf
+  });
+
+  it('returns riskLevel field', async () => {
+    vi.mocked(readCachedContext).mockResolvedValueOnce({ edgeStore: store } as never);
+    const result = await handleAnalyzeImpact(dir, 'middle', 2) as Record<string, unknown>;
+    expect(['low', 'medium', 'high', 'critical']).toContain(result.riskLevel);
   });
 });
