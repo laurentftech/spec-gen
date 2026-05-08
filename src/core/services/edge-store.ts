@@ -15,12 +15,33 @@ function openDatabase(dbPath: string): import('better-sqlite3').Database {
   return db;
 }
 
+/** Bump when schema changes. Old DBs are dropped and rebuilt on next analyze --force. */
+const SCHEMA_VERSION = 2;
+
 export class EdgeStore {
   private constructor(private readonly db: import('better-sqlite3').Database) {
     this.initSchema();
   }
 
   private initSchema(): void {
+    // Version check — if schema changed, wipe and rebuild (analyze --force repopulates).
+    this.db.exec(`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`);
+    const row = this.db.prepare('SELECT version FROM schema_version LIMIT 1').get() as { version: number } | undefined;
+    if (row === undefined) {
+      this.db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
+    } else if (row.version !== SCHEMA_VERSION) {
+      this.db.exec(`
+        DROP TABLE IF EXISTS edges;
+        DROP TABLE IF EXISTS inheritance_edges;
+        DROP TABLE IF EXISTS nodes;
+        DROP TABLE IF EXISTS classes;
+        DROP TABLE IF EXISTS file_hashes;
+        DROP TABLE IF EXISTS schema_version;
+        CREATE TABLE schema_version (version INTEGER NOT NULL);
+      `);
+      this.db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(SCHEMA_VERSION);
+    }
+
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS edges (
         caller_id   TEXT NOT NULL,
@@ -87,6 +108,8 @@ export class EdgeStore {
         content_hash TEXT NOT NULL,
         updated_at   INTEGER NOT NULL
       );
+
+      CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(node_id UNINDEXED, name, tokenize='trigram');
     `);
   }
 
@@ -122,6 +145,24 @@ export class EdgeStore {
   getCallers(nodeId: string): CallEdge[] {
     return (
       this.db.prepare('SELECT * FROM edges WHERE callee_id = ?').all(nodeId) as RawEdge[]
+    ).map(rawToCallEdge);
+  }
+
+  /** Batch: outgoing edges for a set of caller IDs — one query instead of N. */
+  getCalleesForIds(callerIds: string[]): CallEdge[] {
+    if (callerIds.length === 0) return [];
+    const placeholders = callerIds.map(() => '?').join(',');
+    return (
+      this.db.prepare(`SELECT * FROM edges WHERE caller_id IN (${placeholders})`).all(...callerIds) as RawEdge[]
+    ).map(rawToCallEdge);
+  }
+
+  /** Batch: incoming edges for a set of callee IDs — one query instead of N. */
+  getCallersForIds(calleeIds: string[]): CallEdge[] {
+    if (calleeIds.length === 0) return [];
+    const placeholders = calleeIds.map(() => '?').join(',');
+    return (
+      this.db.prepare(`SELECT * FROM edges WHERE callee_id IN (${placeholders})`).all(...calleeIds) as RawEdge[]
     ).map(rawToCallEdge);
   }
 
@@ -189,8 +230,20 @@ export class EdgeStore {
     ).map(rawToFunctionNode);
   }
 
-  /** Case-insensitive prefix/infix search on node name. */
+  /** Case-insensitive substring search on node name. FTS5 trigram for ≥3 chars, LIKE fallback otherwise. */
   searchNodes(pattern: string, limit = 50): FunctionNode[] {
+    if (pattern.length >= 3) {
+      return (
+        this.db
+          .prepare(`
+            SELECT n.* FROM nodes_fts f
+            JOIN nodes n ON n.id = f.node_id
+            WHERE nodes_fts MATCH ? AND n.is_external = 0
+            LIMIT ?
+          `)
+          .all(pattern, limit) as RawNode[]
+      ).map(rawToFunctionNode);
+    }
     return (
       this.db
         .prepare('SELECT * FROM nodes WHERE name LIKE ? AND is_external = 0 LIMIT ?')
@@ -222,7 +275,14 @@ export class EdgeStore {
   // ── Node mutations ────────────────────────────────────────────────────────────
 
   deleteNodesForFile(file: string): void {
+    const ids = (
+      this.db.prepare('SELECT id FROM nodes WHERE file_path = ?').all(file) as Array<{ id: string }>
+    ).map(r => r.id);
     this.db.prepare('DELETE FROM nodes WHERE file_path = ?').run(file);
+    if (ids.length > 0) {
+      const placeholders = ids.map(() => '?').join(',');
+      this.db.prepare(`DELETE FROM nodes_fts WHERE node_id IN (${placeholders})`).run(...ids);
+    }
   }
 
   /**
@@ -238,6 +298,7 @@ export class EdgeStore {
         (@id, @name, @filePath, @className, @isAsync, @language, @startIndex, @endIndex,
          @fanIn, @fanOut, @docstring, @signature, @isExternal, @externalKind, @isHub, @isEntryPoint)
     `);
+    const ftsStmt = this.db.prepare('INSERT OR REPLACE INTO nodes_fts (node_id, name) VALUES (?, ?)');
     const insert = this.db.transaction((batch: FunctionNode[]) => {
       for (const n of batch) {
         stmt.run({
@@ -258,6 +319,7 @@ export class EdgeStore {
           isHub:        hubIds ? (hubIds.has(n.id) ? 1 : 0) : 0,
           isEntryPoint: entryIds ? (entryIds.has(n.id) ? 1 : 0) : 0,
         });
+        if (!n.isExternal) ftsStmt.run(n.id, n.name);
       }
     });
     insert(nodes);
@@ -327,7 +389,7 @@ export class EdgeStore {
 
   /** Drop all graph data — used by full analyze rebuild. */
   clearAll(): void {
-    this.db.exec('DELETE FROM edges; DELETE FROM inheritance_edges; DELETE FROM nodes; DELETE FROM classes;');
+    this.db.exec('DELETE FROM edges; DELETE FROM inheritance_edges; DELETE FROM nodes; DELETE FROM classes; DELETE FROM nodes_fts;');
   }
 
   close(): void {

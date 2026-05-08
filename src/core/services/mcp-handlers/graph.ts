@@ -125,21 +125,26 @@ export function bfsFromDB(
   es: CachedContext['edgeStore']
 ): Map<string, number> {
   const visited = new Map<string, number>();
-  const queue: Array<{ id: string; depth: number }> = seeds.map(id => ({ id, depth: 0 }));
   for (const id of seeds) visited.set(id, 0);
 
-  while (queue.length > 0) {
-    const { id, depth } = queue.shift()!;
-    if (depth >= maxDepth) continue;
-    const neighbors = direction === 'forward'
-      ? es!.getCallees(id).map(e => e.calleeId)
-      : es!.getCallers(id).map(e => e.callerId);
-    for (const nId of neighbors) {
-      if (!visited.has(nId)) {
+  // Level-by-level BFS: one batch query per depth level instead of one query per node.
+  // O(maxDepth) SQL queries vs O(visited_nodes) in the naive approach.
+  let frontier = seeds.filter(id => !id.startsWith('external::'));
+
+  for (let depth = 0; depth < maxDepth && frontier.length > 0; depth++) {
+    const edges = direction === 'forward'
+      ? es!.getCalleesForIds(frontier)
+      : es!.getCallersForIds(frontier);
+
+    const nextFrontier: string[] = [];
+    for (const e of edges) {
+      const nId = direction === 'forward' ? e.calleeId : e.callerId;
+      if (!visited.has(nId) && !nId.startsWith('external::')) {
         visited.set(nId, depth + 1);
-        queue.push({ id: nId, depth: depth + 1 });
+        nextFrontier.push(nId);
       }
     }
+    frontier = nextFrontier;
   }
   return visited;
 }
