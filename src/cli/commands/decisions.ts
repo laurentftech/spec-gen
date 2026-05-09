@@ -69,6 +69,34 @@ record_decision({
 Decisions are consolidated in the background immediately after \`record_decision\` is called — the pre-commit gate reads the already-consolidated store and adds no LLM latency.
 
 **Performance note**: if you skip \`record_decision\`, the gate detects unrecorded source changes at commit time and triggers a slow LLM extraction on the *next* commit (~10-30s). Calling \`record_decision\` proactively keeps every commit instant.
+
+## When git commit is blocked by the decisions gate
+
+If \`git commit\` fails and the output is JSON with \`"gated": true\`, do NOT retry silently.
+Check the \`reason\` field and act accordingly:
+
+**\`reason: "verified"\` — decisions await review:**
+Present each decision to the user:
+> "The commit is blocked — I found N architectural decision(s) to validate:
+> 1. **[id]** Title — rationale
+Do you approve? (yes/no)"
+For each approval call \`approve_decision\`, for rejections call \`reject_decision\`.
+Then run \`spec-gen decisions --sync\` and retry \`git commit\`.
+
+**\`reason: "approved_not_synced"\` — decisions approved but not written to specs:**
+Run \`spec-gen decisions --sync\` then retry \`git commit\`. Do not skip this step.
+
+**\`reason: "drafts_pending_consolidation"\` — drafts were recorded but not yet consolidated:**
+Present to the user:
+> "N decision draft(s) were recorded but never consolidated. Run consolidation now? (~10-30s)"
+If yes: run \`spec-gen decisions --consolidate --gate\` and handle the result.
+If no: retry with \`git commit --no-verify\` to skip the gate.
+
+**\`reason: "no_decisions_recorded"\` — source files staged but nothing recorded:**
+Present to the user:
+> "Source files are staged but no architectural decisions were recorded. Run fallback extraction to check for undocumented decisions? (~10-30s)"
+If yes: run \`spec-gen decisions --consolidate --gate\` and handle the result.
+If no: retry with \`git commit --no-verify\` to skip the gate.
 <!-- end-spec-gen-decisions-instructions -->
 `;
 
@@ -698,6 +726,21 @@ Examples:
 
     // ── Gate only (no consolidation — consolidation happens on record_decision) ──
     if (options.gate && !options.consolidate) {
+      // Block if approved decisions haven't been synced to spec files yet.
+      const approved = getDecisionsByStatus(store, 'approved');
+      if (approved.length > 0) {
+        const payload = {
+          gated: true,
+          reason: 'approved_not_synced',
+          message: `${approved.length} approved decision(s) must be synced to spec files before committing.`,
+          approved: approved.map((d) => ({ id: d.id, title: d.title })),
+          actions: { sync: 'spec-gen decisions --sync' },
+        };
+        process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
+        process.exitCode = 1;
+        return;
+      }
+
       const verified = getDecisionsByStatus(store, 'verified');
       const missing: Array<{ file: string; description: string }> = [];
 
