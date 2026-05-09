@@ -142,7 +142,9 @@ One call. No file reads. The agent knows exactly where to look and what risks to
 
 **Analyze** (no API key)
 
-Scans your codebase with pure static analysis. Builds a full call graph, runs label-propagation community detection to cluster tightly coupled functions, computes McCabe cyclomatic complexity for every function, and extracts DB schemas, HTTP routes, UI components, middleware chains, and environment variables. Outputs `.spec-gen/analysis/CODEBASE.md` — a ~600-token structural digest that replaces 30,000+ tokens of file exploration.
+Scans your codebase with pure static analysis. Builds a full call graph persisted to SQLite, runs label-propagation community detection to cluster tightly coupled functions, computes McCabe cyclomatic complexity for every function, and extracts DB schemas, HTTP routes, UI components, middleware chains, and environment variables. Outputs `.spec-gen/analysis/CODEBASE.md` — a ~600-token structural digest that replaces 30,000+ tokens of file exploration.
+
+With `--watch-auto`, the call graph updates incrementally on every file save: changed file and its direct callers are re-parsed and the graph is atomically swapped. Orient and BFS queries remain live between full analyze runs.
 
 **Generate** (API key required)
 
@@ -275,11 +277,11 @@ graph TD
 
 ## Known Limitations
 
-- **Call graph is not incrementally updated**: `--watch-auto` re-indexes signatures on save (~500ms), but the call graph itself is rebuilt by the post-commit hook (`spec-gen analyze --force`) or manually. Structural changes (new functions, moved files) are not reflected until the next analyze run.
+- **Incremental call graph updates are depth-1 only**: `--watch-auto` re-indexes signatures and edges on save for the changed file and its direct callers. Transitive callers (A→B→C, C changes, A stays stale) are only refreshed by the next `analyze --force`. For hub files with 100+ callerFiles, re-parse may take several seconds.
 - **Static analysis only**: dynamic dispatch, runtime metaprogramming, and `eval`-based patterns are not captured in the call graph.
 - **LLM spec quality varies**: generated specs reflect the model's understanding. Review sections covering complex business logic before treating them as authoritative.
 - **Embedding is optional**: without an embedding endpoint, `orient` and `search_code` fall back to BM25 keyword search (still useful, less accurate for semantic queries).
-- **Large monorepos**: `spec-gen analyze` on 500k+ LOC projects may take several minutes. The graph is cached after the first run.
+- **Large monorepos**: `spec-gen analyze` on large codebases may take several minutes. Graph storage itself has no practical limit — the pipeline (AST parsing, symbol extraction) is the bottleneck.
 
 ---
 
@@ -304,7 +306,7 @@ graph TD
 ```bash
 npm install
 npm run build
-npm test          # 2300+ unit tests
+npm test          # 2580+ unit tests
 npm run typecheck
 ```
 
