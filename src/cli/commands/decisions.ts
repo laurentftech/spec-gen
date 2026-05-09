@@ -121,7 +121,26 @@ fi
 if [ "$DECISIONS_EXIT" -ne 0 ]; then
   exit "$DECISIONS_EXIT"
 fi
+# Sentinel: post-commit hook checks this to detect --no-verify bypass.
+touch .git/SPEC_GEN_GATE_RAN 2>/dev/null || true
 # end-spec-gen-decisions-hook
+`;
+
+const POST_COMMIT_HOOK_MARKER = '# spec-gen-decisions-post-hook';
+const POST_COMMIT_HOOK_CONTENT = `${POST_COMMIT_HOOK_MARKER}
+# Warn when the pre-commit gate was bypassed via --no-verify.
+# post-commit is NOT skipped by --no-verify (only pre-commit and commit-msg are).
+SENTINEL=".git/SPEC_GEN_GATE_RAN"
+if [ -f "$SENTINEL" ]; then
+  rm -f "$SENTINEL"
+else
+  echo "" >&2
+  echo "⚠️  spec-gen: pre-commit gate was bypassed (--no-verify)." >&2
+  echo "    Architectural decisions were NOT reviewed for this commit." >&2
+  echo "    Run: spec-gen decisions --consolidate --gate" >&2
+  echo "" >&2
+fi
+# end-spec-gen-decisions-post-hook
 `;
 
 async function ensureGitignored(rootPath: string, entry: string): Promise<void> {
@@ -165,6 +184,21 @@ export async function installPreCommitHook(rootPath: string): Promise<void> {
   await chmod(hookPath, 0o755);
   logger.success('Pre-commit hook installed at .git/hooks/pre-commit');
   logger.discovery('Commits will be gated until decisions are approved. Use --no-verify to skip.');
+
+  // Install post-commit hook to detect --no-verify bypass
+  const postCommitPath = join(hooksDir, 'post-commit');
+  let existingPostContent = '';
+  if (await fileExists(postCommitPath)) {
+    existingPostContent = await readFile(postCommitPath, 'utf-8');
+    if (!existingPostContent.includes(POST_COMMIT_HOOK_MARKER)) {
+      const strippedPost = existingPostContent.trimEnd().replace(/\n*\nexit 0\s*$/, '');
+      await writeFile(postCommitPath, strippedPost + '\n\n' + POST_COMMIT_HOOK_CONTENT, 'utf-8');
+    }
+  } else {
+    await writeFile(postCommitPath, '#!/bin/sh\n\n' + POST_COMMIT_HOOK_CONTENT, 'utf-8');
+  }
+  await chmod(postCommitPath, 0o755);
+  logger.success('Post-commit hook installed at .git/hooks/post-commit (bypass detector)');
 
   // Ensure pending decisions store is not accidentally committed
   await ensureGitignored(rootPath, '.spec-gen/decisions/');
@@ -211,6 +245,25 @@ export async function uninstallPreCommitHook(rootPath: string): Promise<void> {
   } else {
     await writeFile(hookPath, newContent + '\n', 'utf-8');
     logger.success('Spec-gen decisions gate removed from pre-commit hook.');
+  }
+
+  // Remove post-commit bypass detector
+  const postCommitPath = join(rootPath, '.git', 'hooks', 'post-commit');
+  if (await fileExists(postCommitPath)) {
+    const postContent = await readFile(postCommitPath, 'utf-8');
+    if (postContent.includes(POST_COMMIT_HOOK_MARKER)) {
+      const newPostContent = postContent
+        .replace(/\n*# spec-gen-decisions-post-hook[\s\S]*?# end-spec-gen-decisions-post-hook\n*/g, '')
+        .trim();
+      if (!newPostContent || newPostContent === '#!/bin/sh') {
+        const { unlink } = await import('node:fs/promises');
+        await unlink(postCommitPath);
+        logger.success('Post-commit hook removed.');
+      } else {
+        await writeFile(postCommitPath, newPostContent + '\n', 'utf-8');
+        logger.success('Spec-gen bypass detector removed from post-commit hook.');
+      }
+    }
   }
 
   // Remove record_decision instructions from agent context files
