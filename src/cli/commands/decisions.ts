@@ -676,8 +676,10 @@ Examples:
         }
 
         // If source files are staged but nothing was recorded, offer to run the fallback extractor.
+        // Phantom decisions ("recorded but no code evidence") are excluded — stale phantoms from
+        // previous sessions would otherwise silently bypass the gate for all future commits.
         const activeDecisions = store.decisions.filter(
-          (d) => !['rejected', 'synced'].includes(d.status),
+          (d) => !['rejected', 'synced', 'phantom'].includes(d.status),
         );
         if (activeDecisions.length === 0 && await isGitRepository(rootPath)) {
           try {
