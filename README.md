@@ -2,7 +2,7 @@
 
 **Persistent architectural memory for AI coding agents.**
 
-spec-gen turns any codebase into a navigable knowledge graph backed by [OpenSpec](https://github.com/Fission-AI/OpenSpec) living specifications. It extracts and maintains specs, detects spec/code drift, gates architectural decisions, and exposes everything through 45 graph-aware MCP tools — so agents start every session already knowing the codebase instead of re-discovering it.
+spec-gen turns any codebase into a navigable knowledge graph backed by [OpenSpec](https://github.com/Fission-AI/OpenSpec) living specifications. It extracts and maintains specs, detects spec/code drift, gates architectural decisions, and exposes everything through graph-native MCP tools — so agents start every session already knowing the codebase instead of re-discovering it.
 
 ---
 
@@ -13,7 +13,7 @@ AI agents are powerful but amnesiac. On every new task:
 - They re-read the same source files to understand structure
 - They forget architectural decisions made two sessions ago
 - They have no link between specs and code — drift is invisible
-- File-by-file navigation burns **15,000–50,000 tokens** per orientation pass, before a single line of useful code is written
+- File-by-file navigation often burns **15,000–50,000 tokens** per orientation pass, before a single line of useful code is written
 
 spec-gen closes this loop. Run a full analysis once, then keep the graph incrementally updated during development. Wire two files into your agent's context — every subsequent session starts informed.
 
@@ -40,7 +40,7 @@ You can use layer 1 alone to give agents structural context. Add layer 2 for spe
 | Graph-aware MCP context | ❌ file-based reads | Partial | ✓ call graph + clusters |
 | Spec drift detection | ❌ | ❌ | ✓ milliseconds, no API |
 | Architectural decision gates | ❌ | ❌ | ✓ pre-commit hook |
-| Works fully offline (analysis) | ❌ | ❌ | ✓ |
+| Offline structural analysis | ❌ | ❌ | ✓ |
 | Token-efficient orient() | ❌ | ❌ | ✓ ~1–3k vs 15–50k tokens |
 | Living spec generation | ❌ | ❌ | ✓ |
 
@@ -156,7 +156,7 @@ Compares git changes against spec mappings in milliseconds. Detects: Gap (code c
 
 **MCP** (no API key)
 
-45 graph-aware tools exposed over stdio. `orient()` is the main entry point — one call replaces 10+ file reads. `detect_changes` risk-scores changed functions using call graph centrality × change type multiplier. See [docs/mcp-tools.md](docs/mcp-tools.md).
+45 graph-native tools exposed over stdio. `orient()` is the main entry point — one call replaces 10+ file reads. `detect_changes` risk-scores changed functions using call graph centrality × change type multiplier. See [docs/mcp-tools.md](docs/mcp-tools.md).
 
 `orient()` runs in **~430µs p50** against a 15k-node codebase (TypeScript compiler, ~79k edges). Full benchmark results: [scripts/BENCHMARKS.md](scripts/BENCHMARKS.md).
 
