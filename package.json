@@ -25,6 +25,8 @@
     "build": "tsc",
     "start": "node dist/cli/index.js",
     "view": "tsx src/cli/index.ts view",
+    "bench": "vitest bench src/core/services/bench/",
+    "bench": "tsx scripts/bench.ts",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",

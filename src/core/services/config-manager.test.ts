@@ -38,7 +38,7 @@ describe('config-manager', () => {
       expect(config.version).toBe('1.0.0');
       expect(config.projectType).toBe('nodejs');
       expect(config.openspecPath).toBe('./openspec');
-      expect(config.analysis.maxFiles).toBe(500);
+      expect(config.analysis.maxFiles).toBe(100_000);
       expect(config.analysis.includePatterns).toEqual([]);
       expect(config.analysis.excludePatterns).toEqual([]);
       expect(config.generation.model).toBe('claude-sonnet-4-20250514');

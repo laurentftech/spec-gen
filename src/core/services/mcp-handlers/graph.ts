@@ -268,16 +268,10 @@ export async function handleGetSubgraph(
   const ctx = await readCachedContext(absDir);
 
   if (!ctx) return { error: 'No analysis found. Run analyze_codebase first.' };
-  if (!ctx.callGraph && !ctx.edgeStore) return { error: 'Call graph not available in cached analysis. Re-run analyze_codebase.' };
+  if (!ctx.edgeStore) return { error: 'Call graph DB not available. Re-run analyze_codebase.' };
 
-  const cg = ctx.callGraph as SerializedCallGraph | undefined;
   const lower = functionName.toLowerCase();
-
-  // DB path: indexed LIKE query (O(log N), scales to 100k+ nodes).
-  // JSON fallback: linear scan of cg.nodes.
-  let seeds = ctx.edgeStore
-    ? ctx.edgeStore.searchNodes(lower)
-    : (cg?.nodes.filter(n => n.name.toLowerCase().includes(lower)) ?? []);
+  let seeds = ctx.edgeStore.searchNodes(lower);
 
   // Semantic search fallback when no name match
   if (seeds.length === 0) {
@@ -295,10 +289,7 @@ export async function handleGetSubgraph(
         if (embedSvc) {
           const results = await VectorIndex.search(outputDir, functionName, embedSvc, { limit: 1 });
           if (results.length > 0) {
-            const top = results[0].record;
-            const matched = ctx.edgeStore
-              ? ctx.edgeStore.getNode(top.id)
-              : cg?.nodes.find(n => n.id === top.id);
+            const matched = ctx.edgeStore.getNode(results[0].record.id);
             if (matched) seeds = [matched];
           }
         }
@@ -309,38 +300,15 @@ export async function handleGetSubgraph(
   if (seeds.length === 0) return { error: `No function matching "${functionName}" found in call graph.` };
 
   const seedIds = seeds.map(s => s.id);
-  let visitedIds: Set<string>;
+  const fwdVisited = (direction === 'downstream' || direction === 'both')
+    ? bfsFromDB(seedIds, 'forward',  maxDepth, ctx.edgeStore)
+    : new Map<string, number>();
+  const bwdVisited = (direction === 'upstream' || direction === 'both')
+    ? bfsFromDB(seedIds, 'backward', maxDepth, ctx.edgeStore)
+    : new Map<string, number>();
+  const visitedIds = new Set([...fwdVisited.keys(), ...bwdVisited.keys()]);
 
-  if (ctx.edgeStore) {
-    // DB fast path: lazy BFS — only loads edges for nodes actually visited
-    const fwdVisited = (direction === 'downstream' || direction === 'both')
-      ? bfsFromDB(seedIds, 'forward',  maxDepth, ctx.edgeStore)
-      : new Map<string, number>();
-    const bwdVisited = (direction === 'upstream' || direction === 'both')
-      ? bfsFromDB(seedIds, 'backward', maxDepth, ctx.edgeStore)
-      : new Map<string, number>();
-    visitedIds = new Set([...fwdVisited.keys(), ...bwdVisited.keys()]);
-  } else {
-    // JSON fallback: full adjacency build (includes inheritance edge expansion)
-    const { forward: fwdSets, backward: bwdSets } = buildAdjacency(cg!);
-    const forward  = new Map([...fwdSets].map(([k, v]) => [k, [...v]]));
-    const backward = new Map([...bwdSets].map(([k, v]) => [k, [...v]]));
-    visitedIds = new Set<string>(seedIds);
-    const queue: Array<{ id: string; depth: number }> = seeds.map(n => ({ id: n.id, depth: 0 }));
-    while (queue.length > 0) {
-      const { id, depth } = queue.shift()!;
-      if (depth >= maxDepth) continue;
-      const neighbours: string[] = [];
-      if (direction === 'downstream' || direction === 'both') neighbours.push(...(forward.get(id) ?? []));
-      if (direction === 'upstream'   || direction === 'both') neighbours.push(...(backward.get(id) ?? []));
-      for (const nId of neighbours) {
-        if (!visitedIds.has(nId)) { visitedIds.add(nId); queue.push({ id: nId, depth: depth + 1 }); }
-      }
-    }
-  }
-
-  const nodeMap = cg ? new Map(cg.nodes.map(n => [n.id, n])) : new Map<string, FunctionNode>();
-  const resolveNode = (id: string) => ctx.edgeStore ? ctx.edgeStore.getNode(id) : nodeMap.get(id);
+  const resolveNode = (id: string) => ctx.edgeStore!.getNode(id);
 
   const subNodes = Array.from(visitedIds)
     .map(id => resolveNode(id)!)
@@ -357,35 +325,22 @@ export async function handleGetSubgraph(
       isSeed: seeds.some(s => s.id === n.id),
     }));
 
-  const subEdges = ctx.edgeStore
-    ? Array.from(visitedIds).flatMap(id =>
-        ctx.edgeStore!.getCallees(id)
-          .filter(e => e.calleeId && visitedIds.has(e.calleeId))
-          .map(e => {
-            const callerN = resolveNode(e.callerId);
-            const calleeN = resolveNode(e.calleeId);
-            return {
-              caller: callerN?.name ?? e.callerId,
-              callee: calleeN?.isExternal ? `[external] ${calleeN.name}` : (calleeN?.name ?? e.calleeId),
-              callerFile: callerN?.filePath,
-              calleeFile: calleeN?.filePath,
-              kind: e.kind ?? 'calls',
-              callType: e.callType,
-            };
-          })
-      )
-    : (cg?.edges ?? [])
-        .filter(e => e.calleeId && visitedIds.has(e.callerId) && visitedIds.has(e.calleeId))
-        .map(e => ({
-          caller: nodeMap.get(e.callerId)?.name ?? e.callerId,
-          callee: nodeMap.get(e.calleeId)?.isExternal
-            ? `[external] ${nodeMap.get(e.calleeId)?.name ?? e.calleeId}`
-            : (nodeMap.get(e.calleeId)?.name ?? e.calleeId),
-          callerFile: nodeMap.get(e.callerId)?.filePath,
-          calleeFile: nodeMap.get(e.calleeId)?.filePath,
+  const subEdges = Array.from(visitedIds).flatMap(id =>
+    ctx.edgeStore!.getCallees(id)
+      .filter(e => e.calleeId && visitedIds.has(e.calleeId))
+      .map(e => {
+        const callerN = resolveNode(e.callerId);
+        const calleeN = resolveNode(e.calleeId);
+        return {
+          caller: callerN?.name ?? e.callerId,
+          callee: calleeN?.isExternal ? `[external] ${calleeN.name}` : (calleeN?.name ?? e.calleeId),
+          callerFile: callerN?.filePath,
+          calleeFile: calleeN?.filePath,
           kind: e.kind ?? 'calls',
           callType: e.callType,
-        }));
+        };
+      })
+  );
 
   if (format === 'mermaid') {
     const idOf = new Map<string, string>();
@@ -431,16 +386,11 @@ export async function handleAnalyzeImpact(
   const absDir = await validateDirectory(directory);
   const ctx = await readCachedContext(absDir);
 
-  if (!ctx)                               return { error: 'No analysis found. Run analyze_codebase first.' };
-  if (!ctx.callGraph && !ctx.edgeStore)  return { error: 'Call graph not available. Re-run analyze_codebase.' };
+  if (!ctx)            return { error: 'No analysis found. Run analyze_codebase first.' };
+  if (!ctx.edgeStore)  return { error: 'Call graph DB not available. Re-run analyze_codebase.' };
 
-  const cg = ctx.callGraph as SerializedCallGraph | undefined;
   const lower = symbol.toLowerCase();
-
-  // DB path: indexed LIKE query (O(log N)); JSON fallback: linear scan.
-  let seeds = ctx.edgeStore
-    ? ctx.edgeStore.searchNodes(lower)
-    : (cg?.nodes.filter(n => n.name.toLowerCase().includes(lower)) ?? []);
+  let seeds = ctx.edgeStore.searchNodes(lower);
 
   // Semantic search fallback when no name match
   if (seeds.length === 0) {
@@ -458,10 +408,7 @@ export async function handleAnalyzeImpact(
         if (embedSvc) {
           const results = await VectorIndex.search(outputDir, symbol, embedSvc, { limit: 1 });
           if (results.length > 0) {
-            const top = results[0].record;
-            const matched = ctx.edgeStore
-              ? ctx.edgeStore.getNode(top.id)
-              : cg?.nodes.find(n => n.id === top.id);
+            const matched = ctx.edgeStore.getNode(results[0].record.id);
             if (matched) seeds = [matched];
           }
         }
@@ -471,28 +418,13 @@ export async function handleAnalyzeImpact(
 
   if (seeds.length === 0) return { error: `No function matching "${symbol}" found in call graph.` };
 
-  const seedIds = seeds.map(n => n.id);
-  let upstreamMap: Map<string, number>;
-  let downstreamMap: Map<string, number>;
-  let nodeMap: Map<string, FunctionNode>;
-  const hubIds = ctx.edgeStore
-    ? new Set(ctx.edgeStore.getHubs(500).map(n => n.id))
-    : new Set((cg?.hubFunctions ?? []).map(n => n.id));
-
-  if (ctx.edgeStore) {
-    // DB fast path: lazy BFS per direction
-    upstreamMap   = bfsFromDB(seedIds, 'backward', depth, ctx.edgeStore);
-    downstreamMap = bfsFromDB(seedIds, 'forward',  depth, ctx.edgeStore);
-    nodeMap = new Map<string, FunctionNode>();
-  } else {
-    const adj = buildAdjacency(cg!);
-    nodeMap       = adj.nodeMap;
-    upstreamMap   = bfs(seedIds, adj.backward, depth);
-    downstreamMap = bfs(seedIds, adj.forward,  depth);
-  }
+  const seedIds     = seeds.map(n => n.id);
+  const hubIds      = new Set(ctx.edgeStore.getHubs(500).map(n => n.id));
+  const upstreamMap   = bfsFromDB(seedIds, 'backward', depth, ctx.edgeStore);
+  const downstreamMap = bfsFromDB(seedIds, 'forward',  depth, ctx.edgeStore);
 
   const resolveNode = (id: string): FunctionNode | undefined =>
-    ctx.edgeStore ? (ctx.edgeStore.getNode(id) ?? undefined) : nodeMap.get(id);
+    ctx.edgeStore!.getNode(id) ?? undefined;
 
   const upstreamNodes = [...upstreamMap.entries()]
     .filter(([id]) => !seedIds.includes(id))

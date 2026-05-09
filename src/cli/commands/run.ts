@@ -225,8 +225,8 @@ export const runCommand = new Command('run')
   )
   .option(
     '--max-files <n>',
-    'Maximum files to analyze',
-    '500'
+    'Maximum files to analyze (default: 100000)',
+    '100000'
   )
   .option(
     '--adr',

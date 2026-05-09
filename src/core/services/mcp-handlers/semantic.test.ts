@@ -450,6 +450,16 @@ describe('handleSearchCode — success paths', () => {
         edges: [{ callerId: 'src/b.ts::doB', calleeId: 'src/a.ts::doA' }],
       },
     });
+    {
+      const analysisDir = join(tmpDir, '.spec-gen', 'analysis');
+      const store = EdgeStore.open(EdgeStore.dbPath(analysisDir));
+      store.insertNodes([
+        { id: 'src/a.ts::doA', name: 'doA', filePath: 'src/a.ts', language: 'TypeScript', fanIn: 1, fanOut: 0, isAsync: false, startIndex: 0, endIndex: 100 },
+        { id: 'src/b.ts::doB', name: 'doB', filePath: 'src/b.ts', language: 'TypeScript', fanIn: 0, fanOut: 1, isAsync: false, startIndex: 0, endIndex: 100 },
+      ]);
+      store.insertEdges([{ callerId: 'src/b.ts::doB', calleeId: 'src/a.ts::doA', calleeName: 'doA', confidence: 'name_only' as const }]);
+      store.close();
+    }
 
     const { handleSearchCode } = await import('./semantic.js');
     const result = await handleSearchCode(tmpDir, 'do A') as Record<string, unknown>;
@@ -579,6 +589,16 @@ describe('handleSuggestInsertionPoints — success paths', () => {
         edges: [{ callerId: 'caller::fn', calleeId: 'seed::fn' }],
       },
     });
+    {
+      const analysisDir = join(tmpDir, '.spec-gen', 'analysis');
+      const store = EdgeStore.open(EdgeStore.dbPath(analysisDir));
+      store.insertNodes([
+        { id: 'seed::fn', name: 'seedFn', filePath: 'src/seed.ts', language: 'TypeScript', fanIn: 1, fanOut: 0, isAsync: false, startIndex: 0, endIndex: 100 },
+        { id: 'caller::fn', name: 'callerFn', filePath: 'src/caller.ts', language: 'TypeScript', fanIn: 0, fanOut: 1, isAsync: false, startIndex: 0, endIndex: 100 },
+      ]);
+      store.insertEdges([{ callerId: 'caller::fn', calleeId: 'seed::fn', calleeName: 'seedFn', confidence: 'name_only' as const }]);
+      store.close();
+    }
 
     const { handleSuggestInsertionPoints } = await import('./semantic.js');
     const result = await handleSuggestInsertionPoints(tmpDir, 'add feature', 10) as Record<string, unknown>;
