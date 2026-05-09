@@ -136,7 +136,7 @@ If **all candidates are below 40%**:
 
 ## Step 4 — Get minimal context + analyze impact
 
-First, get condensed view (callers, callees, body, test coverage) in one call:
+Get the condensed view (callers, callees, body, test coverage) in one call:
 
 ```xml
 <use_mcp_tool>
@@ -145,6 +145,11 @@ First, get condensed view (callers, callees, body, test coverage) in one call:
   <arguments>{"directory": "$DIRECTORY", "functionName": "$FUNCTION_NAME"}</arguments>
 </use_mcp_tool>
 ```
+
+**What to read before deciding whether to proceed:**
+- `function.riskLevel` — `"high"` = up to 24 callers/callees shown; read all, they are all in scope.
+- `callers[*].callType` — all `"awaited"` = async interface frozen; extracting or splitting requires updating every call site.
+- `testedBy[*].confidence` — `"imported"` only = `vi.mock()` can neutralize; write a characterisation test before refactoring.
 
 Then get full impact analysis:
 
@@ -157,6 +162,20 @@ Then get full impact analysis:
 ```
 
 Note: risk score (0–100), recommended strategy (`extract` / `split` / `facade` / `delegate`), top 5 upstream callers and downstream callees.
+
+**If `riskLevel` is `"high"` or impact risk score ≥ 60**, check cluster scope:
+
+```xml
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>get_cluster</tool_name>
+  <arguments>{"directory": "$DIRECTORY", "functionName": "$FUNCTION_NAME"}</arguments>
+</use_mcp_tool>
+```
+
+- `clusterDensity < 0.05` → extract target independently
+- `clusterDensity 0.05–0.15` → include `internalCallGraph` callers in risk section
+- `clusterDensity > 0.15` → refactor whole cluster together or not at all
 
 ---
 

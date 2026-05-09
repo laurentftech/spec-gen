@@ -109,6 +109,9 @@ export const ARTIFACT_UI_INVENTORY = 'ui-inventory.json';
 /** Filename for the environment variable inventory artifact */
 export const ARTIFACT_ENV_INVENTORY = 'env-inventory.json';
 
+/** Filename for the external package inventory artifact */
+export const ARTIFACT_EXTERNAL_PACKAGES = 'external-packages.json';
+
 // ============================================================================
 // LLM / PROVIDER LIMITS
 // ============================================================================
@@ -500,6 +503,15 @@ export const SHALLOW_FUNCTION_DEPTH_MAX = 2;
 
 /** Score bonus for shallow functions with issues */
 export const SHALLOW_FUNCTION_SCORE_BONUS = 0.5;
+
+/** McCabe cyclomatic complexity threshold above which a function is flagged (≥10 = complex) */
+export const HIGH_COMPLEXITY_THRESHOLD = 10;
+
+/** Base priority score boost for high-complexity functions (scales with excess above threshold) */
+export const HIGH_COMPLEXITY_SCORE_BOOST = 1.5;
+
+/** Cap on the distance-weighted transitive caller score in detect_changes risk model */
+export const TRANSITIVE_SCORE_MAX = 10;
 
 // ============================================================================
 // DECISIONS

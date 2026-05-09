@@ -71,6 +71,7 @@ import {
   handleGetSchemaInventory,
   handleGetUIComponents,
   handleGetEnvVars,
+  handleGetExternalPackages,
   handleAuditSpecCoverage,
   handleGenerateTests,
   handleGetTestCoverage,
@@ -109,6 +110,7 @@ export {
   handleGetSchemaInventory,
   handleGetUIComponents,
   handleGetEnvVars,
+  handleGetExternalPackages,
   handleAuditSpecCoverage,
   handleGenerateTests,
   handleGetTestCoverage,
@@ -966,6 +968,22 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: 'get_external_packages',
+    description:
+      'Return all direct external dependencies declared in package manifests: ' +
+      'package.json (npm), pyproject.toml / requirements.txt (pypi), Cargo.toml (cargo), go.mod (go). ' +
+      'Each entry includes name, version, ecosystem, and isDev flag. ' +
+      'Reads the pre-computed external-packages.json artifact when available, ' +
+      'otherwise scans manifests live. Run analyze_codebase first for the fastest results.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+      },
+      required: ['directory'],
+    },
+  },
+  {
     name: 'audit_spec_coverage',
     description:
       'Parity audit: report spec coverage gaps without any LLM call. ' +
@@ -1380,6 +1398,9 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
       } else if (name === 'get_env_vars') {
         const { directory } = args as { directory: string };
         result = await handleGetEnvVars(directory);
+      } else if (name === 'get_external_packages') {
+        const { directory } = args as { directory: string };
+        result = await handleGetExternalPackages(directory);
       } else if (name === 'audit_spec_coverage') {
         const { directory, maxUncovered = 50, hubThreshold = 5 } =
           args as { directory: string; maxUncovered?: number; hubThreshold?: number };

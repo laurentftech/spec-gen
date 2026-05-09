@@ -85,6 +85,8 @@ export interface FunctionNode {
   communityId?: string;
   /** Human-readable community label (name of the hub function in the community) */
   communityLabel?: string;
+  /** McCabe cyclomatic complexity computed from AST body slice (1 = linear, ≥10 = complex) */
+  cyclomaticComplexity?: number;
 }
 
 /** Broad category of an external (unresolved) call */
@@ -145,7 +147,7 @@ export interface InheritanceEdge {
   parentId: string;
   /** ClassNode id of the child / derived / implementor */
   childId: string;
-  kind: 'extends' | 'implements' | 'embeds';
+  kind: 'extends' | 'implements' | 'embeds' | 'overrides';
 }
 
 export interface CallGraphResult {
@@ -1726,6 +1728,28 @@ function buildClassNodes(
     }
   }
 
+  // OVERRIDES edges: child defines method with same name as parent — language-agnostic
+  const methodNameSet = new Map<string, Set<string>>();
+  for (const [id, cls] of classMap) {
+    const names = new Set<string>();
+    for (const memberId of cls.methodIds) {
+      const fn = allNodes.get(memberId);
+      if (fn && !fn.isExternal) names.add(fn.name);
+    }
+    methodNameSet.set(id, names);
+  }
+  const extendsEdges = inheritanceEdges.filter(e => e.kind === 'extends');
+  for (const edge of extendsEdges) {
+    const childNames = methodNameSet.get(edge.childId);
+    const parentNames = methodNameSet.get(edge.parentId);
+    if (!childNames || !parentNames) continue;
+    if (![...childNames].some(n => parentNames.has(n))) continue;
+    const overrideId = `${edge.parentId}=>${edge.childId}:overrides`;
+    if (seenEdges.has(overrideId)) continue;
+    seenEdges.add(overrideId);
+    inheritanceEdges.push({ id: overrideId, parentId: edge.parentId, childId: edge.childId, kind: 'overrides' });
+  }
+
   return { classes: Array.from(classMap.values()), inheritanceEdges };
 }
 
@@ -1810,6 +1834,23 @@ function getOrCreateExternalNode(name: string, nodes: Map<string, FunctionNode>)
     });
   }
   return nodes.get(id)!;
+}
+
+// ============================================================================
+// CYCLOMATIC COMPLEXITY
+// ============================================================================
+
+const CC_PATTERN_PYTHON = /\bif\s|\belif\s|\bwhile\s|\bfor\s|\bexcept\b|\band\s|\bor\s/g;
+const CC_PATTERN_DEFAULT = /\bif\s*\(|\bwhile\s*\(|\bfor\s*[(]|\bdo\s*[{]|\bcase\s+|\bcatch\s*\(|&&|\|\|/g;
+
+/**
+ * McCabe cyclomatic complexity via regex over function body.
+ * CC = 1 + decision points (if, while, for, case, catch, &&, ||).
+ * Approximate (regex, not AST), suitable for triage/ranking.
+ */
+export function computeCyclomaticComplexity(body: string, language: string): number {
+  const source = language === 'Python' ? CC_PATTERN_PYTHON.source : CC_PATTERN_DEFAULT.source;
+  return 1 + (body.match(new RegExp(source, 'g'))?.length ?? 0);
 }
 
 // ============================================================================
@@ -2217,7 +2258,18 @@ export class CallGraphBuilder {
       }
     }
 
-    // Pass 6: Build class hierarchy (inheritance + grouping)
+    // Pass 6: Cyclomatic complexity — regex over body slice for each internal node
+    for (const node of allNodes.values()) {
+      if (node.isExternal || node.startIndex === undefined || node.endIndex === undefined) continue;
+      const content = fileContents.get(node.filePath);
+      if (!content) continue;
+      node.cyclomaticComplexity = computeCyclomaticComplexity(
+        content.slice(node.startIndex, node.endIndex),
+        node.language,
+      );
+    }
+
+    // Pass 7: Build class hierarchy (inheritance + grouping)
     const relationships = await extractClassRelationships(files);
     const { classes, inheritanceEdges } = buildClassNodes(allNodes, relationships);
 

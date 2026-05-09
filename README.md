@@ -122,7 +122,8 @@ Scans your codebase using pure static analysis:
 - Builds a full call graph with **`tested_by` edges** derived from import analysis: each test file's imports map to the production functions it covers, making coverage queries accurate even for mock-heavy suites where call edges don't reach the unit under test
 - Runs **label-propagation community detection** on the call graph to group tightly coupled functions into clusters regardless of directory — powering `get_cluster` and the community colours in the graph viewer
 - Clusters related files into structural business domains automatically
-- Extracts DB schema tables (Prisma, TypeORM, Drizzle, SQLAlchemy), HTTP routes (Express, NestJS, Next.js, FastAPI, Flask), UI components (React, Vue, Svelte, Angular), middleware chains, and environment variables — saved as structured JSON artifacts in `.spec-gen/analysis/`
+- Extracts DB schema tables (Prisma, TypeORM, Drizzle, SQLAlchemy), HTTP routes (Express, NestJS, Next.js, FastAPI, Flask), UI components (React, Vue, Svelte, Angular), middleware chains, environment variables, and direct package dependencies (npm, pypi, cargo, go) — saved as structured JSON artifacts in `.spec-gen/analysis/`
+- Computes **McCabe cyclomatic complexity** for every function (CC = 1 + branching keywords); functions with CC ≥ 10 are flagged as `high_complexity` in `get_refactor_report`
 - Generates AI tool config files (`CLAUDE.md`, `.cursorrules`, `.clinerules/`, `.vibe/skills/`, etc.) with `--ai-configs`
 - Produces structured context that makes LLM generation more accurate
 
@@ -1226,8 +1227,9 @@ Most tools run on **pure static analysis** — no LLM quota consumed. Exceptions
 | `search_code` | Natural-language semantic search over indexed functions. Returns the closest matches by meaning with similarity score, call-graph neighbourhood enrichment, and spec-linked peer functions. Falls back to BM25 keyword search when no embedding server is configured. | Yes (+ embedding) |
 | `suggest_insertion_points` | Semantic search over the vector index to find the best existing functions to extend or hook into when implementing a new feature. Returns ranked candidates with role and strategy. Falls back to BM25 keyword search when no embedding server is configured. | Yes (+ embedding) |
 | `get_subgraph` | Depth-limited subgraph centred on a function. Direction: `downstream` (what it calls), `upstream` (who calls it), or `both`. Output as JSON or Mermaid diagram. External leaf nodes (e.g. `fetch`, `psycopg2.execute`) appear as `[external]` with an `externalKind` field (`http`, `database`, `filesystem`, `stdlib`, `unknown`). Stdlib noise (`Array.isArray`, `os.path.join`, `std::string`) is filtered out automatically; only semantically meaningful externals are shown. | Yes |
-| `get_minimal_context` | Return the minimum context needed to safely modify a function: its body, direct callers (signatures only), direct callees (signatures only), and which test files cover it via `tested_by` edges. Use this instead of `orient` when you already know exactly which function to modify — typically 200–600 tokens vs `orient`'s 2 000+. | Yes |
-| `get_cluster` | Return all functions in the same community (label-propagation cluster) as the given function. Tightly coupled functions land in the same cluster regardless of directory. Use this to understand the blast-radius neighbourhood without manual graph traversal. | Yes |
+| `get_minimal_context` | Return the minimum context needed to safely modify a function: body, direct callers and callees with `callType` (`direct|method|awaited|constructor|callback`) and `isExternal`, test files via `tested_by` edges with `confidence` (`called|imported`), and a `riskLevel` (`high|medium|low`). Use this instead of `orient` when you already know exactly which function to modify — typically 200–600 tokens vs `orient`'s 2 000+. | Yes |
+| `get_cluster` | Return all functions in the same community (label-propagation cluster) as the given function. Includes `clusterDensity = uniqueInternalEdges / (m×(m−1))` — decision guide: `< 0.05` change is isolated, `0.05–0.15` check `internalCallGraph`, `> 0.15` coordinate whole cluster. | Yes |
+| `search_unified` | Search both code functions and spec requirements in one call, then cross-boost results linked through `mapping.json` — a function that implements a matching requirement ranks higher than one found by code search alone. Returns results typed as `"code"`, `"spec"`, or `"both"` with a `mappingBoost` score. Use when you want to know where something is implemented AND what the spec says about it simultaneously. | Yes (+ embedding + generate) |
 | `trace_execution_path` | Find all call-graph paths between two functions (DFS, configurable depth/max-paths). Use this when debugging: "how does request X reach function Y?" Returns shortest path, all paths sorted by hops, and a step-by-step chain per path. | Yes |
 | `get_function_body` | Return the exact source code of a named function in a file. | No |
 | `get_function_skeleton` | Noise-stripped view of a source file: logs, inline comments, and non-JSDoc block comments removed. Signatures, control flow, return/throw, and call expressions preserved. Returns reduction %. | No |
@@ -1243,18 +1245,19 @@ Most tools run on **pure static analysis** — no LLM quota consumed. Exceptions
 | `get_ui_components` | Detected UI components with framework, props, and source file. Supports React, Vue, Svelte, and Angular. | Yes |
 | `get_env_vars` | Env vars referenced in source code with `required` (no fallback) and `hasDefault` flags. Supports JS/TS, Python, Go, and Ruby. | Yes |
 | `get_middleware_inventory` | Detected middleware with type (auth/cors/rate-limit/validation/logging/error-handler) and framework. | Yes |
+| `get_external_packages` | Direct dependencies parsed from package manifests (npm, pypi, cargo, go). Returns name, version, ecosystem, and `isDev` flag per package. Uses cached artifact when available; falls back to live extraction. | No |
 
 **Change analysis**
 
 | Tool | Description | Requires prior analysis |
 |------|-------------|:---:|
-| `detect_changes` | Detect recently changed functions and rank them by blast radius. Runs `git diff` against a base ref, maps changed lines to call-graph nodes, scores each function by `fanIn + transitive callers` (highest = riskiest to break), and reports test coverage per changed function via `tested_by` edges. First tool to run on any code-review or pre-merge check. | Yes |
+| `detect_changes` | Detect recently changed functions and rank them by risk. Runs `git diff` against a base ref, maps changed lines to call-graph nodes, and scores each function with a multiplicative model: `riskScore = likelihood × impact`. Likelihood combines a semantic change-type modifier (`signature` ×1.5 / `logic` ×1.0 / `config` ×0.4) with a coverage penalty. Impact combines log fan-in, distance-weighted transitive callers (by `callType`), and boundary score (HTTP/DB callees). Each result includes `changeType`, `reason` (human-readable justification), and `testedBy` with confidence. First tool to run on any code-review or pre-merge check. | Yes |
 
 **Code quality**
 
 | Tool | Description | Requires prior analysis |
 |------|-------------|:---:|
-| `get_refactor_report` | Prioritized list of functions with structural issues: unreachable code, hub overload (high fan-in), god functions (high fan-out), SRP violations, cyclic dependencies. | Yes |
+| `get_refactor_report` | Prioritized list of functions with structural issues: unreachable code, hub overload (high fan-in), god functions (high fan-out), SRP violations, cyclic dependencies, and high cyclomatic complexity (McCabe CC ≥ 10). `cyclomaticComplexity` is returned per function; `stats.highComplexity` gives the project-wide count. | Yes |
 | `get_critical_hubs` | Highest-impact hub functions ranked by criticality. Each hub gets a stability score (0-100) and a recommended approach: extract, split, facade, or delegate. | Yes |
 | `get_god_functions` | Detect god functions (high fan-out, likely orchestrators) in the project or in a specific file, and return their call-graph neighborhood. Use this to identify which functions need to be refactored and understand what logical blocks to extract. | Yes |
 | `analyze_impact` | Deep impact analysis for a specific function: fan-in/fan-out, upstream call chain, downstream critical path, risk score (0-100), blast radius, and recommended strategy. | Yes |
@@ -1272,6 +1275,13 @@ Most tools run on **pure static analysis** — no LLM quota consumed. Exceptions
 | `search_specs` | Semantic search over OpenSpec specifications to find requirements, design notes, and architecture decisions by meaning. Returns linked source files for graph highlighting. Use this when asked "which spec covers X?" or "where should we implement Z?". Requires a spec index built with `spec-gen analyze` or `--reindex-specs`. | Yes (generate) |
 | `list_spec_domains` | List all OpenSpec domains available in this project. Use this to discover what domains exist before doing a targeted `search_specs` call. | Yes (generate) |
 | `audit_spec_coverage` | Parity audit: uncovered functions (in call graph, no spec), hub gaps (high fan-in + no spec), orphan requirements (spec with no implementation found), and stale domains (source changed after spec). Run before starting a feature to understand coverage health. No LLM required. | Yes (analyze) |
+
+**Tests**
+
+| Tool | Description | Requires prior analysis |
+|------|-------------|:---:|
+| `generate_tests` | Generate spec-driven test skeletons from OpenSpec `#### Scenario:` blocks. A THEN-clause pattern engine emits real assertions for common patterns (HTTP status codes, property presence, error messages) without LLM. Pass `useLlm:true` to enrich unmatched clauses from mapped function source. Supports Vitest, Playwright, pytest, Google Test, Catch2 (auto-detected). Defaults to `dryRun:true`. | Yes (generate) |
+| `get_test_coverage` | Report which OpenSpec scenarios have test coverage. Scans test files for `// spec-gen:` metadata tags emitted by `generate_tests`. Returns coverage % by domain, uncovered scenarios, and drift flags. Pass `minCoverage` to enforce a CI gate. | Yes (generate) |
 
 **Decisions**
 
@@ -1407,6 +1417,37 @@ functionName  string   Function name to look up the community for
 ```
 directory  string   Absolute path to the project directory
 base       string   Git ref to diff against (default: HEAD). Use "HEAD~1" for last commit, "main" for branch diff.
+```
+
+**`get_external_packages`**
+```
+directory  string   Absolute path to the project directory
+```
+
+**`search_unified`**
+```
+directory  string   Absolute path to the project directory
+query      string   Natural language query, e.g. "validate user authentication"
+limit      number   Maximum number of results (default: 10)
+language   string   Filter code results by language (e.g. "TypeScript")
+domain     string   Filter spec results by domain name
+section    string   Filter spec results by section type: "requirements" | "purpose" | etc.
+```
+
+**`generate_tests`**
+```
+directory   string    Absolute path to the project directory
+domains     string[]  Only generate tests for these spec domains (omit for all)
+framework   string    "vitest" | "playwright" | "pytest" | "gtest" | "catch2" | "auto" (default: auto)
+useLlm      boolean   Use LLM to fill assertions the pattern engine cannot match
+dryRun      boolean   Preview without writing files (default: true)
+```
+
+**`get_test_coverage`**
+```
+directory    string    Absolute path to the project directory
+domains      string[]  Only check these spec domains (omit for all)
+minCoverage  number    Report belowThreshold:true if coverage drops below this percentage
 ```
 
 **`get_function_skeleton`**
@@ -1750,6 +1791,7 @@ Static analysis output is stored in `.spec-gen/analysis/`:
 | `spec-snapshot.json` | Compact coverage summary: git state, per-domain coverage %, uncovered hub functions (auto-updated after `analyze` and `generate`) |
 | `audit-report.json` | Latest parity audit report (produced by `spec-gen audit`) |
 | `fingerprint.json` | Content-hash fingerprint (SHA-256 of all source file mtimes+sizes) used for cache invalidation |
+| `external-packages.json` | Direct dependencies parsed from package manifests (produced by `analyze_codebase`) |
 | `vector-index/` | LanceDB semantic index (produced by `--embed`) |
 
 `spec-gen analyze` also writes **`ARCHITECTURE.md`** to your project root -- a Markdown overview of module clusters, entry points, and critical hubs, refreshed on every run.

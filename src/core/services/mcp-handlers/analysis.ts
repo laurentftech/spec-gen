@@ -27,6 +27,8 @@ import {
   ARTIFACT_SCHEMA_INVENTORY,
   ARTIFACT_UI_INVENTORY,
   ARTIFACT_ENV_INVENTORY,
+  ARTIFACT_EXTERNAL_PACKAGES,
+  TRANSITIVE_SCORE_MAX,
 } from '../../../constants.js';
 import { runAnalysis } from '../../../cli/commands/analyze.js';
 import { analyzeForRefactoring } from '../../analyzer/refactor-analyzer.js';
@@ -748,6 +750,32 @@ export async function handleGetEnvVars(
   return { cached: false, total: envVars.length, envVars };
 }
 
+// ============================================================================
+// EXTERNAL PACKAGES HANDLER
+// ============================================================================
+
+/**
+ * Return direct external dependencies from package manifests
+ * (package.json, pyproject.toml, requirements.txt, Cargo.toml, go.mod).
+ * Falls back to live extraction if cached artifact is absent.
+ */
+export async function handleGetExternalPackages(
+  directory: string,
+): Promise<Record<string, unknown>> {
+  const absDir = await validateDirectory(directory);
+  const artifactPath = join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_EXTERNAL_PACKAGES);
+
+  try {
+    const raw = await readFile(artifactPath, 'utf-8');
+    const result = JSON.parse(raw) as Record<string, unknown>;
+    return { cached: true, ...result };
+  } catch { /* not cached */ }
+
+  const { extractExternalPackages } = await import('../../analyzer/external-packages.js');
+  const result = await extractExternalPackages(absDir);
+  return { cached: false, ...result };
+}
+
 /**
  * Parity audit: report spec coverage gaps without any LLM call.
  * Returns uncovered functions, hub gaps, orphan requirements, and stale domains.
@@ -896,36 +924,72 @@ export async function handleGetMinimalContext(
   if (candidates.length === 0) return { error: `Function "${functionName}" not found. Run analyze_codebase first.` };
   const target = candidates[0];
 
+  // Risk-aware depth: high fan-in/out functions get more caller/callee context
+  const riskLevel: 'high' | 'medium' | 'low' =
+    target.fanIn >= 30 || target.fanOut >= 15 ? 'high' :
+    target.fanIn >= 15 || target.fanOut >= 8  ? 'medium' : 'low';
+  const callerLimit = riskLevel === 'high' ? 24 : riskLevel === 'medium' ? 18 : 12;
+  const calleeLimit = riskLevel === 'high' ? 24 : riskLevel === 'medium' ? 18 : 12;
+
   // Direct callers and callees from calls edges
   const callsEdges = cg.edges.filter(e => !e.kind || e.kind === 'calls');
-  const callerIds = callsEdges.filter(e => e.calleeId === target.id).map(e => e.callerId);
-  const calleeIds = callsEdges.filter(e => e.callerId === target.id).map(e => e.calleeId);
 
   const sig = (n: (typeof cg.nodes)[0]) =>
     n.signature ?? n.name + (n.isExternal ? ' [external]' : '');
 
+  // Build per-callee edge list to get callType
+  const edgesForCallee = new Map<string, Array<{ callerId: string; callType?: string }>>();
+  const edgesForCaller = new Map<string, Array<{ calleeId: string; callType?: string }>>();
+  for (const e of callsEdges) {
+    if (!edgesForCallee.has(e.calleeId)) edgesForCallee.set(e.calleeId, []);
+    edgesForCallee.get(e.calleeId)!.push({ callerId: e.callerId, callType: e.callType });
+    if (!edgesForCaller.has(e.callerId)) edgesForCaller.set(e.callerId, []);
+    edgesForCaller.get(e.callerId)!.push({ calleeId: e.calleeId, callType: e.callType });
+  }
+
+  const callerEdges = edgesForCallee.get(target.id) ?? [];
+  const calleeEdgeList = edgesForCaller.get(target.id) ?? [];
+
+  const callerIds = callerEdges.map(e => e.callerId);
+  const calleeIds = calleeEdgeList.map(e => e.calleeId);
+
   const callers = [...new Set(callerIds)]
-    .map(id => nodeMap.get(id))
-    .filter((n): n is NonNullable<typeof n> => !!n && !n.isExternal)
-    .slice(0, 12)
-    .map(n => ({ name: n.name, file: relative(absDir, n.filePath), sig: sig(n) }));
+    .map(id => {
+      const n = nodeMap.get(id);
+      if (!n || n.isExternal) return null;
+      const edge = callerEdges.find(e => e.callerId === id);
+      return { name: n.name, file: relative(absDir, n.filePath), sig: sig(n), callType: edge?.callType ?? 'direct', isExternal: false };
+    })
+    .filter((n): n is NonNullable<typeof n> => !!n)
+    .slice(0, callerLimit);
 
   const callees = [...new Set(calleeIds)]
-    .map(id => nodeMap.get(id))
+    .map(id => {
+      const n = nodeMap.get(id);
+      if (!n) return null;
+      const edge = calleeEdgeList.find(e => e.calleeId === id);
+      return {
+        name: n.isExternal ? `[external] ${n.name}` : n.name,
+        file: n.isExternal ? 'external' : relative(absDir, n.filePath),
+        sig: sig(n),
+        callType: edge?.callType ?? 'direct',
+        isExternal: n.isExternal ?? false,
+        kind: n.externalKind,
+      };
+    })
     .filter((n): n is NonNullable<typeof n> => !!n)
-    .slice(0, 12)
-    .map(n => ({
-      name: n.isExternal ? `[external] ${n.name}` : n.name,
-      file: n.isExternal ? 'external' : relative(absDir, n.filePath),
-      sig: sig(n),
-      kind: n.externalKind,
-    }));
+    .slice(0, calleeLimit);
 
-  // Test coverage
+  // Test coverage — distinguish import-based vs call-based tracing
+  const seenTestNames = new Set<string>();
   const testedBy = cg.edges
     .filter(e => e.kind === 'tested_by' && e.callerId === target.id)
-    .map(e => e.calleeName)
-    .filter((v, i, a) => a.indexOf(v) === i);
+    .flatMap(e => {
+      if (seenTestNames.has(e.calleeName)) return [];
+      seenTestNames.add(e.calleeName);
+      const confidence: 'imported' | 'called' = e.confidence === 'import' ? 'imported' : 'called';
+      return [{ name: e.calleeName, confidence }];
+    });
 
   // Function body (byte-range slice from source)
   let body: string | null = null;
@@ -945,6 +1009,7 @@ export async function handleGetMinimalContext(
       fanIn: target.fanIn,
       fanOut: target.fanOut,
       community: target.communityLabel ?? null,
+      riskLevel,
       body,
     },
     callers,
@@ -988,16 +1053,22 @@ export async function handleGetCluster(
   const rawInternal = cg.edges
     .filter(e => (!e.kind || e.kind === 'calls') && memberIds.has(e.callerId) && memberIds.has(e.calleeId));
 
-  // Deduplicate and take top 15 by callee fanIn (most structurally important edges first)
+  // Deduplicate, count all unique internal edges for density, show top 15
   const seen = new Set<string>();
   const callEdges: string[] = [];
+  let uniqueInternalCount = 0;
   for (const e of rawInternal) {
     const key = `${e.callerId}→${e.calleeId}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    callEdges.push(`${nameById.get(e.callerId)} → ${nameById.get(e.calleeId)}`);
-    if (callEdges.length >= 15) break;
+    uniqueInternalCount++;
+    if (callEdges.length < 15) {
+      callEdges.push(`${nameById.get(e.callerId)} → ${nameById.get(e.calleeId)}`);
+    }
   }
+
+  const m = members.length;
+  const clusterDensity = m > 1 ? Math.round((uniqueInternalCount / (m * (m - 1))) * 1000) / 1000 : 0;
 
   // Files the community spans
   const files = [...new Set(members.map(n => relative(absDir, n.filePath)))].sort();
@@ -1006,9 +1077,10 @@ export async function handleGetCluster(
     communityLabel: target.communityLabel,
     communityId: target.communityId,
     stats: {
-      members: members.length,
+      members: m,
       files: files.length,
-      internalEdges: rawInternal.length,
+      internalEdges: uniqueInternalCount,
+      clusterDensity,
     },
     files,
     // Internal call edges show WHY these functions cluster together
@@ -1055,6 +1127,74 @@ function runGit(args: string[], cwd: string): Promise<string> {
   });
 }
 
+// ── change-type classifier ────────────────────────────────────────────────────
+// Signature line patterns across languages (TS/JS, Python, Go, Rust, Java/C++)
+const SIG_PATTERN =
+  /^\s*(export\s+)?(default\s+)?(async\s+)?function\b|\bdef\s+\w+\s*[([:]|\bfunc\s+(\([^)]*\)\s*)?\w+\s*\(|\bfn\s+\w+\b|\bclass\s+\w+/;
+// Control-flow keywords (broad, multi-language)
+const LOGIC_PATTERN =
+  /\b(if|else|for|while|switch|try|catch|throw|return|yield|await|break|continue|elif|except|raise|match|case)\b/;
+
+type ChangeType = 'signature' | 'logic' | 'config';
+
+function classifyChangeType(
+  node: { startLine?: number; endLine?: number },
+  addedLines: Map<number, string>,
+): ChangeType {
+  const fnStart = node.startLine ?? 1;
+  const fnEnd = node.endLine ?? fnStart;
+  const linesInFn: string[] = [];
+  for (const [ln, content] of addedLines) {
+    if (ln >= fnStart && ln <= fnEnd) linesInFn.push(content);
+  }
+  if (linesInFn.length === 0) return 'logic';
+  // Signature change: function's own declaration line was modified
+  const sigLine = addedLines.get(fnStart);
+  if (sigLine !== undefined && SIG_PATTERN.test(sigLine)) return 'signature';
+  // Logic change: any added line has a control-flow keyword
+  if (linesInFn.some(l => LOGIC_PATTERN.test(l))) return 'logic';
+  return 'config';
+}
+
+const CHANGE_TYPE_MULTIPLIER: Record<ChangeType, number> = {
+  signature: 1.5, // breaking-change candidate
+  logic: 1.0,     // default
+  config: 0.4,    // literal / comment / config tweak
+};
+
+function buildReason(params: {
+  changeType: ChangeType;
+  directCallers: Array<{ callType?: string }>;
+  tests: Array<{ confidence: 'imported' | 'called' }>;
+  bScore: number;
+  fanIn: number;
+}): string {
+  const { changeType, directCallers, tests, bScore, fanIn } = params;
+  const parts: string[] = [];
+
+  if (changeType === 'signature') parts.push('signature change');
+  else if (changeType === 'config') parts.push('config/literal change');
+
+  if (fanIn > 0) {
+    const awaitedCount = directCallers.filter(c => c.callType === 'awaited').length;
+    const total = directCallers.length || fanIn;
+    if (awaitedCount === total && awaitedCount > 0) parts.push('all callers awaited');
+    else if (awaitedCount > 0) parts.push(`${awaitedCount} awaited callers`);
+    else parts.push(`${fanIn} callers`);
+  }
+
+  const calledTests = tests.filter(t => t.confidence === 'called').length;
+  if (tests.length === 0) parts.push('no tests');
+  else if (calledTests === 0) parts.push('import-only tests');
+  else parts.push(`${calledTests} direct test${calledTests > 1 ? 's' : ''}`);
+
+  if (bScore >= 0.67) parts.push('HTTP/DB boundary');
+  else if (bScore > 0) parts.push('external boundary');
+
+  return parts.join(' · ') || 'low-risk change';
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Detect recently changed functions and rank them by blast radius (fanIn of callers via BFS).
  * Runs git diff to find changed files/lines, maps to function nodes, scores by impact.
@@ -1080,39 +1220,55 @@ export async function handleDetectChanges(
 
   if (!diffOutput.trim()) return { changedFunctions: [], message: 'No changes detected.' };
 
-  // Parse changed file→line ranges from unified diff
-  const changedLines = new Map<string, Array<[number, number]>>(); // absFilePath → [[start,end],…]
+  // Parse unified diff: collect line ranges AND added-line content per file.
+  // --unified=0 means no context lines; only '+' and '-' lines appear in hunks.
+  const changedFileData = new Map<string, {
+    ranges: Array<[number, number]>;
+    addedLines: Map<number, string>; // new-file line# → content
+  }>();
   let curFile: string | null = null;
+  let newLineNum = 0;
   for (const line of diffOutput.split('\n')) {
     const fileMatch = line.match(/^\+\+\+ b\/(.+)$/);
-    if (fileMatch) { curFile = join(absDir, fileMatch[1]); continue; }
+    if (fileMatch) { curFile = join(absDir, fileMatch[1]); newLineNum = 0; continue; }
     const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
     if (hunkMatch && curFile) {
-      const start = parseInt(hunkMatch[1], 10);
+      newLineNum = parseInt(hunkMatch[1], 10);
       const count = hunkMatch[2] !== undefined ? parseInt(hunkMatch[2], 10) : 1;
-      if (count === 0) continue; // deletion only, no added lines
-      if (!changedLines.has(curFile)) changedLines.set(curFile, []);
-      changedLines.get(curFile)!.push([start, start + count - 1]);
+      if (count === 0) continue;
+      if (!changedFileData.has(curFile)) changedFileData.set(curFile, { ranges: [], addedLines: new Map() });
+      changedFileData.get(curFile)!.ranges.push([newLineNum, newLineNum + count - 1]);
+      continue;
     }
+    if (!curFile || !changedFileData.has(curFile)) continue;
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      changedFileData.get(curFile)!.addedLines.set(newLineNum++, line.slice(1));
+    }
+    // '-' lines don't advance new-file position; no context lines with --unified=0
   }
+  // Backward-compat: changedLines used by the node-overlap loop below
+  const changedLines = new Map([...changedFileData.entries()].map(([k, v]) => [k, v.ranges]));
 
   const cg = ctx.callGraph as SerializedCallGraph;
   const nodeMap = new Map(cg.nodes.map(n => [n.id, n]));
 
-  // Map changed line ranges to function nodes via startLine
+  // Map changed line ranges to function nodes; track overlapping line count per function
   const changedFnIds = new Set<string>();
+  const fnChangedLineCount = new Map<string, number>(); // nodeId → #lines overlapping with diff
   for (const [filePath, ranges] of changedLines) {
     const fileNodes = cg.nodes.filter(n => n.filePath === filePath && !n.isExternal && !n.isTest && n.startLine);
     for (const node of fileNodes) {
       const fnEnd = node.endLine ?? node.startLine!;
+      let overlap = 0;
       for (const [start, end] of ranges) {
-        // True overlap: changed range [start,end] intersects function [startLine,endLine]
         if (node.startLine! <= end && fnEnd >= start) {
           changedFnIds.add(node.id);
+          overlap += Math.min(end, fnEnd) - Math.max(start, node.startLine!) + 1;
         }
       }
+      if (overlap > 0) fnChangedLineCount.set(node.id, (fnChangedLineCount.get(node.id) ?? 0) + overlap);
     }
-    // If no line match found for the file, include all functions in the file as changed
+    // Fallback: no line match — include all functions in the file
     if (fileNodes.length > 0 && !fileNodes.some(n => changedFnIds.has(n.id))) {
       for (const n of fileNodes) changedFnIds.add(n.id);
     }
@@ -1122,41 +1278,103 @@ export async function handleDetectChanges(
     return { changedFunctions: [], message: 'Changed files found but no matching function nodes. Re-run analyze_codebase.' };
   }
 
-  // BFS blast radius: count all transitive callers of each changed function
   const callsEdges = cg.edges.filter(e => !e.kind || e.kind === 'calls');
-  const callerIndex = new Map<string, string[]>(); // calleeId → callerIds
+
+  // callerIndex: calleeId → [{id, callType}] — callType weights BFS contribution
+  const callerIndex = new Map<string, Array<{ id: string; callType?: string }>>();
   for (const e of callsEdges) {
     if (!callerIndex.has(e.calleeId)) callerIndex.set(e.calleeId, []);
-    callerIndex.get(e.calleeId)!.push(e.callerId);
+    callerIndex.get(e.calleeId)!.push({ id: e.callerId, callType: e.callType });
   }
 
-  const blastRadius = (startId: string): number => {
+  // calleeIndex: callerId → calleeIds (for boundary score)
+  const calleeIndex = new Map<string, string[]>();
+  for (const e of callsEdges) {
+    if (!calleeIndex.has(e.callerId)) calleeIndex.set(e.callerId, []);
+    calleeIndex.get(e.callerId)!.push(e.calleeId);
+  }
+
+  // awaited callers most sensitive; callback least (detached, survives interface change)
+  const callTypeWeight = (ct?: string) =>
+    ct === 'awaited' ? 1.0 : ct === 'direct' ? 0.7 : ct === 'method' ? 0.6 :
+    ct === 'callback' ? 0.4 : 0.5; // 0.5 default covers 'constructor' and unknown
+
+  // Distance-weighted BFS: Σ weight/d² — clamped to prevent cross-repo drift
+  const transitiveScore = (startId: string): number => {
     const visited = new Set<string>();
-    const queue = [startId];
+    const queue: Array<{ id: string; depth: number }> = [{ id: startId, depth: 1 }];
+    let score = 0;
     while (queue.length) {
-      const id = queue.shift()!;
-      for (const callerId of callerIndex.get(id) ?? []) {
-        if (!visited.has(callerId)) { visited.add(callerId); queue.push(callerId); }
+      const { id, depth } = queue.shift()!;
+      for (const caller of callerIndex.get(id) ?? []) {
+        if (!visited.has(caller.id)) {
+          visited.add(caller.id);
+          score += callTypeWeight(caller.callType) / (depth * depth);
+          queue.push({ id: caller.id, depth: depth + 1 });
+        }
       }
     }
-    return visited.size;
+    return Math.min(score, TRANSITIVE_SCORE_MAX);
   };
+
+  // Boundary score: outgoing edges to external nodes; http/db weighted 3×, others 1×; normalized
+  const boundaryScore = (nodeId: string): number => {
+    let raw = 0;
+    for (const calleeId of calleeIndex.get(nodeId) ?? []) {
+      const callee = nodeMap.get(calleeId);
+      if (!callee?.isExternal) continue;
+      raw += (callee.externalKind === 'http' || callee.externalKind === 'database') ? 3 : 1;
+    }
+    return Math.min(raw / 3, 1);
+  };
+
+  // testedBy map: nodeId → [{name, confidence}]
+  const testedByMap = new Map<string, Array<{ name: string; confidence: 'imported' | 'called' }>>();
+  for (const e of cg.edges.filter(e => e.kind === 'tested_by')) {
+    if (!testedByMap.has(e.callerId)) testedByMap.set(e.callerId, []);
+    const arr = testedByMap.get(e.callerId)!;
+    if (!arr.some(x => x.name === e.calleeName)) {
+      arr.push({ name: e.calleeName, confidence: e.confidence === 'import' ? 'imported' : 'called' });
+    }
+  }
 
   const scored = [...changedFnIds].map(id => {
     const n = nodeMap.get(id)!;
-    const radius = blastRadius(id);
+    const fnLength = Math.max(1, (n.endLine ?? n.startLine ?? 1) - (n.startLine ?? 1) + 1);
+    const changed = fnChangedLineCount.get(id) ?? Math.round(fnLength * 0.5);
+    // Blend relative (sensitivity) + absolute (log scale) — prevents tiny fully-changed fns
+    // from outranking large ones; log(201)≈5.3 so 200 changed lines ≈ absScore 1.0
+    const relScore = changed / fnLength;
+    const absScore = Math.log(1 + changed) / Math.log(201);
+    const rawChangeScore = Math.min(0.6 * relScore + 0.4 * absScore, 1);
+    // Semantic modifier: signature changes are higher risk than config/literal tweaks
+    const changeType = classifyChangeType(n, changedFileData.get(n.filePath)?.addedLines ?? new Map());
+    const changeScore = Math.min(rawChangeScore * CHANGE_TYPE_MULTIPLIER[changeType], 1);
+    const tests = testedByMap.get(id) ?? [];
+    // called-edges are direct proof; imported-only is weaker (survives vi.mock)
+    const effectiveTests = tests.reduce((s, t) => s + (t.confidence === 'called' ? 1.0 : 0.3), 0);
+    const coveragePenalty = 1 / (1 + Math.log(1 + effectiveTests));
+    const tScore = transitiveScore(id);
+    const bScore = boundaryScore(id);
+    // Multiplicative model: risk = likelihood × impact
+    // Decouples change probability from structural blast radius; prevents correlated
+    // signals (fanIn ↔ transitive) from triple-stacking additively
+    const likelihood = changeScore * (1 + coveragePenalty);
+    const impact = Math.log(1 + n.fanIn) * 0.8 + tScore + bScore;
+    const riskScore = Math.round(likelihood * impact * 100) / 100;
+    const directCallers = callerIndex.get(id) ?? [];
+    const reason = buildReason({ changeType, directCallers, tests, bScore, fanIn: n.fanIn });
     return {
       name: n.name,
       file: relative(absDir, n.filePath),
       startLine: n.startLine ?? null,
       endLine: n.endLine ?? null,
       fanIn: n.fanIn,
-      blastRadius: radius,
-      riskScore: n.fanIn + radius * 2,
-      testedBy: cg.edges
-        .filter(e => e.kind === 'tested_by' && e.callerId === id)
-        .map(e => e.calleeName)
-        .filter((v, i, a) => a.indexOf(v) === i),
+      blastRadius: Math.round(tScore * 100) / 100,
+      changeType,
+      riskScore,
+      reason,
+      testedBy: testedByMap.get(id) ?? [],
     };
   }).sort((a, b) => b.riskScore - a.riskScore);
 
