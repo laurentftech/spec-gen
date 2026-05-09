@@ -345,6 +345,42 @@ The system SHALL include `cursor-agent` in provider pricing lookup with zero per
 - **WHEN** `lookupPricing` is called for provider `cursor-agent` and any model identifier
 - **THEN** returned input and output per-million token rates are zero
 
+### Requirement: OpenAI structured output schema normalization
+
+The system SHALL normalize JSON schemas sent through OpenAI and OpenAI-compatible `response_format.json_schema.schema` so that every object schema is closed, every object property is required, and properties that were optional in the caller schema remain nullable in the provider schema.
+
+#### Scenario: OpenAI object schemas are closed
+- **WHEN** `OpenAIProvider` sends a JSON schema with an object schema through `response_format.json_schema.schema`
+- **THEN** the provider schema object has `additionalProperties: false`
+
+#### Scenario: OpenAI object required includes all properties
+- **WHEN** `OpenAIProvider` sends a JSON schema with object `properties`
+- **THEN** the provider schema object's `required` array contains every property key
+
+#### Scenario: Optional OpenAI properties become nullable
+- **WHEN** `OpenAIProvider` sends a JSON schema where an object property is absent from the caller schema's original `required` array
+- **THEN** the corresponding provider schema property allows `null`
+
+#### Scenario: Nested OpenAI object schemas are normalized
+- **WHEN** `OpenAIProvider` sends a JSON schema containing nested object schemas
+- **THEN** each nested object schema has `additionalProperties: false` and a `required` array containing every nested property key
+
+#### Scenario: Top-level OpenAI array schemas are wrapped as closed objects
+- **WHEN** `OpenAIProvider` sends a top-level array JSON schema through `response_format.json_schema.schema`
+- **THEN** the provider schema root is an object with an `items` property, `required` contains `items`, and the root has `additionalProperties: false`
+
+#### Scenario: Caller schemas are not mutated
+- **WHEN** OpenAI schema normalization prepares a provider schema
+- **THEN** the caller-provided JSON schema remains unchanged
+
+#### Scenario: OpenAI-compatible schemas use the same normalization
+- **WHEN** `OpenAICompatibleProvider` sends a JSON schema through `response_format.json_schema.schema`
+- **THEN** the provider schema follows the same object closure, required-property, nullable optional-property, and top-level array wrapper rules as `OpenAIProvider`
+
+#### Scenario: Disabled OpenAI-compatible response format remains omitted
+- **WHEN** `OpenAICompatibleProvider` is configured with `disableResponseFormat=true`
+- **THEN** the request body does not include `response_format`
+
 ## Technical Notes
 
 - **Implementation**: `src/core/services/llm-service.ts`

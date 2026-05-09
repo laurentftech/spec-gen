@@ -645,6 +645,86 @@ function wrapArraySchema(schema: object): object {
   return schema;
 }
 
+function isSchemaRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function schemaAllowsNull(schema: unknown): boolean {
+  if (!isSchemaRecord(schema)) return false;
+
+  const type = schema.type;
+  if (type === 'null') return true;
+  if (Array.isArray(type) && type.includes('null')) return true;
+
+  for (const key of ['anyOf', 'oneOf']) {
+    const schemas = schema[key];
+    if (Array.isArray(schemas) && schemas.some(schemaAllowsNull)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function makeSchemaNullable(schema: unknown): unknown {
+  if (schemaAllowsNull(schema)) return schema;
+
+  if (isSchemaRecord(schema)) {
+    const type = schema.type;
+    if (typeof type === 'string') {
+      schema.type = [type, 'null'];
+      return schema;
+    }
+  }
+
+  return { anyOf: [schema, { type: 'null' }] };
+}
+
+function normalizeOpenAISchemaNode(node: unknown): void {
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      normalizeOpenAISchemaNode(item);
+    }
+    return;
+  }
+
+  if (!isSchemaRecord(node)) return;
+
+  const isObjectSchema = node.type === 'object' || (Array.isArray(node.type) && node.type.includes('object'));
+
+  if (isObjectSchema) {
+    const properties = isSchemaRecord(node.properties) ? node.properties : {};
+    const originalRequired = new Set(
+      Array.isArray(node.required)
+        ? node.required.filter((field): field is string => typeof field === 'string')
+        : [],
+    );
+
+    node.properties = properties;
+    node.additionalProperties = false;
+    node.required = Object.keys(properties);
+
+    for (const [key, propertySchema] of Object.entries(properties)) {
+      normalizeOpenAISchemaNode(propertySchema);
+      if (!originalRequired.has(key)) {
+        properties[key] = makeSchemaNullable(properties[key]);
+      }
+    }
+  }
+
+  for (const [key, value] of Object.entries(node)) {
+    if (isObjectSchema && key === 'properties') continue;
+    normalizeOpenAISchemaNode(value);
+  }
+}
+
+function normalizeOpenAIResponseSchema(schema: object): object {
+  const clonedSchema = JSON.parse(JSON.stringify(schema)) as object;
+  const wrappedSchema = wrapArraySchema(clonedSchema);
+  normalizeOpenAISchemaNode(wrappedSchema);
+  return wrappedSchema;
+}
+
 /**
  * OpenAI provider
  */
@@ -690,7 +770,7 @@ export class OpenAIProvider implements LLMProvider {
         type: 'json_schema',
         json_schema: {
           name: 'response',
-          schema: wrapArraySchema(request.jsonSchema),
+          schema: normalizeOpenAIResponseSchema(request.jsonSchema),
         },
       };
     } else if (request.responseFormat === 'json') {
@@ -869,7 +949,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
           type: 'json_schema',
           json_schema: {
             name: 'response',
-            schema: wrapArraySchema(request.jsonSchema),
+            schema: normalizeOpenAIResponseSchema(request.jsonSchema),
           },
         };
       } else if (request.responseFormat === 'json') {

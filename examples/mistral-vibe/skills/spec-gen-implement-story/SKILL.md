@@ -60,7 +60,37 @@ Read the story file. Extract:
 </use_mcp_tool>
 ```
 
-For the top 2 functions returned, check risk:
+For the top 2 functions returned, get minimal context first (callers, callees, body, test coverage):
+
+```xml
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>get_minimal_context</tool_name>
+  <arguments>{"directory": "$PROJECT_ROOT", "functionName": "$FUNCTION_NAME"}</arguments>
+</use_mcp_tool>
+```
+
+**What to read before proceeding:**
+- `function.riskLevel` — `"high"` = fanIn ≥ 30 or fanOut ≥ 15; tool expanded lists to 24 entries — all are blast-radius members.
+- `callers[*].callType` — all `"awaited"` = async interface frozen; signature change breaks every caller silently in JS. Mixed = looser coupling.
+- `callees[*].isExternal: true` — external boundary; new paths may pass mocked tests but fail in production.
+- `testedBy[*].confidence` — `"called"` = direct test (strong). `"imported"` only = `vi.mock()` can neutralize; treat as untested.
+
+If `riskLevel` is `"high"` or any callee is external, also check the cluster:
+
+```xml
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>get_cluster</tool_name>
+  <arguments>{"directory": "$PROJECT_ROOT", "functionName": "$FUNCTION_NAME"}</arguments>
+</use_mcp_tool>
+```
+
+- `clusterDensity < 0.05` → isolated, proceed
+- `clusterDensity 0.05–0.15` → check `internalCallGraph` for transitively dependent functions
+- `clusterDensity > 0.15` → dense cluster; coordinate scope with user first
+
+Then check risk:
 
 ```xml
 <use_mcp_tool>

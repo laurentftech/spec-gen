@@ -890,11 +890,107 @@ describe('OpenAIProvider', () => {
     const fetchMock = vi.fn().mockResolvedValue(mockResponse(SUCCESS_BODY));
     vi.stubGlobal('fetch', fetchMock);
     const provider = new OpenAIProvider('key');
-    const schema = { type: 'object', properties: { name: { type: 'string' } } };
+    const schema = {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        nickname: { type: 'string' },
+        meta: {
+          type: 'object',
+          properties: {
+            count: { type: 'number' },
+            note: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+          },
+          required: ['count'],
+        },
+        nullableMeta: {
+          type: ['object', 'null'],
+          properties: {
+            enabled: { type: 'boolean' },
+            label: { type: 'string' },
+          },
+          required: ['enabled'],
+        },
+        flexible: { enum: ['a', 'b'] },
+      },
+      required: ['name', 'meta'],
+    };
+    const originalSchema = JSON.parse(JSON.stringify(schema));
     await provider.generateCompletion({ systemPrompt: '', userPrompt: 'hi', responseFormat: 'json', jsonSchema: schema });
     const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    const normalizedSchema = body.response_format.json_schema.schema;
+
     expect(body.response_format.type).toBe('json_schema');
-    expect(body.response_format.json_schema.schema).toEqual(schema);
+    expect(normalizedSchema).toEqual({
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        nickname: { type: ['string', 'null'] },
+        meta: {
+          type: 'object',
+          properties: {
+            count: { type: 'number' },
+            note: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+          },
+          required: ['count', 'note'],
+          additionalProperties: false,
+        },
+        nullableMeta: {
+          type: ['object', 'null'],
+          properties: {
+            enabled: { type: 'boolean' },
+            label: { type: ['string', 'null'] },
+          },
+          required: ['enabled', 'label'],
+          additionalProperties: false,
+        },
+        flexible: { anyOf: [{ enum: ['a', 'b'] }, { type: 'null' }] },
+      },
+      required: ['name', 'nickname', 'meta', 'nullableMeta', 'flexible'],
+      additionalProperties: false,
+    });
+    expect(schema).toEqual(originalSchema);
+  });
+
+  it('wraps top-level array schemas as closed OpenAI response objects', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(mockResponse(SUCCESS_BODY));
+    vi.stubGlobal('fetch', fetchMock);
+    const provider = new OpenAIProvider('key');
+    const schema = {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          score: { type: 'number' },
+        },
+        required: ['name'],
+      },
+    };
+
+    await provider.generateCompletion({ systemPrompt: '', userPrompt: 'hi', responseFormat: 'json', jsonSchema: schema });
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    const normalizedSchema = body.response_format.json_schema.schema;
+
+    expect(normalizedSchema).toEqual({
+      type: 'object',
+      properties: {
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              score: { type: ['number', 'null'] },
+            },
+            required: ['name', 'score'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['items'],
+      additionalProperties: false,
+    });
   });
 
   it('sends json_object response_format when responseFormat=json without schema', async () => {
@@ -942,10 +1038,27 @@ describe('OpenAICompatibleProvider', () => {
     const fetchMock = vi.fn().mockResolvedValue(mockResponse(SUCCESS_BODY));
     vi.stubGlobal('fetch', fetchMock);
     const provider = new OpenAICompatibleProvider('key', 'https://api.mistral.ai/v1');
-    const schema = { type: 'array' };
+    const schema = {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        score: { type: 'number' },
+      },
+      required: ['name'],
+    };
     await provider.generateCompletion({ systemPrompt: '', userPrompt: 'hi', responseFormat: 'json', jsonSchema: schema });
     const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+
     expect(body.response_format.type).toBe('json_schema');
+    expect(body.response_format.json_schema.schema).toEqual({
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        score: { type: ['number', 'null'] },
+      },
+      required: ['name', 'score'],
+      additionalProperties: false,
+    });
   });
 
   it('omits response_format when disableResponseFormat=true', async () => {

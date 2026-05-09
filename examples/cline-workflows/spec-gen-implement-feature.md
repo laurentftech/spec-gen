@@ -129,15 +129,23 @@ For each candidate, present:
 - Rank, name, file, role, strategy, reason
 - Whether it appears in the relevant cluster identified in Step 2
 
-Then pick the top 1–2 candidates and inspect their call neighbourhood:
+Then pick the top 1–2 candidates and get minimal context (callers, callees, body, test coverage — ~300 tokens):
 
 <use_mcp_tool>
   <server_name>spec-gen</server_name>
-  <tool_name>get_subgraph</tool_name>
-  <arguments>{"directory": "$DIRECTORY", "functionName": "$TOP_CANDIDATE", "direction": "both", "format": "mermaid"}</arguments>
+  <tool_name>get_minimal_context</tool_name>
+  <arguments>{"directory": "$DIRECTORY", "functionName": "$TOP_CANDIDATE"}</arguments>
 </use_mcp_tool>
 
-Show the Mermaid diagram so the user can confirm the chosen insertion point is correct.
+If the function has high fanIn (>10), also check its community to understand broader blast radius:
+
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>get_cluster</tool_name>
+  <arguments>{"directory": "$DIRECTORY", "functionName": "$TOP_CANDIDATE"}</arguments>
+</use_mcp_tool>
+
+Present callers, callees, community label, and test coverage. Ask the user to confirm the chosen insertion point.
 
 ## Step 5: Read the skeleton of the target file(s)
 

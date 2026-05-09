@@ -394,6 +394,7 @@ describe('Stage 5: Architecture Synthesis', () => {
         cyclesDetected: 4,
         cycleParticipants: 8,
         srpViolations: 6,
+        highComplexity: 0,
       },
       priorities: [
         { function: 'processAll', file: 'src/processor.ts', fanIn: 2, fanOut: 10, depth: 1, sccSize: 1, requirements: [], issues: ['high_fan_out', 'in_cycle'], priorityScore: 9 },
@@ -444,6 +445,7 @@ describe('Stage 5: Architecture Synthesis', () => {
         cyclesDetected: 0,
         cycleParticipants: 0,
         srpViolations: 0,
+        highComplexity: 0,
       },
       priorities: [],
       cycles: [],

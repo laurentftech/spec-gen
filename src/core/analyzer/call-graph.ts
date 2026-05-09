@@ -12,6 +12,7 @@
  *  - Layer violations — cross-layer calls in the wrong direction
  */
 
+import { dirname, resolve as resolvePath } from 'node:path';
 import Parser from 'tree-sitter';
 import { FunctionRegistryTrie } from './function-registry-trie.js';
 import type { ImportMap } from './import-resolver-bridge.js';
@@ -74,6 +75,18 @@ export interface FunctionNode {
   isExternal?: boolean;
   /** Classification of external node — used to filter stdlib noise from views */
   externalKind?: ExternalKind;
+  /** True for nodes whose source file is a test file (*.test.ts, *_test.py, etc.) */
+  isTest?: boolean;
+  /** 1-based line number of the function start (computed from startIndex at build time) */
+  startLine?: number;
+  /** 1-based line number of the function end (computed from endIndex at build time) */
+  endLine?: number;
+  /** Label-propagation community ID (canonical node id of the community representative) */
+  communityId?: string;
+  /** Human-readable community label (name of the hub function in the community) */
+  communityLabel?: string;
+  /** McCabe cyclomatic complexity computed from AST body slice (1 = linear, ≥10 = complex) */
+  cyclomaticComplexity?: number;
 }
 
 /** Broad category of an external (unresolved) call */
@@ -134,7 +147,7 @@ export interface InheritanceEdge {
   parentId: string;
   /** ClassNode id of the child / derived / implementor */
   childId: string;
-  kind: 'extends' | 'implements' | 'embeds';
+  kind: 'extends' | 'implements' | 'embeds' | 'overrides';
 }
 
 export interface CallGraphResult {
@@ -1715,6 +1728,28 @@ function buildClassNodes(
     }
   }
 
+  // OVERRIDES edges: child defines method with same name as parent — language-agnostic
+  const methodNameSet = new Map<string, Set<string>>();
+  for (const [id, cls] of classMap) {
+    const names = new Set<string>();
+    for (const memberId of cls.methodIds) {
+      const fn = allNodes.get(memberId);
+      if (fn && !fn.isExternal) names.add(fn.name);
+    }
+    methodNameSet.set(id, names);
+  }
+  const extendsEdges = inheritanceEdges.filter(e => e.kind === 'extends');
+  for (const edge of extendsEdges) {
+    const childNames = methodNameSet.get(edge.childId);
+    const parentNames = methodNameSet.get(edge.parentId);
+    if (!childNames || !parentNames) continue;
+    if (![...childNames].some(n => parentNames.has(n))) continue;
+    const overrideId = `${edge.parentId}=>${edge.childId}:overrides`;
+    if (seenEdges.has(overrideId)) continue;
+    seenEdges.add(overrideId);
+    inheritanceEdges.push({ id: overrideId, parentId: edge.parentId, childId: edge.childId, kind: 'overrides' });
+  }
+
   return { classes: Array.from(classMap.values()), inheritanceEdges };
 }
 
@@ -1732,13 +1767,47 @@ function isTestFile(filePath: string): boolean {
   return TEST_FILE_PATTERNS.some(p => p.test(filePath));
 }
 
-const EXTERNAL_HTTP_RE = /^(fetch|axios|got|superagent|node-fetch|ky|request|https?|xmlhttprequest|grpc|undici)$/;
-const EXTERNAL_DB_RE = /^(pg|mysql|mysql2|sqlite|sqlite3|redis|ioredis|mongoose|mongo|mongodb|prisma|knex|sequelize|typeorm|drizzle|cassandra|dynamodb|firestore|supabase|neo4j|influxdb|clickhouse|kysely)$/;
-const EXTERNAL_FS_RE = /^(fs|fsp|readfile|writefile|readdir|stat|mkdir|unlink|rename|copyfile|createreadstream|createwritestream)$/;
+const EXTERNAL_HTTP_RE = /^(fetch|axios|got|superagent|node-fetch|ky|request|https?|xmlhttprequest|grpc|undici|requests|aiohttp|httpx|urllib|urllib2|urllib3|curl|curleasy|pycurl|http|httpclient|httpurlconnection|reqwest|hyper|ureq|isahc|surf|net|faraday|httparty|rest|typhoeus|excon|okhttp|retrofit|feign|resttemplate|webclient|urlsession|alamofire|moya)$/;
+const EXTERNAL_DB_RE = /^(pg|mysql|mysql2|sqlite|sqlite3|redis|ioredis|mongoose|mongo|mongodb|prisma|knex|sequelize|typeorm|drizzle|cassandra|dynamodb|firestore|supabase|neo4j|influxdb|clickhouse|kysely|psycopg2|psycopg|sqlalchemy|pymysql|asyncpg|motor|aiomysql|tortoise|sql|gorm|sqlx|pgx|bun|diesel|seaorm|rusqlite|activerecord|sequel|jdbc|hibernate|jpa|entitymanager|datasource|jdbctemplate|r2dbc|coredata|grdb|realm)$/;
+const EXTERNAL_FS_RE = /^(fs|fsp|readfile|writefile|readdir|stat|mkdir|unlink|rename|copyfile|createreadstream|createwritestream|open|fopen|fread|fwrite|fclose|remove|ifstream|ofstream|fstream|os|path|file)$/;
 const EXTERNAL_STDLIB_BASES = new Set([
+  // JavaScript / Node.js
   'array', 'object', 'string', 'number', 'math', 'json', 'date', 'regexp',
   'promise', 'map', 'set', 'weakmap', 'weakset', 'symbol', 'reflect', 'proxy',
   'console', 'error', 'buffer', 'process', 'int8array', 'uint8array',
+  // Python
+  'os', 'sys', 're', 'io', 'abc', 'ast', 'csv', 'copy', 'enum', 'glob',
+  'gzip', 'hmac', 'html', 'http', 'logging', 'operator', 'pathlib', 'pickle',
+  'pprint', 'queue', 'random', 'shutil', 'signal', 'socket', 'ssl', 'struct',
+  'subprocess', 'tempfile', 'threading', 'time', 'traceback', 'typing', 'uuid',
+  'warnings', 'collections', 'functools', 'itertools', 'contextlib',
+  'dataclasses', 'unittest', 'hashlib', 'base64', 'binascii', 'codecs',
+  'inspect', 'importlib', 'weakref', 'gc', 'platform', 'shlex', 'textwrap',
+  // C / C++
+  'std', 'printf', 'fprintf', 'sprintf', 'snprintf', 'scanf', 'malloc',
+  'calloc', 'realloc', 'free', 'memcpy', 'memmove', 'memset', 'memcmp',
+  'strlen', 'strcpy', 'strncpy', 'strcat', 'strcmp', 'strncmp', 'strstr',
+  'assert', 'abort', 'exit', 'atexit',
+  // Go
+  'fmt', 'log', 'sort', 'sync', 'atomic', 'bytes', 'errors', 'context',
+  'reflect', 'runtime', 'bufio', 'unicode', 'strings', 'strconv', 'math',
+  'rand', 'time', 'flag', 'testing',
+  // Rust
+  'vec', 'option', 'result', 'iter', 'collections', 'thread', 'env',
+  'cell', 'rc', 'arc', 'mutex', 'rwlock', 'channel', 'mpsc',
+  // Ruby
+  'integer', 'float', 'numeric', 'enumerable', 'comparable', 'kernel',
+  'module', 'class', 'basicobject', 'nilclass', 'trueclass', 'falseclass',
+  'symbol', 'regexp', 'range', 'proc', 'method', 'encoding',
+  // Java
+  'system', 'integer', 'long', 'double', 'boolean', 'character',
+  'list', 'arraylist', 'linkedlist', 'hashmap', 'treemap', 'hashset', 'treeset',
+  'optional', 'stream', 'arrays', 'collections', 'objects', 'math',
+  'thread', 'runnable', 'exception', 'runtimeexception', 'illegalargumentexception',
+  'stringbuilder', 'stringbuffer', 'scanner',
+  // Swift
+  'int', 'double', 'bool', 'dictionary', 'swift', 'foundation',
+  'dispatchqueue', 'notificationcenter', 'nsstring', 'nsarray', 'nsdictionary',
 ]);
 const EXTERNAL_NOISE_RECEIVERS = new Set([
   'response', 'body', 't', 'err', 'error', 'buf', 'str', 'res', 'req', 'data', 'result',
@@ -1765,6 +1834,23 @@ function getOrCreateExternalNode(name: string, nodes: Map<string, FunctionNode>)
     });
   }
   return nodes.get(id)!;
+}
+
+// ============================================================================
+// CYCLOMATIC COMPLEXITY
+// ============================================================================
+
+const CC_PATTERN_PYTHON = /\bif\s|\belif\s|\bwhile\s|\bfor\s|\bexcept\b|\band\s|\bor\s/g;
+const CC_PATTERN_DEFAULT = /\bif\s*\(|\bwhile\s*\(|\bfor\s*[(]|\bdo\s*[{]|\bcase\s+|\bcatch\s*\(|&&|\|\|/g;
+
+/**
+ * McCabe cyclomatic complexity via regex over function body.
+ * CC = 1 + decision points (if, while, for, case, catch, &&, ||).
+ * Approximate (regex, not AST), suitable for triage/ranking.
+ */
+export function computeCyclomaticComplexity(body: string, language: string): number {
+  const source = language === 'Python' ? CC_PATTERN_PYTHON.source : CC_PATTERN_DEFAULT.source;
+  return 1 + (body.match(new RegExp(source, 'g'))?.length ?? 0);
 }
 
 // ============================================================================
@@ -1812,7 +1898,22 @@ export class CallGraphBuilder {
           continue;
         }
 
+        // Compute startLine (1-based) from byte offset — cheap, done once at build time
+        const lineOffsets = [0];
+        for (let i = 0; i < file.content.length; i++) {
+          if (file.content[i] === '\n') lineOffsets.push(i + 1);
+        }
+        const byteToLine = (offset: number): number => {
+          let lo = 0, hi = lineOffsets.length - 1;
+          while (lo < hi) {
+            const mid = (lo + hi + 1) >> 1;
+            if (lineOffsets[mid] <= offset) lo = mid; else hi = mid - 1;
+          }
+          return lo + 1;
+        };
         for (const node of result.nodes) {
+          node.startLine = byteToLine(node.startIndex);
+          node.endLine = byteToLine(node.endIndex);
           allNodes.set(node.id, node);
         }
         allRawEdges.push(...result.rawEdges);
@@ -1973,11 +2074,25 @@ export class CallGraphBuilder {
       if (callee) callee.fanIn++;
     }
 
+    // Pass 4 (prep): Mark test-file nodes before tested_by derivation
+    const nodes = Array.from(allNodes.values());
+    for (const n of nodes) {
+      if (!n.isExternal && isTestFile(n.filePath)) n.isTest = true;
+    }
+
     // Pass 3b: Derive tested_by edges — reverse edges from production fn ← test fn
+    // Source 1: call edges where the caller is a test function
     const callsEdges = edges.filter(e => !e.kind || e.kind === 'calls');
+    const testedByPairs = new Set<string>(); // deduplicate across sources
     for (const edge of callsEdges) {
       const caller = allNodes.get(edge.callerId);
       if (!caller || !isTestFile(caller.filePath)) continue;
+      const callee = allNodes.get(edge.calleeId);
+      // Only emit tested_by when the production fn is internal (not external, not a test helper)
+      if (!callee || callee.isExternal || callee.isTest) continue;
+      const pairKey = `${edge.calleeId}\0${caller.filePath}`;
+      if (testedByPairs.has(pairKey)) continue;
+      testedByPairs.add(pairKey);
       edges.push({
         kind: 'tested_by',
         callerId: edge.calleeId,
@@ -1988,10 +2103,87 @@ export class CallGraphBuilder {
       });
     }
 
+    // Source 2: import-based — every name imported by a test file from a production file.
+    // Catches mocked functions that are imported but never directly called in the test.
+    // Build a lightweight import map from file content (only test files, TS/JS).
+    const allFilePaths = files.map(f => f.path);
+    const NAMED_IMPORT_RE = /^\s*import\s+(?:type\s+)?\{([^}]+)\}\s+from\s+['"](\.[^'"]+)['"]/gm;
+    const DEFAULT_IMPORT_RE = /^\s*import\s+(?:type\s+)?(\w+)\s+from\s+['"](\.[^'"]+)['"]/gm;
+    for (const file of files) {
+      if (!isTestFile(file.path)) continue;
+      if (file.language !== 'TypeScript' && file.language !== 'JavaScript') continue;
+      const dir = dirname(file.path);
+      const resolveSource = (rel: string): string | undefined => {
+        // Strip .js extension: TS ESM imports use './foo.js' to refer to './foo.ts'
+        const stripped = rel.replace(/\.js$/, '');
+        const base = resolvePath(dir, stripped);
+        return allFilePaths.find(p =>
+          p === base || p === `${base}.ts` || p === `${base}.tsx` ||
+          p === `${base}.js` || p === `${base}.jsx` || p === `${base}/index.ts`,
+        );
+      };
+      const testLabel = file.path.split('/').pop()!.replace(/\.[tj]sx?$/, '');
+      const emitEdge = (name: string, sourceFile: string) => {
+        const candidates = trie.findBySimpleName(name)
+          .filter(n => n.filePath === sourceFile && !n.isTest && !n.isExternal);
+        for (const callee of candidates) {
+          const pairKey = `${callee.id}\0${file.path}`;
+          if (testedByPairs.has(pairKey)) continue;
+          testedByPairs.add(pairKey);
+          edges.push({
+            kind: 'tested_by',
+            callerId: callee.id,
+            calleeId: `${file.path}::*`,
+            calleeName: testLabel,
+            confidence: 'import',
+            callType: undefined,
+          });
+        }
+      };
+      // Named imports: import { foo, bar as baz } from './module'
+      for (const m of file.content.matchAll(NAMED_IMPORT_RE)) {
+        const sourceFile = resolveSource(m[2]);
+        if (!sourceFile) continue;
+        for (const part of m[1].split(',')) {
+          const name = (part.match(/\bas\s+(\w+)/) ?? part.match(/(\w+)/))?.[1]?.trim();
+          if (name) emitEdge(name, sourceFile);
+        }
+      }
+      // Default imports: import foo from './module'
+      for (const m of file.content.matchAll(DEFAULT_IMPORT_RE)) {
+        const sourceFile = resolveSource(m[2]);
+        if (!sourceFile) continue;
+        emitEdge(m[1], sourceFile);
+      }
+    }
+
+    // Also apply caller-provided importMap if present (cross-language coverage)
+    if (importMap) {
+      for (const [testFilePath, imports] of importMap) {
+        if (!isTestFile(testFilePath)) continue;
+        for (const [importedName, sourceFile] of imports) {
+          const candidates = trie.findBySimpleName(importedName)
+            .filter(n => n.filePath === sourceFile && !n.isTest && !n.isExternal);
+          for (const callee of candidates) {
+            const pairKey = `${callee.id}\0${testFilePath}`;
+            if (testedByPairs.has(pairKey)) continue;
+            testedByPairs.add(pairKey);
+            edges.push({
+              kind: 'tested_by',
+              callerId: callee.id,
+              calleeId: `${testFilePath}::*`,
+              calleeName: testFilePath.split('/').pop()!.replace(/\.[tj]sx?$/, ''),
+              confidence: 'import',
+              callType: undefined,
+            });
+          }
+        }
+      }
+    }
+
     // Pass 4: Derive hub functions, entry points, layer violations
-    // External nodes are excluded from structural stats — they are leaf placeholders
-    const nodes = Array.from(allNodes.values());
-    const internalNodes = nodes.filter(n => !n.isExternal);
+    // External and test nodes are excluded from structural stats
+    const internalNodes = nodes.filter(n => !n.isExternal && !n.isTest);
 
     const hubFunctions = internalNodes
       .filter(n => n.fanIn >= HUB_THRESHOLD)
@@ -2009,7 +2201,75 @@ export class CallGraphBuilder {
     const totalFanIn = internalNodes.reduce((s, n) => s + n.fanIn, 0);
     const totalFanOut = internalNodes.reduce((s, n) => s + n.fanOut, 0);
 
-    // Pass 5: Build class hierarchy (inheritance + grouping)
+    // Pass 5: Label-propagation community detection (internal non-test nodes only)
+    // Each node starts with its own label; iteratively adopts the most common neighbor label.
+    // Converges in ~10 passes for typical codebases. External/test nodes get no community.
+    {
+      const callsEdgesOnly = edges.filter(e => !e.kind || e.kind === 'calls');
+      const label = new Map<string, string>();
+      for (const n of internalNodes) label.set(n.id, n.id);
+
+      // Build adjacency for internal nodes (bidirectional — community ignores direction)
+      const neighbors = new Map<string, string[]>();
+      for (const n of internalNodes) neighbors.set(n.id, []);
+      for (const e of callsEdgesOnly) {
+        if (label.has(e.callerId) && label.has(e.calleeId)) {
+          neighbors.get(e.callerId)!.push(e.calleeId);
+          neighbors.get(e.calleeId)!.push(e.callerId);
+        }
+      }
+
+      for (let iter = 0; iter < 15; iter++) {
+        let changed = false;
+        // Deterministic order each iteration (sorted) avoids oscillation
+        const order = [...internalNodes].sort((a, b) => a.id < b.id ? -1 : 1);
+        for (const n of order) {
+          const nbrs = neighbors.get(n.id)!;
+          if (nbrs.length === 0) continue;
+          const counts = new Map<string, number>();
+          for (const nbId of nbrs) {
+            const l = label.get(nbId) ?? nbId;
+            counts.set(l, (counts.get(l) ?? 0) + 1);
+          }
+          let best = label.get(n.id)!;
+          let bestCnt = 0;
+          for (const [l, c] of counts) {
+            if (c > bestCnt || (c === bestCnt && l < best)) { best = l; bestCnt = c; }
+          }
+          if (best !== label.get(n.id)) { label.set(n.id, best); changed = true; }
+        }
+        if (!changed) break;
+      }
+
+      // Name each community by its highest-fanIn member
+      const communityMembers = new Map<string, FunctionNode[]>();
+      for (const n of internalNodes) {
+        const l = label.get(n.id)!;
+        if (!communityMembers.has(l)) communityMembers.set(l, []);
+        communityMembers.get(l)!.push(n);
+      }
+      for (const members of communityMembers.values()) {
+        const hub = members.slice().sort((a, b) => b.fanIn - a.fanIn)[0];
+        const communityLabel = hub.name;
+        for (const n of members) {
+          n.communityId = label.get(n.id)!;
+          n.communityLabel = communityLabel;
+        }
+      }
+    }
+
+    // Pass 6: Cyclomatic complexity — regex over body slice for each internal node
+    for (const node of allNodes.values()) {
+      if (node.isExternal || node.startIndex === undefined || node.endIndex === undefined) continue;
+      const content = fileContents.get(node.filePath);
+      if (!content) continue;
+      node.cyclomaticComplexity = computeCyclomaticComplexity(
+        content.slice(node.startIndex, node.endIndex),
+        node.language,
+      );
+    }
+
+    // Pass 7: Build class hierarchy (inheritance + grouping)
     const relationships = await extractClassRelationships(files);
     const { classes, inheritanceEdges } = buildClassNodes(allNodes, relationships);
 

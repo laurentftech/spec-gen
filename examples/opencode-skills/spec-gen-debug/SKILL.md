@@ -86,8 +86,18 @@ If no specs exist, skip this step and note the absence.
 
 ## Step 4 — Isolate and hypothesize
 
-For the top 2 candidate functions from Step 2, check their structural properties by calling the spec-gen MCP tool `analyze_impact` with:
+For the top 2 candidate functions from Step 2, get minimal context first (callers, callees, body, test coverage in one call):
 ```json
+// get_minimal_context
+{
+  "directory": "$PROJECT_ROOT",
+  "functionName": "$CANDIDATE_FUNCTION"
+}
+```
+
+Then check structural properties:
+```json
+// analyze_impact
 {
   "directory": "$PROJECT_ROOT",
   "symbol": "$CANDIDATE_FUNCTION",

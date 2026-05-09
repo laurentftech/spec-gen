@@ -71,9 +71,13 @@ import {
   handleGetSchemaInventory,
   handleGetUIComponents,
   handleGetEnvVars,
+  handleGetExternalPackages,
   handleAuditSpecCoverage,
   handleGenerateTests,
   handleGetTestCoverage,
+  handleGetMinimalContext,
+  handleGetCluster,
+  handleDetectChanges,
 } from '../../core/services/mcp-handlers/analysis.js';
 
 // Re-export utilities for tests
@@ -106,9 +110,13 @@ export {
   handleGetSchemaInventory,
   handleGetUIComponents,
   handleGetEnvVars,
+  handleGetExternalPackages,
   handleAuditSpecCoverage,
   handleGenerateTests,
   handleGetTestCoverage,
+  handleGetMinimalContext,
+  handleGetCluster,
+  handleDetectChanges,
 };
 
 // ============================================================================
@@ -960,6 +968,22 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: 'get_external_packages',
+    description:
+      'Return all direct external dependencies declared in package manifests: ' +
+      'package.json (npm), pyproject.toml / requirements.txt (pypi), Cargo.toml (cargo), go.mod (go). ' +
+      'Each entry includes name, version, ecosystem, and isDev flag. ' +
+      'Reads the pre-computed external-packages.json artifact when available, ' +
+      'otherwise scans manifests live. Run analyze_codebase first for the fastest results.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+      },
+      required: ['directory'],
+    },
+  },
+  {
     name: 'audit_spec_coverage',
     description:
       'Parity audit: report spec coverage gaps without any LLM call. ' +
@@ -1049,6 +1073,65 @@ export const TOOL_DEFINITIONS = [
         minCoverage: {
           type: 'number',
           description: 'Report belowThreshold:true if effective coverage is below this percentage',
+        },
+      },
+      required: ['directory'],
+    },
+  },
+  {
+    name: 'get_minimal_context',
+    description:
+      'Return the minimum context needed to safely modify a function: ' +
+      'its signature and body, direct callers (signatures only), direct callees (signatures only), ' +
+      'and which test files cover it. ' +
+      'Use this instead of orient when you already know exactly which function to modify. ' +
+      'Typically 200-600 tokens vs orient\'s 2000+. Run analyze_codebase first.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+        functionName: { type: 'string', description: 'Exact function or method name' },
+        filePath: {
+          type: 'string',
+          description: 'Optional relative file path to disambiguate when multiple functions share the name',
+        },
+      },
+      required: ['directory', 'functionName'],
+    },
+  },
+  {
+    name: 'get_cluster',
+    description:
+      'Return all functions in the same community as the given function. ' +
+      'Communities are computed via label propagation on the call graph at analyze time — ' +
+      'tightly coupled functions land in the same cluster regardless of directory. ' +
+      'Use this to understand the "blast radius neighbourhood" without traversing the graph manually. ' +
+      'Run analyze_codebase first.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+        functionName: { type: 'string', description: 'Function name to look up the community for' },
+      },
+      required: ['directory', 'functionName'],
+    },
+  },
+  {
+    name: 'detect_changes',
+    description:
+      'Detect recently changed functions and rank them by blast radius. ' +
+      'Runs git diff against a base ref (default HEAD), maps changed lines to function nodes, ' +
+      'then scores each changed function by fan-in + transitive callers. ' +
+      'Highest-scored functions are the riskiest to break. ' +
+      'Also reports test coverage for each changed function via tested_by edges. ' +
+      'Run analyze_codebase first.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        directory: { type: 'string', description: 'Absolute path to the project directory' },
+        base: {
+          type: 'string',
+          description: 'Git ref to diff against (default: HEAD). Use "HEAD~1" for last commit, "main" for branch diff.',
         },
       },
       required: ['directory'],
@@ -1315,6 +1398,9 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
       } else if (name === 'get_env_vars') {
         const { directory } = args as { directory: string };
         result = await handleGetEnvVars(directory);
+      } else if (name === 'get_external_packages') {
+        const { directory } = args as { directory: string };
+        result = await handleGetExternalPackages(directory);
       } else if (name === 'audit_spec_coverage') {
         const { directory, maxUncovered = 50, hubThreshold = 5 } =
           args as { directory: string; maxUncovered?: number; hubThreshold?: number };
@@ -1333,6 +1419,16 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
         const { directory, domains, minCoverage } =
           args as { directory: string; domains?: string[]; minCoverage?: number };
         result = await handleGetTestCoverage({ directory, domains, minCoverage });
+      } else if (name === 'get_minimal_context') {
+        const { directory, functionName, filePath } =
+          args as { directory: string; functionName: string; filePath?: string };
+        result = await handleGetMinimalContext(directory, functionName, filePath);
+      } else if (name === 'get_cluster') {
+        const { directory, functionName } = args as { directory: string; functionName: string };
+        result = await handleGetCluster(directory, functionName);
+      } else if (name === 'detect_changes') {
+        const { directory, base } = args as { directory: string; base?: string };
+        result = await handleDetectChanges(directory, base);
       } else if (name === 'record_decision') {
         const { directory, title, rationale, consequences, affectedFiles, supersedes } =
           args as { directory: string; title: string; rationale: string; consequences?: string; affectedFiles?: string[]; supersedes?: string };

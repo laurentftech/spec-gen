@@ -101,7 +101,17 @@ If no specs exist, skip this step and note the absence.
 
 ## Step 4 — Isolate and hypothesize
 
-For the top 2 candidate functions from Step 2, check their structural properties:
+For the top 2 candidate functions from Step 2, get minimal context first (callers, callees, body, test coverage in one call):
+
+```xml
+<use_mcp_tool>
+  <server_name>spec-gen</server_name>
+  <tool_name>get_minimal_context</tool_name>
+  <arguments>{"directory": "$PROJECT_ROOT", "functionName": "$CANDIDATE_FUNCTION"}</arguments>
+</use_mcp_tool>
+```
+
+Then check structural properties:
 
 ```xml
 <use_mcp_tool>

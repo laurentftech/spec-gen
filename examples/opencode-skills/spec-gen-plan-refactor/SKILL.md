@@ -109,11 +109,31 @@ If **all candidates are below 40%**:
 
 ---
 
-## Step 4 — Analyze impact
+## Step 4 — Get minimal context + analyze impact
+
+Get the condensed view of the target function (callers, callees, body, test coverage in one call):
+
+Call the spec-gen MCP tool `get_minimal_context` with `{"directory": "$DIRECTORY", "functionName": "$FUNCTION_NAME"}`.
+
+**What to read before deciding whether to proceed:**
+- `function.riskLevel` — `"high"` (fanIn ≥ 30 or fanOut ≥ 15) means up to 24 callers/callees shown. Read all — they are all in scope for this refactor.
+- `callers[*].callType` — all `"awaited"` = async interface frozen; extracting or splitting requires updating every call site. `"direct"` / `"method"` = more portable.
+- `testedBy[*].confidence` — `"called"` = direct test, safe to refactor under. `"imported"` only = `vi.mock()` can neutralize it; write a characterisation test **before** refactoring.
+
+Then get the full impact analysis:
 
 Call the spec-gen MCP tool `analyze_impact` with `{"directory": "$DIRECTORY", "symbol": "$FUNCTION_NAME"}`.
 
 Note: risk score (0–100), recommended strategy (`extract` / `split` / `facade` / `delegate`), top 5 upstream callers and downstream callees.
+
+**If `riskLevel` is `"high"` or impact risk score ≥ 60**, check the cluster to set refactor scope:
+
+Call the spec-gen MCP tool `get_cluster` with `{"directory": "$DIRECTORY", "functionName": "$FUNCTION_NAME"}`.
+
+Read `stats.clusterDensity`:
+- `< 0.05` — sparse; extract the target independently, others not in scope
+- `0.05–0.15` — moderate; include functions in `internalCallGraph` that call the target in the plan's risk section
+- `> 0.15` — dense; refactor the whole cluster together or not at all; add all members to affected-files list
 
 ---
 
