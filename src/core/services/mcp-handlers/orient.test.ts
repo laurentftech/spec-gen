@@ -235,6 +235,17 @@ describe('handleOrient', () => {
         classes: [], inheritanceEdges: [], hubFunctions: [], entryPoints: [], layerViolations: [],
         stats: { totalNodes: 2, totalEdges: 1, avgFanIn: 0.5, avgFanOut: 0.5 },
       },
+      edgeStore: {
+        getCallers: (id: string) => id === 'src/bar.ts::doBar'
+          ? [{ callerId: 'src/foo.ts::doFoo', calleeId: 'src/bar.ts::doBar', calleeName: 'doBar', confidence: 'name_only' }]
+          : [],
+        getCallees: (id: string) => id === 'src/foo.ts::doFoo'
+          ? [{ callerId: 'src/foo.ts::doFoo', calleeId: 'src/bar.ts::doBar', calleeName: 'doBar', confidence: 'name_only' }]
+          : [],
+        getNode: (id: string) => id === 'src/bar.ts::doBar'
+          ? { id: 'src/bar.ts::doBar', name: 'doBar', filePath: 'src/bar.ts', fanIn: 0, fanOut: 0, isAsync: false, language: 'TypeScript', startIndex: 0, endIndex: 50 }
+          : null,
+      },
     } as never);
 
     const result = await handleOrient('/tmp/proj', 'foo task') as Record<string, unknown>;

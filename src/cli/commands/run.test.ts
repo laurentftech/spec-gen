@@ -62,7 +62,7 @@ describe('run command', () => {
     it('should have --max-files option with default', () => {
       const maxFilesOption = runCommand.options.find(o => o.long === '--max-files');
       expect(maxFilesOption).toBeDefined();
-      expect(maxFilesOption?.defaultValue).toBe('500');
+      expect(maxFilesOption?.defaultValue).toBe('100000');
     });
   });
 

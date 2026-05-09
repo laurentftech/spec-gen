@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { LLMContext } from '../analyzer/artifact-generator.js';
 import type { SerializedCallGraph } from '../analyzer/call-graph.js';
+import { EdgeStore } from './edge-store.js';
+import type { CallEdge } from '../analyzer/call-graph.js';
 
 // ── chokidar mock (prevents real FS watcher from opening) ────────────────────
 
@@ -107,6 +109,48 @@ describe('McpWatcher.handleChange', () => {
     expect(updated.callGraph).toEqual(cg);
   });
 
+  it('preserves non-empty callGraph edges when patching signatures', async () => {
+    const cg = makeCallGraph();
+    cg.edges = [
+      { callerId: 'src/a.ts::foo', calleeId: 'src/b.ts::bar', calleeName: 'bar', confidence: 'name_only' },
+    ];
+    cg.stats.totalEdges = 1;
+    const ctx = makeContext({ callGraph: cg });
+    const { rootPath, outputPath, contextPath } = await setupProject(ctx);
+
+    // Change a file unrelated to the edge above
+    const srcFile = join(rootPath, 'other.ts');
+    await writeFile(srcFile, 'export function baz() {}', 'utf-8');
+
+    const { McpWatcher } = await import('./mcp-watcher.js');
+    const watcher = new McpWatcher({ rootPath, outputPath });
+    await watcher.handleChange(srcFile);
+
+    const updated = JSON.parse(await readFile(contextPath, 'utf-8')) as LLMContext;
+    expect(updated.callGraph?.edges).toHaveLength(1);
+    expect(updated.callGraph?.edges?.[0].callerId).toBe('src/a.ts::foo');
+    expect(updated.callGraph?.edges?.[0].calleeId).toBe('src/b.ts::bar');
+    expect(updated.callGraph?.edges?.[0].calleeName).toBe('bar');
+  });
+
+  it('updates signatures when call-graph.db is absent (backward compat)', async () => {
+    // No call-graph.db present — SQLite edge store not yet initialized.
+    // Signature updates must still work regardless of DB presence.
+    const ctx = makeContext();
+    const { rootPath, outputPath, contextPath } = await setupProject(ctx);
+
+    await mkdir(join(rootPath, 'src'), { recursive: true });
+    const srcFile = join(rootPath, 'src', 'service.ts');
+    await writeFile(srcFile, 'export function doWork() { return 1; }', 'utf-8');
+
+    const { McpWatcher } = await import('./mcp-watcher.js');
+    const watcher = new McpWatcher({ rootPath, outputPath });
+    await watcher.handleChange(srcFile);
+
+    const updated = JSON.parse(await readFile(contextPath, 'utf-8')) as LLMContext;
+    expect(updated.signatures?.some(s => s.path === 'src/service.ts')).toBe(true);
+  });
+
   it('replaces an existing signature entry for the same file', async () => {
     const ctx = makeContext({
       signatures: [{ path: 'src/foo.ts', language: 'TypeScript', entries: [] }],
@@ -203,6 +247,66 @@ describe('McpWatcher.handleChange', () => {
     const watcher = new McpWatcher({ rootPath, outputPath });
     await expect(watcher.handleChange(srcFile)).resolves.not.toThrow();
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('run analyze first'));
+  });
+
+  // ── SQLite edge update path ───────────────────────────────────────────────────
+
+  it('updates edges in call-graph.db when DB is present and content changed', async () => {
+    const ctx = makeContext();
+    const { rootPath, outputPath } = await setupProject(ctx);
+
+    // Seed the DB with a stale edge from src/a.ts to src/b.ts (relative paths — DB convention)
+    const store = EdgeStore.open(EdgeStore.dbPath(outputPath));
+    const staleEdge: CallEdge = {
+      callerId: 'src/a.ts::foo',
+      calleeId: 'src/b.ts::bar',
+      calleeName: 'bar',
+      confidence: 'name_only',
+    };
+    store.insertEdges([staleEdge]);
+    store.close();
+
+    await mkdir(join(rootPath, 'src'), { recursive: true });
+    const srcFile = join(rootPath, 'src', 'a.ts');
+    // New content: foo no longer exists, only baz
+    await writeFile(srcFile, 'export function baz() {}', 'utf-8');
+
+    const { McpWatcher } = await import('./mcp-watcher.js');
+    const watcher = new McpWatcher({ rootPath, outputPath });
+    await watcher.handleChange(srcFile);
+
+    // Stale edge (foo → bar) should be gone since we deleted edges for src/a.ts
+    const store2 = EdgeStore.open(EdgeStore.dbPath(outputPath));
+    const { outgoing } = store2.getEdgesForFile('src/a.ts');
+    store2.close();
+    // baz() doesn't call anything → 0 outgoing edges; stale edge was removed
+    expect(outgoing.filter(e => e.calleeName === 'bar')).toHaveLength(0);
+  });
+
+  it('skips re-index when file content is unchanged (hash cache hit)', async () => {
+    const ctx = makeContext();
+    const { rootPath, outputPath, contextPath } = await setupProject(ctx);
+
+    await mkdir(join(rootPath, 'src'), { recursive: true });
+    const srcFile = join(rootPath, 'src', 'stable.ts');
+    const content = 'export function stable() {}';
+    await writeFile(srcFile, content, 'utf-8');
+
+    // Seed hash cache with the same content (relative path — DB convention)
+    const store = EdgeStore.open(EdgeStore.dbPath(outputPath));
+    const { createHash } = await import('node:crypto');
+    store.setFileHash('src/stable.ts', createHash('sha256').update(content).digest('hex'));
+    store.close();
+
+    const before = await readFile(contextPath, 'utf-8');
+
+    const { McpWatcher } = await import('./mcp-watcher.js');
+    const watcher = new McpWatcher({ rootPath, outputPath });
+    await watcher.handleChange(srcFile);
+
+    // llm-context.json must not be written (early return on hash hit)
+    const after = await readFile(contextPath, 'utf-8');
+    expect(after).toBe(before);
   });
 });
 

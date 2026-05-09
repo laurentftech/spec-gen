@@ -206,8 +206,8 @@ export const analyzeCommand = new Command('analyze')
   )
   .option(
     '--max-files <n>',
-    'Maximum number of files to analyze',
-    '500'
+    'Maximum number of files to analyze (default: 100000)',
+    '100000'
   )
   .option(
     '--include <glob>',

@@ -762,7 +762,8 @@ export class RepositoryMapper {
       includePatterns: this.options.includePatterns,
       excludePatterns: this.options.excludePatterns,
       onProgress: (progress) => {
-        const pct = 10 + Math.round((progress.filesFound / (this.options.maxFiles ?? DEFAULT_MAX_FILES)) * 30);
+        const cap = Math.min(this.options.maxFiles ?? DEFAULT_MAX_FILES, 5_000);
+        const pct = 10 + Math.round((Math.min(progress.filesFound, cap) / cap) * 30);
         this.options.onProgress?.('walking', Math.min(pct, 40));
       },
     };

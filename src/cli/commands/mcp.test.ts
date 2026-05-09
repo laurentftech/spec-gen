@@ -47,6 +47,7 @@ vi.mock('../../core/analyzer/embedding-service.js', () => ({
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { EdgeStore } from '../../core/services/edge-store.js';
 import {
   validateDirectory,
   sanitizeMcpError,
@@ -141,6 +142,16 @@ async function writeCacheFixture(
     JSON.stringify({ callGraph, signatures }),
     'utf-8'
   );
+  // Write call-graph.db so handlers that require edgeStore work
+  const cg = callGraph as SerializedCallGraph;
+  if (cg.nodes) {
+    const store = EdgeStore.open(EdgeStore.dbPath(analysisDir));
+    const hubIds   = new Set((cg.hubFunctions   ?? []).map(n => n.id));
+    const entryIds = new Set((cg.entryPoints     ?? []).map(n => n.id));
+    store.insertNodes(cg.nodes, hubIds, entryIds);
+    if (cg.edges) store.insertEdges(cg.edges);
+    store.close();
+  }
 }
 
 async function writeMappingFixture(dir: string, mapping: MappingArtifact) {

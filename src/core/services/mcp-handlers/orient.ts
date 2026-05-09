@@ -189,27 +189,6 @@ export async function handleOrient(
     readCachedContext(absDir),
   ]);
 
-  // ── Build call graph adjacency maps ───────────────────────────────────────
-  const callerMap = new Map<string, CallNeighbour[]>();
-  const calleeMap = new Map<string, CallNeighbour[]>();
-
-  if (llmCtx?.callGraph) {
-    const cg = llmCtx.callGraph;
-    const nodeById = new Map(cg.nodes.map(n => [n.id, n]));
-    for (const n of cg.nodes) {
-      callerMap.set(n.id, []);
-      calleeMap.set(n.id, []);
-    }
-    for (const e of cg.edges) {
-      if (!e.calleeId) continue;
-      const caller = nodeById.get(e.callerId);
-      const callee = nodeById.get(e.calleeId);
-      if (caller && callee) {
-        calleeMap.get(e.callerId)?.push({ name: callee.name, filePath: callee.filePath });
-        callerMap.get(e.calleeId)?.push({ name: caller.name, filePath: caller.filePath });
-      }
-    }
-  }
 
   // ── Relevant functions (top-N) ────────────────────────────────────────────
   // Exclude external synthetic nodes (fetch, https.request, etc.) — they have no spec/docstring
@@ -273,12 +252,21 @@ export async function handleOrient(
     .map(([domain, { specFile, matchCount }]) => ({ domain, specFile, matchCount }));
 
   // ── Call paths for each top function ──────────────────────────────────────
-  const callPaths: OrientCallPath[] = topResults.map(r => ({
-    function: r.record.name,
-    filePath: r.record.filePath,
-    callers: (callerMap.get(r.record.id) ?? []).slice(0, 5),
-    callees: (calleeMap.get(r.record.id) ?? []).slice(0, 5),
-  }));
+  const callPaths: OrientCallPath[] = topResults.map(r => {
+    if (!llmCtx?.edgeStore) {
+      return { function: r.record.name, filePath: r.record.filePath, callers: [], callees: [] };
+    }
+    const es = llmCtx.edgeStore;
+    const callers = es.getCallers(r.record.id)
+      .map(e => { const n = es.getNode(e.callerId); return n && !n.isExternal ? { name: n.name, filePath: n.filePath } : null; })
+      .filter((x): x is CallNeighbour => x !== null)
+      .slice(0, 5);
+    const callees = es.getCallees(r.record.id)
+      .map(e => { const n = es.getNode(e.calleeId); return n && !n.isExternal ? { name: n.name, filePath: n.filePath } : null; })
+      .filter((x): x is CallNeighbour => x !== null)
+      .slice(0, 5);
+    return { function: r.record.name, filePath: r.record.filePath, callers, callees };
+  });
 
   // ── Insertion points (lightweight: reuse rawResults with structural scoring) ──
   // Normalise search scores to [0, 1] for compositeScore (scores are RRF/BM25: higher = better)

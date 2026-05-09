@@ -617,6 +617,53 @@ describe('AnalysisArtifactGenerator', () => {
       expect(llmContext.phase1_survey).toBeDefined();
     });
 
+    it('writes callGraph with correct edge shape to llm-context.json', async () => {
+      const srcDir = join(tempDir, 'src');
+      await mkdir(srcDir, { recursive: true });
+      // Two functions in one file so the call graph builder can detect the edge
+      await writeFile(
+        join(srcDir, 'utils.ts'),
+        'export function foo() { return bar(); }\nexport function bar() { return 42; }'
+      );
+
+      const utilsFile = createScoredFile({
+        name: 'utils.ts',
+        path: 'src/utils.ts',
+        absolutePath: join(srcDir, 'utils.ts'),
+      });
+      const repoMap = createMockRepoMap({
+        allFiles: [utilsFile],
+        highValueFiles: [utilsFile],
+      });
+      const depGraph = createMockDepGraph();
+
+      await generateAndSaveArtifacts(repoMap, depGraph, {
+        rootDir: tempDir,
+        outputDir,
+      });
+
+      const llmContext = JSON.parse(await readFile(join(outputDir, 'llm-context.json'), 'utf-8'));
+      expect(llmContext.callGraph).toBeDefined();
+      expect(llmContext.callGraph).toHaveProperty('nodes');
+      expect(llmContext.callGraph).toHaveProperty('edges');
+      expect(llmContext.callGraph).toHaveProperty('stats');
+
+      // At least one node must be present (foo and bar)
+      expect(llmContext.callGraph.nodes.length).toBeGreaterThan(0);
+
+      // Verify each edge has the required fields with correct types
+      for (const edge of llmContext.callGraph.edges as Record<string, unknown>[]) {
+        expect(edge).toHaveProperty('callerId');
+        expect(edge).toHaveProperty('calleeId');
+        expect(edge).toHaveProperty('calleeName');
+        expect(edge).toHaveProperty('confidence');
+        expect(typeof edge.callerId).toBe('string');
+        expect(typeof edge.calleeId).toBe('string');
+        expect(typeof edge.calleeName).toBe('string');
+        expect(typeof edge.confidence).toBe('string');
+      }
+    });
+
     it('should create output directory if it does not exist', async () => {
       const nestedOutputDir = join(tempDir, 'nested', 'deeply', '.spec-gen', 'analysis');
 

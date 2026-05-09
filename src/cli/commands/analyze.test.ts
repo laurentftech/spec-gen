@@ -116,7 +116,7 @@ describe('analyze command', () => {
     it('should have --max-files option with default', () => {
       const maxFilesOption = analyzeCommand.options.find(o => o.long === '--max-files');
       expect(maxFilesOption).toBeDefined();
-      expect(maxFilesOption?.defaultValue).toBe('500');
+      expect(maxFilesOption?.defaultValue).toBe('100000');
     });
 
     it('should have --include option (repeatable)', () => {
@@ -265,7 +265,7 @@ describe('analyze command', () => {
         version: '1.0.0',
         projectType: 'nodejs' as const,
         openspecPath: './openspec',
-        analysis: { maxFiles: 500, includePatterns, excludePatterns },
+        analysis: { maxFiles: 100000, includePatterns, excludePatterns },
         generation: { provider: 'openai' as const, model: 'gpt-4', domains: 'auto' as const },
         createdAt: new Date().toISOString(),
         lastRun: null,
@@ -286,7 +286,7 @@ describe('analyze command', () => {
       readSpecGenConfig.mockResolvedValue(makeConfig(['static/**', 'vendor/**']));
 
       await runAnalysis('/fake/root', '/fake/root/.spec-gen/analysis', {
-        maxFiles: 500, include: [], exclude: [],
+        maxFiles: 100000, include: [], exclude: [],
       });
 
       expect(getMapperExcludePatterns()).toEqual(
@@ -298,7 +298,7 @@ describe('analyze command', () => {
       readSpecGenConfig.mockResolvedValue(makeConfig(['static/**']));
 
       await runAnalysis('/fake/root', '/fake/root/.spec-gen/analysis', {
-        maxFiles: 500, include: [], exclude: ['legacy/**'],
+        maxFiles: 100000, include: [], exclude: ['legacy/**'],
       });
 
       expect(getMapperExcludePatterns()).toEqual(
@@ -310,7 +310,7 @@ describe('analyze command', () => {
       readSpecGenConfig.mockResolvedValue(makeConfig(['node_modules/**']));
 
       await runAnalysis('/fake/root', '/fake/root/.spec-gen/analysis', {
-        maxFiles: 500, include: [], exclude: ['node_modules/**'],
+        maxFiles: 100000, include: [], exclude: ['node_modules/**'],
       });
 
       const patterns = getMapperExcludePatterns();
@@ -321,7 +321,7 @@ describe('analyze command', () => {
       readSpecGenConfig.mockResolvedValue(null);
 
       await runAnalysis('/fake/root', '/fake/root/.spec-gen/analysis', {
-        maxFiles: 500, include: [], exclude: ['dist/**'],
+        maxFiles: 100000, include: [], exclude: ['dist/**'],
       });
 
       expect(getMapperExcludePatterns()).toEqual(
@@ -345,7 +345,7 @@ describe('analyze command', () => {
     function makeConfig(includePatterns: string[], excludePatterns: string[] = []) {
       return {
         version: '1.0.0', projectType: 'nodejs' as const, openspecPath: './openspec',
-        analysis: { maxFiles: 500, includePatterns, excludePatterns },
+        analysis: { maxFiles: 100000, includePatterns, excludePatterns },
         generation: { provider: 'openai' as const, model: 'gpt-4', domains: 'auto' as const },
         createdAt: new Date().toISOString(), lastRun: null,
       };
@@ -361,7 +361,7 @@ describe('analyze command', () => {
       readSpecGenConfig.mockResolvedValue(makeConfig(['*.graphql', '*.prisma']));
 
       await runAnalysis('/fake/root', '/fake/root/.spec-gen/analysis', {
-        maxFiles: 500, include: [], exclude: [],
+        maxFiles: 100000, include: [], exclude: [],
       });
 
       expect(getMapperIncludePatterns()).toEqual(
@@ -373,7 +373,7 @@ describe('analyze command', () => {
       readSpecGenConfig.mockResolvedValue(makeConfig(['*.graphql']));
 
       await runAnalysis('/fake/root', '/fake/root/.spec-gen/analysis', {
-        maxFiles: 500, include: ['*.proto'], exclude: [],
+        maxFiles: 100000, include: ['*.proto'], exclude: [],
       });
 
       expect(getMapperIncludePatterns()).toEqual(
@@ -385,7 +385,7 @@ describe('analyze command', () => {
       readSpecGenConfig.mockResolvedValue(makeConfig(['*.graphql']));
 
       await runAnalysis('/fake/root', '/fake/root/.spec-gen/analysis', {
-        maxFiles: 500, include: ['*.graphql'], exclude: [],
+        maxFiles: 100000, include: ['*.graphql'], exclude: [],
       });
 
       const patterns = getMapperIncludePatterns();
@@ -413,7 +413,7 @@ describe('analyze command', () => {
       version: '1.0.0',
       projectType: 'nodejs' as const,
       openspecPath: './openspec',
-      analysis: { maxFiles: 500, includePatterns: [], excludePatterns: [] },
+      analysis: { maxFiles: 100000, includePatterns: [], excludePatterns: [] },
       generation: { provider: 'openai' as const, model: 'gpt-4', domains: 'auto' as const },
       createdAt: new Date().toISOString(),
       lastRun: null,

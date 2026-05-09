@@ -78,6 +78,9 @@ export const ARTIFACT_REFACTOR_PRIORITIES = 'refactor-priorities.json';
 /** Filename for the content-hash fingerprint used for cache invalidation */
 export const ARTIFACT_FINGERPRINT = 'fingerprint.json';
 
+/** Filename for the SQLite call-graph edge store */
+export const ARTIFACT_CALL_GRAPH_DB = 'call-graph.db';
+
 /** Filename for the repository map artifact (saved by RepositoryMapper) */
 export const ARTIFACT_REPOSITORY_MAP = 'repository-map.json';
 
@@ -138,8 +141,8 @@ export const LLM_CLI_TIMEOUT_MS = 300_000;
 // ANALYSIS
 // ============================================================================
 
-/** Default maximum number of files to include in analysis */
-export const DEFAULT_MAX_FILES = 500;
+/** Default maximum number of files to include in analysis (effectively uncapped) */
+export const DEFAULT_MAX_FILES = 100_000;
 
 /** Default maximum number of changed files to check in drift detection */
 export const DEFAULT_DRIFT_MAX_FILES = 100;

@@ -176,25 +176,7 @@ export async function handleSearchCode(
     readCachedContext(absDir),
   ]);
 
-  // Build graph adjacency for neighbourhood enrichment (MCP graph-first strategy)
   type Neighbour = { name: string; filePath: string };
-  let callerMap: Map<string, Neighbour[]> | undefined;
-  let calleeMap: Map<string, Neighbour[]> | undefined;
-  if (llmCtx?.callGraph) {
-    const cg = llmCtx.callGraph;
-    const nodeMap = new Map(cg.nodes.map((n) => [n.id, n]));
-    callerMap = new Map(cg.nodes.map((n) => [n.id, [] as Neighbour[]]));
-    calleeMap = new Map(cg.nodes.map((n) => [n.id, [] as Neighbour[]]));
-    for (const e of cg.edges) {
-      if (!e.calleeId) continue;
-      const caller = nodeMap.get(e.callerId);
-      const callee = nodeMap.get(e.calleeId);
-      if (caller && callee) {
-        calleeMap.get(e.callerId)?.push({ name: callee.name, filePath: callee.filePath });
-        callerMap.get(e.calleeId)?.push({ name: caller.name, filePath: caller.filePath });
-      }
-    }
-  }
 
   // ── RIG-20: cross-graph spec traversal — seed → spec domains → peer functions ──
   // For each result that has linkedSpecs, traverse the spec domain to find
@@ -240,9 +222,16 @@ export async function handleSearchCode(
       isHub: r.record.isHub,
       isEntryPoint: r.record.isEntryPoint,
       linkedSpecs: mappingIdx ? specsForFile(mappingIdx, r.record.filePath) : undefined,
-      // Graph neighbourhood: callers and callees in the call graph
-      callers: callerMap?.get(r.record.id),
-      callees: calleeMap?.get(r.record.id),
+      callers: llmCtx?.edgeStore
+        ? llmCtx.edgeStore.getCallers(r.record.id)
+            .map(e => { const n = llmCtx!.edgeStore!.getNode(e.callerId); return n && !n.isExternal ? { name: n.name, filePath: n.filePath } : null; })
+            .filter((x): x is Neighbour => x !== null)
+        : undefined,
+      callees: llmCtx?.edgeStore
+        ? llmCtx.edgeStore.getCallees(r.record.id)
+            .map(e => { const n = llmCtx!.edgeStore!.getNode(e.calleeId); return n && !n.isExternal ? { name: n.name, filePath: n.filePath } : null; })
+            .filter((x): x is Neighbour => x !== null)
+        : undefined,
     })),
     ...(specPeers.length > 0 ? { specLinkedFunctions: specPeers } : {}),
   };
@@ -333,27 +322,14 @@ export async function handleSuggestInsertionPoints(
   });
 
   // RIG-13 — Graph expansion: add depth-1 callers of semantic seed functions.
-  // Callers (orchestrators) are likely to be the right insertion point for a new feature:
-  // they coordinate the domain logic and control the execution flow.
-  if (llmCtx?.callGraph) {
-    const cg = llmCtx.callGraph;
-    const nodeById = new Map(cg.nodes.map((n) => [n.id, n]));
-    // Build callerOf: nodeId → caller node ids
-    const callerOf = new Map<string, string[]>();
-    for (const e of cg.edges) {
-      if (!e.calleeId) continue;
-      const list = callerOf.get(e.calleeId) ?? [];
-      list.push(e.callerId);
-      callerOf.set(e.calleeId, list);
-    }
-
+  if (llmCtx?.edgeStore) {
     const seedIds = new Set(rawResults.map((r) => r.record.id));
     const existingIds = new Set(candidates.map((c) => `${c.filePath}::${c.name}`));
 
     for (const seedResult of rawResults) {
-      const callerIds = callerOf.get(seedResult.record.id) ?? [];
+      const callerIds = llmCtx.edgeStore.getCallers(seedResult.record.id).map(e => e.callerId);
       for (const callerId of callerIds) {
-        const callerNode = nodeById.get(callerId);
+        const callerNode = llmCtx.edgeStore.getNode(callerId);
         if (!callerNode) continue;
         const key = `${callerNode.filePath}::${callerNode.name}`;
         if (existingIds.has(key) || seedIds.has(callerId)) continue;

@@ -22,6 +22,7 @@ import {
   specsForFile,
   functionsForDomain,
 } from './utils.js';
+import { EdgeStore } from '../edge-store.js';
 import { logger } from '../../../utils/logger.js';
 import {
   SPEC_GEN_DIR,
@@ -237,6 +238,33 @@ describe('readCachedContext', () => {
     await writeFile(join(dir, ARTIFACT_LLM_CONTEXT), JSON.stringify(ctx), 'utf-8');
     const result = await readCachedContext(tmpDir);
     expect(result).toMatchObject({ phase1_survey: { purpose: 'survey' } });
+  });
+
+  it('attaches EdgeStore when call-graph.db is present', async () => {
+    const dir = join(tmpDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+    await mkdir(dir, { recursive: true });
+    const ctx = { phase1_survey: { purpose: '', files: [], totalTokens: 0 }, phase2_deep: { purpose: '', files: [], totalTokens: 0 }, phase3_validation: { purpose: '', files: [], totalTokens: 0 } };
+    await writeFile(join(dir, ARTIFACT_LLM_CONTEXT), JSON.stringify(ctx), 'utf-8');
+    // Create an EdgeStore (schema init happens in constructor)
+    EdgeStore.open(EdgeStore.dbPath(dir)).close();
+
+    const result = await readCachedContext(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.edgeStore).toBeDefined();
+    // Clean up
+    result!.edgeStore?.close();
+  });
+
+  it('edgeStore is absent when call-graph.db does not exist', async () => {
+    const dir = join(tmpDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+    await mkdir(dir, { recursive: true });
+    const ctx = { phase1_survey: { purpose: '', files: [], totalTokens: 0 }, phase2_deep: { purpose: '', files: [], totalTokens: 0 }, phase3_validation: { purpose: '', files: [], totalTokens: 0 } };
+    await writeFile(join(dir, ARTIFACT_LLM_CONTEXT), JSON.stringify(ctx), 'utf-8');
+    // No call-graph.db created
+
+    const result = await readCachedContext(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.edgeStore).toBeUndefined();
   });
 });
 

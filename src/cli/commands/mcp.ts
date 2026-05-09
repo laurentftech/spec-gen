@@ -1491,6 +1491,6 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
 export const mcpCommand = new Command('mcp')
   .description('Start spec-gen as an MCP server (stdio transport, for Cline/Claude Code)')
   .option('--watch <directory>', 'Watch a project directory and incrementally re-index signatures on file changes')
-  .option('--watch-auto', 'Auto-detect the project directory from the first tool call and start watching (recommended for Cline/Claude Code)', false)
+  .option('--watch-auto', 'Auto-detect the project directory from the first tool call and start watching', true)
   .option('--watch-debounce <ms>', 'Debounce delay in ms before re-indexing after a file change (default: 400)', '400')
   .action((options: McpServerOptions) => startMcpServer(options));

@@ -11,15 +11,23 @@
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { join, relative } from 'node:path';
 import chokidar, { type FSWatcher } from 'chokidar';
 import { extractSignatures, detectLanguage } from '../analyzer/signature-extractor.js';
 import type { LLMContext } from '../analyzer/artifact-generator.js';
+import { EdgeStore } from './edge-store.js';
 import {
   SPEC_GEN_DIR,
   SPEC_GEN_ANALYSIS_SUBDIR,
   ARTIFACT_LLM_CONTEXT,
 } from '../../constants.js';
+
+const CALL_GRAPH_LANGS = new Set([
+  'Python', 'TypeScript', 'JavaScript', 'Go', 'Rust', 'Ruby', 'Java', 'C++', 'Swift',
+]);
+/** Max callerFiles to re-parse in a single watch event (guards against high-fanIn renames). */
+const CALLER_REPARSE_LIMIT = 10;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -133,7 +141,51 @@ export class McpWatcher {
     if (isTestFile(rel)) return;
     if (detectLanguage(rel) === 'unknown') return;
 
-    // Read llm-context.json — bail silently if analyze has never been run
+    // Read new file content (needed for hash check and re-parse)
+    let content: string;
+    try {
+      content = await readFile(absPath, 'utf-8');
+    } catch {
+      return; // file may have been deleted between the event and now
+    }
+
+    // ── Incremental edge update (CGC _handle_modification algorithm) ──────────
+    if (EdgeStore.exists(this.outputPath)) {
+      const store = EdgeStore.open(EdgeStore.dbPath(this.outputPath));
+      try {
+        // Content hash — skip entirely on no-op IDE autosaves
+        const newHash = createHash('sha256').update(content).digest('hex');
+        if (store.getFileHash(rel) === newHash) return;
+
+        // Reverse lookup BEFORE delete so we know which files call into this one
+        // callerFiles are relative paths (DB stores relative paths)
+        const callerFiles = store.getCallerFiles(rel);
+
+        // Re-parse BEFORE mutating DB — graph stays readable (old state) during parse
+        const { edges: newEdges, nodes: newNodes } = await buildGraphSubset(rel, content, callerFiles, this.rootPath);
+
+        // Atomic swap: delete stale data and insert fresh data in one transaction
+        // so concurrent MCP reads never see a torn graph
+        store.transaction(() => {
+          store.deleteEdgesForFile(rel);
+          for (const cf of callerFiles.slice(0, CALLER_REPARSE_LIMIT)) {
+            store.deleteOutgoingEdgesForFile(cf);
+          }
+          store.deleteNodesForFile(rel);
+          store.insertNodes(newNodes);
+          store.insertEdges(newEdges);
+          store.setFileHash(rel, newHash);
+        });
+
+        process.stderr.write(
+          `[mcp-watcher] updated graph: ${rel} (+${newNodes.length} nodes, +${newEdges.length} edges, ${callerFiles.length} callers re-parsed)\n`
+        );
+      } finally {
+        store.close();
+      }
+    }
+
+    // ── Signature patch ───────────────────────────────────────────────────────
     const contextPath = join(this.outputPath, ARTIFACT_LLM_CONTEXT);
     let context: LLMContext;
     try {
@@ -144,17 +196,7 @@ export class McpWatcher {
       return;
     }
 
-    // Re-extract signatures for the changed file
-    let content: string;
-    try {
-      content = await readFile(absPath, 'utf-8');
-    } catch {
-      return; // file may have been deleted between the event and now
-    }
-
     const newMap = extractSignatures(rel, content);
-
-    // Patch signatures array (preserve callGraph and everything else)
     if (!context.signatures) context.signatures = [];
     const idx = context.signatures.findIndex(m => m.path === rel);
     if (idx >= 0) {
@@ -227,4 +269,47 @@ function isTestFile(relPath: string): boolean {
     relPath.includes('.spec.') ||
     relPath.includes('__tests__')
   );
+}
+
+/**
+ * Re-parse changedFile + up to CALLER_REPARSE_LIMIT callerFiles.
+ * Returns fresh edges (all files in subset) and nodes (changedFile only —
+ * callerFiles nodes are untouched since their function signatures didn't change).
+ */
+async function buildGraphSubset(
+  changedRel: string,
+  changedContent: string,
+  callerFiles: string[],
+  rootDir: string,
+): Promise<{
+  edges: import('../analyzer/call-graph.js').CallEdge[];
+  nodes: import('../analyzer/call-graph.js').FunctionNode[];
+}> {
+  const lang = detectLanguage(changedRel);
+  if (!CALL_GRAPH_LANGS.has(lang)) return { edges: [], nodes: [] };
+
+  const { CallGraphBuilder } = await import('../analyzer/call-graph.js');
+  // Use relative paths as node IDs (consistent with analyze output)
+  const files: Array<{ path: string; content: string; language: string }> = [
+    { path: changedRel, content: changedContent, language: lang },
+  ];
+
+  for (const cf of callerFiles.slice(0, CALLER_REPARSE_LIMIT)) {
+    const cfLang = detectLanguage(cf);
+    if (!CALL_GRAPH_LANGS.has(cfLang)) continue;
+    try {
+      const cfContent = await readFile(join(rootDir, cf), 'utf-8');
+      files.push({ path: cf, content: cfContent, language: cfLang });
+    } catch {
+      // skip unreadable files
+    }
+  }
+
+  const builder = new CallGraphBuilder();
+  const result = await builder.build(files);
+
+  // Only return nodes from changedFile — callerFiles nodes are already in DB and unchanged
+  const changedNodes = Array.from(result.nodes.values()).filter(n => n.filePath === changedRel);
+
+  return { edges: result.edges, nodes: changedNodes };
 }
