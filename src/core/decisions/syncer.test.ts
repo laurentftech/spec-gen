@@ -222,7 +222,9 @@ describe('syncApprovedDecisions — filesystem writes', () => {
     });
 
     expect(result.synced).toHaveLength(1);
-    expect(result.modifiedSpecs).toHaveLength(0);
+    // ADR always written; no spec file written (domain missing)
+    expect(result.modifiedSpecs).toHaveLength(1);
+    expect(result.modifiedSpecs[0]).toMatch(/^openspec\/decisions\/adr-/);
     expect(logger.warning).toHaveBeenCalledWith(
       expect.stringContaining('nonexistent-domain'),
     );
@@ -269,10 +271,10 @@ describe('syncApprovedDecisions — filesystem writes', () => {
 });
 
 // ============================================================================
-// isArchitectural — 2-keyword threshold
+// ADR creation — always writes an ADR for every synced decision
 // ============================================================================
 
-describe('isArchitectural — exported via dryRun ADR path', () => {
+describe('ADR creation — always writes ADR regardless of content', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
@@ -283,32 +285,7 @@ describe('isArchitectural — exported via dryRun ADR path', () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  it('creates ADR placeholder in dryRun for architectural decisions', async () => {
-    // "authentication" + "database" — 2 keywords → architectural
-    const decision = makeDecision({
-      title: 'Authentication database schema',
-      rationale: 'We chose PostgreSQL for authentication and database storage.',
-    });
-    const store = makeStore([decision]);
-    const specMap = makeSpecMap('services', 'openspec/specs/services/spec.md');
-
-    const specDir = join(tmpDir, 'openspec', 'specs', 'services');
-    await mkdir(specDir, { recursive: true });
-    const { writeFile } = await import('node:fs/promises');
-    await writeFile(join(specDir, 'spec.md'), MINIMAL_SPEC, 'utf-8');
-
-    const { result } = await syncApprovedDecisions(store, {
-      rootPath: tmpDir,
-      openspecPath: join(tmpDir, 'openspec'),
-      specMap,
-      dryRun: true,
-    });
-
-    expect(result.modifiedSpecs.some((p) => p.startsWith('openspec/decisions/adr-'))).toBe(true);
-  });
-
-  it('does not create ADR for non-architectural decisions', async () => {
-    // No keyword matches at all
+  it('creates ADR placeholder in dryRun for any decision', async () => {
     const decision = makeDecision({
       title: 'Add retry logic',
       rationale: 'Retry failed HTTP requests up to 3 times.',
@@ -328,31 +305,54 @@ describe('isArchitectural — exported via dryRun ADR path', () => {
       dryRun: true,
     });
 
-    expect(result.modifiedSpecs.every((p) => !p.startsWith('openspec/decisions/adr-'))).toBe(true);
+    expect(result.modifiedSpecs.some((p) => p.startsWith('openspec/decisions/adr-'))).toBe(true);
   });
 
-  it('requires 2 keyword matches — single match is not architectural', async () => {
-    // Only "authentication" — 1 keyword → not architectural
+  it('writes ADR file on disk for every approved decision', async () => {
     const decision = makeDecision({
-      title: 'Add authentication endpoint',
-      rationale: 'Standard JWT-based login flow.',
+      title: 'Add retry logic',
+      rationale: 'Retry failed HTTP requests up to 3 times.',
     });
     const store = makeStore([decision]);
     const specMap = makeSpecMap('services', 'openspec/specs/services/spec.md');
 
     const specDir = join(tmpDir, 'openspec', 'specs', 'services');
     await mkdir(specDir, { recursive: true });
-    const { writeFile } = await import('node:fs/promises');
+    const { writeFile, readdir } = await import('node:fs/promises');
     await writeFile(join(specDir, 'spec.md'), MINIMAL_SPEC, 'utf-8');
 
-    const { result } = await syncApprovedDecisions(store, {
+    await syncApprovedDecisions(store, {
       rootPath: tmpDir,
       openspecPath: join(tmpDir, 'openspec'),
       specMap,
-      dryRun: true,
     });
 
-    expect(result.modifiedSpecs.every((p) => !p.startsWith('openspec/decisions/adr-'))).toBe(true);
+    const files = await readdir(join(tmpDir, 'openspec', 'decisions'));
+    expect(files.some((f) => f.startsWith('adr-'))).toBe(true);
+  });
+
+  it('increments ADR number for each successive decision', async () => {
+    const d1 = makeDecision({ id: 'aaa00001', title: 'First decision' });
+    const d2 = makeDecision({ id: 'bbb00002', title: 'Second decision', status: 'approved' });
+    const specDir = join(tmpDir, 'openspec', 'specs', 'services');
+    await mkdir(specDir, { recursive: true });
+    const { writeFile, readdir } = await import('node:fs/promises');
+    await writeFile(join(specDir, 'spec.md'), MINIMAL_SPEC, 'utf-8');
+    const specMap = makeSpecMap('services', 'openspec/specs/services/spec.md');
+
+    // Sync first
+    await syncApprovedDecisions(makeStore([d1]), {
+      rootPath: tmpDir, openspecPath: join(tmpDir, 'openspec'), specMap,
+    });
+    // Sync second
+    await syncApprovedDecisions(makeStore([d2]), {
+      rootPath: tmpDir, openspecPath: join(tmpDir, 'openspec'), specMap,
+    });
+
+    const files = await readdir(join(tmpDir, 'openspec', 'decisions'));
+    expect(files.filter((f) => f.startsWith('adr-'))).toHaveLength(2);
+    expect(files.some((f) => f.startsWith('adr-0001-'))).toBe(true);
+    expect(files.some((f) => f.startsWith('adr-0002-'))).toBe(true);
   });
 });
 
