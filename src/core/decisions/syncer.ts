@@ -88,6 +88,7 @@ async function syncDecision(
     }
   }
 
+  // Every approved decision gets an ADR — significance filtering happens at record time via the LLM extractor.
   if (options.dryRun) {
     const slug = toKebabCase(decision.title);
     modified.push(`openspec/decisions/adr-XXXX-${slug}.md`);

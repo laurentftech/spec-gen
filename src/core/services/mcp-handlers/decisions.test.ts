@@ -111,7 +111,6 @@ describe('handleRecordDecision', () => {
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-decisions-test-'));
-    vi.mocked(validateDirectory).mockResolvedValue(tmpDir);
     vi.clearAllMocks();
     vi.mocked(validateDirectory).mockResolvedValue(tmpDir);
   });
@@ -163,6 +162,13 @@ describe('handleRecordDecision', () => {
     );
     const store = await readStore(tmpDir);
     expect(store.decisions[0].supersedes).toBe('deadbeef');
+  });
+
+  it('does not duplicate when same title recorded twice (makeDecisionId is deterministic)', async () => {
+    await handleRecordDecision(tmpDir, 'Use SQLite', 'JSON too big');
+    await handleRecordDecision(tmpDir, 'Use SQLite', 'JSON too big');
+    const store = await readStore(tmpDir);
+    expect(store.decisions).toHaveLength(1);
   });
 });
 

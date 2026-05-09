@@ -38,6 +38,7 @@ import {
   OPENSPEC_SPECS_SUBDIR,
   DECISIONS_EXTRACTION_MAX_FILES,
   DECISIONS_DIFF_MAX_CHARS,
+  CONSOLIDATION_GRACE_PERIOD_MS,
 } from '../../constants.js';
 import type { PendingDecision } from '../../types/index.js';
 import { runTuiApproval } from '../tui-approval.js';
@@ -149,8 +150,8 @@ fi
 if [ "$DECISIONS_EXIT" -ne 0 ]; then
   exit "$DECISIONS_EXIT"
 fi
-# Sentinel: post-commit hook checks this to detect --no-verify bypass.
-touch .git/SPEC_GEN_GATE_RAN 2>/dev/null || true
+# Sentinel written on successful gate pass. Post-commit checks for its absence to detect --no-verify bypass.
+touch "$(git rev-parse --git-dir 2>/dev/null || echo .git)/SPEC_GEN_GATE_RAN" 2>/dev/null || true
 # end-spec-gen-decisions-hook
 `;
 
@@ -158,7 +159,7 @@ const POST_COMMIT_HOOK_MARKER = '# spec-gen-decisions-post-hook';
 const POST_COMMIT_HOOK_CONTENT = `${POST_COMMIT_HOOK_MARKER}
 # Warn when the pre-commit gate was bypassed via --no-verify.
 # post-commit is NOT skipped by --no-verify (only pre-commit and commit-msg are).
-SENTINEL=".git/SPEC_GEN_GATE_RAN"
+SENTINEL="$(git rev-parse --git-dir 2>/dev/null || echo .git)/SPEC_GEN_GATE_RAN"
 if [ -f "$SENTINEL" ]; then
   rm -f "$SENTINEL"
 else
@@ -744,7 +745,7 @@ Examples:
       const verified = getDecisionsByStatus(store, 'verified');
       const missing: Array<{ file: string; description: string }> = [];
 
-      if (verified.length === 0 && missing.length === 0) {
+      if (verified.length === 0) {
         const drafts = getDecisionsByStatus(store, 'draft');
         if (drafts.length > 0) {
           // Drafts recorded but consolidation never completed.
@@ -767,7 +768,7 @@ Examples:
 
         // If consolidation already ran recently, trust it found nothing — skip the warning.
         const consolidatedRecently = store.lastConsolidatedAt
-          && (Date.now() - new Date(store.lastConsolidatedAt).getTime()) < 60 * 60 * 1000;
+          && (Date.now() - new Date(store.lastConsolidatedAt).getTime()) < CONSOLIDATION_GRACE_PERIOD_MS;
         if (consolidatedRecently) {
           process.exitCode = 0;
           return;

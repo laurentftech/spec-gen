@@ -153,6 +153,9 @@ export const ANALYSIS_STALE_THRESHOLD_MS = 60 * 60 * 1000;
 /** How old (ms) an analysis can be before being re-used in 'run' (1 hour) */
 export const ANALYSIS_REUSE_THRESHOLD_MS = 60 * 60 * 1000;
 
+/** Grace period after consolidation during which the gate skips the no_decisions_recorded check (1 hour) */
+export const CONSOLIDATION_GRACE_PERIOD_MS = 60 * 60 * 1000;
+
 // ============================================================================
 // VIEWER / SERVER
 // ============================================================================
