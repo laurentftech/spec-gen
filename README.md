@@ -15,7 +15,7 @@ AI agents are powerful but amnesiac. On every new task:
 - They have no link between specs and code — drift is invisible
 - File-by-file navigation burns **15,000–50,000 tokens** per orientation pass, before a single line of useful code is written
 
-spec-gen closes this loop. Run it once. Wire two files into your agent's context. Every subsequent session starts informed.
+spec-gen closes this loop. Run a full analysis once, then keep the graph incrementally updated during development. Wire two files into your agent's context — every subsequent session starts informed.
 
 ---
 
@@ -44,7 +44,7 @@ You can use layer 1 alone to give agents structural context. Add layer 2 for spe
 | Token-efficient orient() | ❌ | ❌ | ✓ ~1–3k vs 15–50k tokens |
 | Living spec generation | ❌ | ❌ | ✓ |
 
-Cursor and Claude Code read files. spec-gen reads the graph.
+Traditional coding agents reconstruct architecture from repeated file reads every session. spec-gen persists it as a queryable graph.
 
 ---
 
@@ -132,7 +132,7 @@ environment.systemPackages = [ spec-gen.packages.x86_64-linux.default ];
 }
 ```
 
-One call. No file reads. The agent knows exactly where to look and what risks to consider.
+One graph query replaces most exploratory file reads. The agent knows exactly where to look and what risks to consider.
 
 </details>
 
@@ -142,7 +142,7 @@ One call. No file reads. The agent knows exactly where to look and what risks to
 
 **Analyze** (no API key)
 
-Scans your codebase with pure static analysis. Builds a full call graph persisted to SQLite, runs label-propagation community detection to cluster tightly coupled functions, computes McCabe cyclomatic complexity for every function, and extracts DB schemas, HTTP routes, UI components, middleware chains, and environment variables. Outputs `.spec-gen/analysis/CODEBASE.md` — a ~600-token structural digest that replaces 30,000+ tokens of file exploration.
+Scans your codebase with pure static analysis. Builds a full call graph persisted to SQLite, runs label-propagation community detection to cluster tightly coupled functions, computes McCabe cyclomatic complexity for every function, and extracts DB schemas, HTTP routes, UI components, middleware chains, and environment variables. Outputs `.spec-gen/analysis/CODEBASE.md` — a ~600-token structural digest that compresses the equivalent of tens of thousands of exploratory tokens into a small, queryable summary.
 
 With `--watch-auto`, the call graph updates incrementally on every file save: changed file and its direct callers are re-parsed and the graph is atomically swapped. Orient and BFS queries remain live between full analyze runs.
 
@@ -168,88 +168,25 @@ Agents call `record_decision` before writing code. Consolidation runs immediatel
 
 ## Architecture
 
-```mermaid
-graph TD
-    subgraph CLI["CLI Layer"]
-        CMD[spec-gen commands]
-    end
-
-    subgraph API["Programmatic API"]
-        API_INIT[specGenInit]
-        API_ANALYZE[specGenAnalyze]
-        API_GENERATE[specGenGenerate]
-        API_VERIFY[specGenVerify]
-        API_DRIFT[specGenDrift]
-        API_RUN[specGenRun]
-        API_DECISIONS[specGenConsolidateDecisions / specGenSyncDecisions]
-    end
-
-    subgraph Core["Core Layer"]
-        direction TB
-
-        subgraph Analyze["Analyze -- no API key"]
-            FW[File Walker] --> SS[Significance Scorer]
-            SS --> IP[Import Parser]
-            IP --> DG[Dependency Graph]
-            SS --> HR[HTTP Route Parser]
-            HR -->|cross-language edges| DG
-            DG --> RM[Repository Mapper]
-            RM --> AG[Artifact Generator]
-        end
-
-        subgraph Generate["Generate -- API key required"]
-            SP[Spec Pipeline] --> FF[OpenSpec Formatter]
-            FF --> OW[OpenSpec Writer]
-            SP --> ADR[ADR Generator]
-        end
-
-        subgraph Drift["Drift -- no API key"]
-            GA[Git Analyzer] --> SM[Spec Mapper]
-            SM --> DD[Drift Detector]
-            DD -.->|optional| LE[LLM Enhancer]
-        end
-
-        subgraph Decisions["Decisions -- LLM optional"]
-            DR[Decision Recorder]
-            DR --> DC[Consolidator]
-            DC -.->|LLM consolidate| DV[Verifier]
-            DV --> DS[Syncer]
-            GA -.->|fallback extractor| DC
-        end
-
-        LLM[LLM Service -- Anthropic / OpenAI / Compatible]
-    end
-
-    CMD --> API_INIT & API_ANALYZE & API_GENERATE & API_VERIFY & API_DRIFT & API_DECISIONS
-    API_RUN --> API_INIT & API_ANALYZE & API_GENERATE
-
-    API_INIT --> Analyze
-    API_ANALYZE --> Analyze
-    API_GENERATE --> Generate
-    API_DRIFT --> Drift
-    API_DECISIONS --> Decisions
-
-    Generate --> LLM
-    LE -.-> LLM
-    DC -.-> LLM
-    DV -.-> LLM
-
-    MCP([MCP / Agent]) -.->|record_decision| DR
-
-    AG -->|analysis artifacts| SP
-
-    subgraph Output["Output"]
-        SPECS[openspec/specs/*.md]
-        ADRS[openspec/decisions/*.md]
-        ANALYSIS[.spec-gen/analysis/]
-    end
-
-    OW --> SPECS
-    ADR --> ADRS
-    AG --> ANALYSIS
-    DS --> SPECS
-    DS --> ADRS
 ```
+Codebase
+   │
+   ▼
+spec-gen analyze ──► SQLite graph store (.spec-gen/analysis/call-graph.db)
+                          │                      │
+                          │              MCP tools (orient, BFS, search…)
+                          │                      │
+                     Artifact Generator        Agent
+                          │
+                    ┌─────┴──────┐
+                    ▼            ▼
+              CODEBASE.md   (optional)
+                         spec-gen generate ──► openspec/specs/*.md
+                         spec-gen drift   ──► drift report
+                         spec-gen decisions ► ADR gates
+```
+
+The graph is the core artifact. Specs, drift, and decisions are additive layers on top. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full pipeline diagram.
 
 ---
 
