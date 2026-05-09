@@ -23,7 +23,7 @@ import { isGitRepository, getChangedFiles, getFileDiff, getCommitMessages, resol
 import {
   loadDecisionStore,
   saveDecisionStore,
-  upsertDecisions,
+  replaceDecisions,
   patchDecision,
   getDecisionsByStatus,
 } from '../../core/decisions/store.js';
@@ -538,7 +538,9 @@ Examples:
       for (const id of [...originalDraftIds, ...supersededIds]) {
         updatedStore = patchDecision(updatedStore, id, { status: 'rejected' });
       }
-      updatedStore = upsertDecisions(updatedStore, [...verified, ...phantom]);
+      // replaceDecisions (not upsertDecisions) — consolidated decisions share IDs
+      // with their original drafts; upsert would silently no-op after the reject above.
+      updatedStore = replaceDecisions(updatedStore, [...verified, ...phantom]);
       updatedStore = { ...updatedStore, lastConsolidatedAt: new Date().toISOString() };
       await saveDecisionStore(rootPath, updatedStore);
 

@@ -10,6 +10,7 @@ import {
   makeDecisionId,
   newSessionId,
   upsertDecisions,
+  replaceDecisions,
   patchDecision,
   getDecisionsByStatus,
   loadDecisionStore,
@@ -140,6 +141,53 @@ describe('upsertDecisions', () => {
     const store: DecisionStore = { ...emptyStore(), decisions: [d] };
     const result = upsertDecisions(store, []);
     expect(result.decisions).toHaveLength(1);
+  });
+});
+
+// ============================================================================
+// replaceDecisions
+// ============================================================================
+
+describe('replaceDecisions', () => {
+  it('adds new decisions to an empty store', () => {
+    const d = makeDecision({ id: 'aaaa0001' });
+    const store: DecisionStore = { ...emptyStore(), decisions: [] };
+    const result = replaceDecisions(store, [d]);
+    expect(result.decisions).toHaveLength(1);
+  });
+
+  it('overwrites an existing decision with the same id', () => {
+    const existing = makeDecision({ id: 'aaaa0001', status: 'rejected', title: 'Old' });
+    const incoming = makeDecision({ id: 'aaaa0001', status: 'verified', title: 'New' });
+    const store: DecisionStore = { ...emptyStore(), decisions: [existing] };
+    const result = replaceDecisions(store, [incoming]);
+    expect(result.decisions).toHaveLength(1);
+    expect(result.decisions[0].status).toBe('verified');
+    expect(result.decisions[0].title).toBe('New');
+  });
+
+  it('models the consolidation scenario: rejected draft replaced by verified', () => {
+    // Simulate: patchDecision marks draft rejected, then replaceDecisions overwrites with verified
+    const draft = makeDecision({ id: 'aaaa0001', status: 'draft', title: 'Use SQLite' });
+    let store: DecisionStore = { ...emptyStore(), decisions: [draft] };
+    store = patchDecision(store, 'aaaa0001', { status: 'rejected' });
+    expect(store.decisions[0].status).toBe('rejected');
+    // replaceDecisions must overwrite the rejected placeholder
+    const verified = makeDecision({ id: 'aaaa0001', status: 'verified', title: 'Use SQLite' });
+    store = replaceDecisions(store, [verified]);
+    expect(store.decisions).toHaveLength(1);
+    expect(store.decisions[0].status).toBe('verified');
+  });
+
+  it('preserves unrelated decisions when replacing a subset', () => {
+    const d1 = makeDecision({ id: 'aaaa0001', status: 'approved' });
+    const d2 = makeDecision({ id: 'bbbb0002', status: 'draft' });
+    const store: DecisionStore = { ...emptyStore(), decisions: [d1, d2] };
+    const replacement = makeDecision({ id: 'bbbb0002', status: 'verified' });
+    const result = replaceDecisions(store, [replacement]);
+    expect(result.decisions).toHaveLength(2);
+    expect(result.decisions.find(d => d.id === 'aaaa0001')?.status).toBe('approved');
+    expect(result.decisions.find(d => d.id === 'bbbb0002')?.status).toBe('verified');
   });
 });
 
