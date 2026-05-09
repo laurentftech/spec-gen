@@ -2,7 +2,7 @@
 
 **Persistent architectural memory for AI coding agents.**
 
-spec-gen turns any codebase into a navigable knowledge graph. It extracts living specifications, detects spec/code drift, gates architectural decisions, and exposes everything through 45 graph-aware MCP tools — so agents start every session already knowing the codebase instead of re-discovering it.
+spec-gen turns any codebase into a navigable knowledge graph backed by [OpenSpec](https://github.com/Fission-AI/OpenSpec) living specifications. It extracts and maintains specs, detects spec/code drift, gates architectural decisions, and exposes everything through 45 graph-aware MCP tools — so agents start every session already knowing the codebase instead of re-discovering it.
 
 ---
 
@@ -186,7 +186,7 @@ spec-gen analyze ──► SQLite graph store (.spec-gen/analysis/call-graph.db)
                          spec-gen decisions ► ADR gates
 ```
 
-The graph is the core artifact. Specs, drift, and decisions are additive layers on top. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full pipeline diagram.
+The graph and the OpenSpec spec layer are co-equal: the graph makes orientation fast, the specs make it semantically grounded. Drift detection and decision gates connect both. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full pipeline diagram.
 
 ---
 
