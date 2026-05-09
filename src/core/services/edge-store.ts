@@ -392,6 +392,11 @@ export class EdgeStore {
     this.db.exec('DELETE FROM edges; DELETE FROM inheritance_edges; DELETE FROM nodes; DELETE FROM classes; DELETE FROM nodes_fts; DELETE FROM file_hashes;');
   }
 
+  /** Run fn inside a single SQLite transaction. Nested calls use savepoints. */
+  transaction(fn: () => void): void {
+    this.db.transaction(fn)();
+  }
+
   close(): void {
     this.db.close();
   }

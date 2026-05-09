@@ -161,22 +161,21 @@ export class McpWatcher {
         // callerFiles are relative paths (DB stores relative paths)
         const callerFiles = store.getCallerFiles(rel);
 
-        // Remove all edges touching changedFile
-        store.deleteEdgesForFile(rel);
-
-        // Remove callerFiles' outgoing edges (they may reference old function names)
-        for (const cf of callerFiles.slice(0, CALLER_REPARSE_LIMIT)) {
-          store.deleteOutgoingEdgesForFile(cf);
-        }
-
-        // Delete nodes for changedFile (callerFiles nodes are untouched — their functions didn't change)
-        store.deleteNodesForFile(rel);
-
-        // Re-parse changedFile + callerFiles: get fresh edges + updated nodes for changedFile
+        // Re-parse BEFORE mutating DB — graph stays readable (old state) during parse
         const { edges: newEdges, nodes: newNodes } = await buildGraphSubset(rel, content, callerFiles, this.rootPath);
-        store.insertNodes(newNodes);
-        store.insertEdges(newEdges);
-        store.setFileHash(rel, newHash);
+
+        // Atomic swap: delete stale data and insert fresh data in one transaction
+        // so concurrent MCP reads never see a torn graph
+        store.transaction(() => {
+          store.deleteEdgesForFile(rel);
+          for (const cf of callerFiles.slice(0, CALLER_REPARSE_LIMIT)) {
+            store.deleteOutgoingEdgesForFile(cf);
+          }
+          store.deleteNodesForFile(rel);
+          store.insertNodes(newNodes);
+          store.insertEdges(newEdges);
+          store.setFileHash(rel, newHash);
+        });
 
         process.stderr.write(
           `[mcp-watcher] updated graph: ${rel} (+${newNodes.length} nodes, +${newEdges.length} edges, ${callerFiles.length} callers re-parsed)\n`
