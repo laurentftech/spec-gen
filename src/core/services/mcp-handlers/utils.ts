@@ -85,7 +85,9 @@ export function sanitizeMcpError(err: unknown, format: 'string' | 'json' = 'stri
     .replace(/api[_-]?key[=:]\s*\S{8,}/gi, 'api_key=[REDACTED]');
   
   if (format === 'json') {
-    return { message: sanitized, code: err instanceof Error ? (err as any).code || 500 : 500 };
+    const errCode = err instanceof Error ? (err as Error & { code?: unknown }).code : undefined;
+    const code = typeof errCode === 'number' ? errCode : 500;
+    return { message: sanitized, code };
   }
   
   return sanitized;

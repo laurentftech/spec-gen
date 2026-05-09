@@ -364,6 +364,7 @@ Examples:
     approve?: string;
     reject?: string;
     note?: string;
+    reason?: string;
     sync: boolean;
     dryRun: boolean;
     list: boolean;
@@ -396,7 +397,7 @@ Examples:
       const updated = patchDecision(store, id, {
         status: 'approved',
         reviewedAt: new Date().toISOString(),
-        reviewNote: options.note ?? (options as any).reason,
+        reviewNote: options.note ?? options.reason,
       });
       await saveDecisionStore(rootPath, updated);
       logger.success(`Decision ${id} approved.`);
@@ -437,7 +438,7 @@ Examples:
       const updated = patchDecision(store, id, {
         status: 'rejected',
         reviewedAt: new Date().toISOString(),
-        reviewNote: options.note ?? (options as any).reason,
+        reviewNote: options.note ?? options.reason,
       });
       await saveDecisionStore(rootPath, updated);
       logger.success(`Decision ${id} rejected.`);

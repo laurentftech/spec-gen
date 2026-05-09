@@ -71,7 +71,13 @@ const DEFAULT_CONFIG: CrossScoringConfig = {
 /**
  * Build a bidirectional mapping index from mapping.json
  */
-export function buildBidirectionalMapping(mappings: any[]): {
+interface MappingEntry {
+  domain?: string;
+  requirement?: string;
+  functions?: Array<{ file?: string; name?: string }>;
+}
+
+export function buildBidirectionalMapping(mappings: MappingEntry[]): {
   functionToRequirements: Map<string, Array<{ domain: string; requirement: string }>>;
   requirementToFunctions: Map<string, Array<{ file: string; name: string }>>;
 } {
@@ -96,8 +102,8 @@ export function buildBidirectionalMapping(mappings: any[]): {
 
     // Build requirement → functions mapping
     const functions = m.functions
-      .filter((f: any) => f.file && f.name)
-      .map((f: any) => ({ file: f.file, name: f.name }));
+      .filter((f): f is { file: string; name: string } => Boolean(f.file && f.name))
+      .map((f) => ({ file: f.file, name: f.name }));
     if (functions.length > 0) {
       requirementToFunctions.set(requirementKey, functions);
     }

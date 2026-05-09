@@ -7,7 +7,7 @@ import { ARTIFACT_CALL_GRAPH_DB } from '../../constants.js';
 const require = createRequire(import.meta.url);
 
 function openDatabase(dbPath: string): import('better-sqlite3').Database {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const DatabaseCtor = require('better-sqlite3') as any;
   const db: import('better-sqlite3').Database = new DatabaseCtor(dbPath) as import('better-sqlite3').Database;
   db.pragma('journal_mode = WAL');
