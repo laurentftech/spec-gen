@@ -127,8 +127,10 @@ export function bfsFromDB(
   const visited = new Map<string, number>();
   for (const id of seeds) visited.set(id, 0);
 
-  // Level-by-level BFS: one batch query per depth level instead of one query per node.
-  // O(maxDepth) SQL queries vs O(visited_nodes) in the naive approach.
+  // Level-by-level BFS: one batch query per depth level, O(maxDepth) SQL queries.
+  // Recursive CTE was tested but regressed backward BFS on high fan-in hubs (19ms→30ms):
+  // SQLite UNION deduplicates on (id,depth) pairs, so (X,1) and (X,2) are both kept,
+  // causing path explosion. Iterative frontier never re-visits a node.
   let frontier = seeds.filter(id => !id.startsWith('external::'));
 
   for (let depth = 0; depth < maxDepth && frontier.length > 0; depth++) {
