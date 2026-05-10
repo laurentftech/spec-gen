@@ -156,6 +156,15 @@ export const ANALYSIS_REUSE_THRESHOLD_MS = 60 * 60 * 1000;
 /** Grace period after consolidation during which the gate skips the no_decisions_recorded check (1 hour) */
 export const CONSOLIDATION_GRACE_PERIOD_MS = 60 * 60 * 1000;
 
+/** Canonical gate block reason codes — shared by gate handler, docs, tests, and AGENTS.md */
+export const GATE_REASONS = {
+  VERIFIED: 'verified',
+  APPROVED_NOT_SYNCED: 'approved_not_synced',
+  DRAFTS_PENDING_CONSOLIDATION: 'drafts_pending_consolidation',
+  NO_DECISIONS_RECORDED: 'no_decisions_recorded',
+} as const;
+export type GateReason = typeof GATE_REASONS[keyof typeof GATE_REASONS];
+
 // ============================================================================
 // VIEWER / SERVER
 // ============================================================================

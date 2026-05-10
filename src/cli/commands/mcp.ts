@@ -1161,6 +1161,11 @@ export const TOOL_DEFINITIONS = [
           type: 'string',
           description: 'ID of a prior decision this one replaces (optional)',
         },
+        scope: {
+          type: 'string',
+          enum: ['local', 'component', 'cross-domain', 'system'],
+          description: 'Decision scope. local: single file; component: single module/service; cross-domain: multiple spec domains or service contracts; system: global constraint. Only cross-domain and system generate ADR files. Defaults to component; auto-promoted to cross-domain when multiple domains inferred.',
+        },
       },
       required: ['directory', 'title', 'rationale'],
     },
@@ -1430,9 +1435,9 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
         const { directory, base } = args as { directory: string; base?: string };
         result = await handleDetectChanges(directory, base);
       } else if (name === 'record_decision') {
-        const { directory, title, rationale, consequences, affectedFiles, supersedes } =
-          args as { directory: string; title: string; rationale: string; consequences?: string; affectedFiles?: string[]; supersedes?: string };
-        result = await handleRecordDecision(directory, title, rationale, consequences, affectedFiles, supersedes);
+        const { directory, title, rationale, consequences, affectedFiles, supersedes, scope } =
+          args as { directory: string; title: string; rationale: string; consequences?: string; affectedFiles?: string[]; supersedes?: string; scope?: import('../../types/index.js').DecisionScope };
+        result = await handleRecordDecision(directory, title, rationale, consequences, affectedFiles, supersedes, scope);
       } else if (name === 'list_decisions') {
         const { directory, status } = args as { directory: string; status?: string };
         result = await handleListDecisions(directory, status);

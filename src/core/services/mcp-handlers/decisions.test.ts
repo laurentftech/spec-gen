@@ -170,6 +170,58 @@ describe('handleRecordDecision', () => {
     const store = await readStore(tmpDir);
     expect(store.decisions).toHaveLength(1);
   });
+
+  it('stores default scope component when no promotion triggers fire', async () => {
+    await handleRecordDecision(tmpDir, 'Use SQLite', 'JSON too big');
+    const store = await readStore(tmpDir);
+    expect(store.decisions[0].scope).toBe('component');
+  });
+
+  it('respects explicit scope passed by caller', async () => {
+    await handleRecordDecision(tmpDir, 'Global auth strategy', 'Use JWT everywhere',
+      undefined, undefined, undefined, 'system');
+    const store = await readStore(tmpDir);
+    expect(store.decisions[0].scope).toBe('system');
+  });
+
+  it('structural trigger: files spanning 2+ top-level dirs → cross-domain', async () => {
+    // src/api/ and src/core/ are distinct top-level dirs (2-segment key: src/api vs src/core)
+    await handleRecordDecision(tmpDir, 'Shared cache layer',
+      'Cache used by both API and core services',
+      undefined, ['src/api/cache.ts', 'src/core/cache.ts']);
+    const store = await readStore(tmpDir);
+    expect(store.decisions[0].scope).toBe('cross-domain');
+  });
+
+  it('structural trigger does not fire for files in same top-level dir', async () => {
+    await handleRecordDecision(tmpDir, 'Extract helper',
+      'Refactor utility function',
+      undefined, ['src/utils/a.ts', 'src/utils/b.ts']);
+    const store = await readStore(tmpDir);
+    expect(store.decisions[0].scope).toBe('component');
+  });
+
+  it('semantic trigger suppressed when rationale contains refactor keyword', async () => {
+    const { matchFileToDomains } = await import('../../../core/drift/spec-mapper.js');
+    vi.mocked(matchFileToDomains).mockReturnValue(['api', 'core']);
+    await handleRecordDecision(tmpDir, 'Extract shared helper',
+      'Refactor duplicate code into a shared utility',
+      undefined, ['src/api/auth.ts']);
+    const store = await readStore(tmpDir);
+    expect(store.decisions[0].scope).toBe('component');
+    vi.mocked(matchFileToDomains).mockReturnValue([]);
+  });
+
+  it('semantic trigger: multi-domain + contract keyword + not refactor → cross-domain', async () => {
+    const { matchFileToDomains } = await import('../../../core/drift/spec-mapper.js');
+    vi.mocked(matchFileToDomains).mockReturnValue(['api', 'services']);
+    await handleRecordDecision(tmpDir, 'Shared auth contract',
+      'Define authentication interface across API and service layer',
+      undefined, ['src/auth/middleware.ts']);
+    const store = await readStore(tmpDir);
+    expect(store.decisions[0].scope).toBe('cross-domain');
+    vi.mocked(matchFileToDomains).mockReturnValue([]);
+  });
 });
 
 // ── handleListDecisions ───────────────────────────────────────────────────────
@@ -261,6 +313,16 @@ describe('handleApproveDecision', () => {
     const store = await readStore(tmpDir);
     expect(store.decisions[0].status).toBe('approved');
     expect(store.decisions[0].reviewNote).toBe('LGTM');
+  });
+
+  it('blocks re-approving an already synced decision', async () => {
+    const decision = makeDecision({ id: 'abc12345', status: 'synced' });
+    await writeStore(tmpDir, makeStore({ decisions: [decision] }));
+
+    const result = await handleApproveDecision(tmpDir, 'abc12345') as { error: string };
+    expect(result.error).toMatch(/already synced/);
+    const store = await readStore(tmpDir);
+    expect(store.decisions[0].status).toBe('synced');
   });
 });
 

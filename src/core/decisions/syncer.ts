@@ -11,8 +11,19 @@ import { join } from 'node:path';
 import { fileExists } from '../../utils/command-helpers.js';
 import { logger } from '../../utils/logger.js';
 import { parseSpecHeader } from '../drift/spec-mapper.js';
-import type { PendingDecision, DecisionStore, SpecMap } from '../../types/index.js';
+import type { PendingDecision, DecisionStore, SpecMap, DecisionScope } from '../../types/index.js';
 import { patchDecision, purgeInactiveDecisions, saveDecisionStore } from './store.js';
+
+/**
+ * ADRs are durable architectural memory, not a log of every implementation choice.
+ * Only cross-domain and system decisions are persisted as ADRs to avoid semantic
+ * dilution and retrieval pollution in the vector index.
+ */
+const ADR_SCOPES = new Set<DecisionScope>(['cross-domain', 'system']);
+
+function qualifiesForADR(decision: PendingDecision): boolean {
+  return ADR_SCOPES.has(decision.scope ?? 'component');
+}
 
 export interface SyncOptions {
   rootPath: string;
@@ -55,6 +66,10 @@ export async function syncApprovedDecisions(
   }
 
   if (!options.dryRun) {
+    // Purge happens only after all per-decision syncs complete (errors kept in store).
+    // Invariant: store and ADR files agree — a decision is removed from store only after
+    // status='synced', which is set only after spec + ADR writes succeed (or are skipped).
+    // Partial failure leaves the decision in store at status='approved', safe to retry.
     await saveDecisionStore(options.rootPath, purgeInactiveDecisions(updatedStore));
   }
 
@@ -88,13 +103,14 @@ async function syncDecision(
     }
   }
 
-  // Every approved decision gets an ADR — significance filtering happens at record time via the LLM extractor.
-  if (options.dryRun) {
-    const slug = toKebabCase(decision.title);
-    modified.push(`openspec/decisions/adr-XXXX-${slug}.md`);
-  } else {
-    const adrPath = await createADR(decision, options);
-    if (adrPath) modified.push(adrPath);
+  if (qualifiesForADR(decision)) {
+    if (options.dryRun) {
+      const slug = toKebabCase(decision.title);
+      modified.push(`openspec/decisions/adr-XXXX-${slug}.md`);
+    } else {
+      const adrPath = await createADR(decision, options);
+      if (adrPath) modified.push(adrPath);
+    }
   }
 
   return modified;

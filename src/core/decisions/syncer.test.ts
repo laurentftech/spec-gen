@@ -211,7 +211,8 @@ describe('syncApprovedDecisions — filesystem writes', () => {
 
   it('skips decisions where domain not found in specMap (logs warning)', async () => {
     const { logger } = await import('../../utils/logger.js');
-    const decision = makeDecision({ affectedDomains: ['nonexistent-domain'] });
+    // scope: cross-domain so ADR is written despite missing spec domain
+    const decision = makeDecision({ affectedDomains: ['nonexistent-domain'], scope: 'cross-domain' });
     const store = makeStore([decision]);
     const specMap = makeSpecMap('services', 'openspec/specs/services/spec.md');
 
@@ -222,7 +223,7 @@ describe('syncApprovedDecisions — filesystem writes', () => {
     });
 
     expect(result.synced).toHaveLength(1);
-    // ADR always written; no spec file written (domain missing)
+    // ADR written (cross-domain scope); no spec file written (domain missing)
     expect(result.modifiedSpecs).toHaveLength(1);
     expect(result.modifiedSpecs[0]).toMatch(/^openspec\/decisions\/adr-/);
     expect(logger.warning).toHaveBeenCalledWith(
@@ -310,10 +311,11 @@ describe('ADR creation — always writes ADR regardless of content', () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  it('creates ADR placeholder in dryRun for any decision', async () => {
+  it('creates ADR placeholder in dryRun for cross-domain decision', async () => {
     const decision = makeDecision({
       title: 'Add retry logic',
       rationale: 'Retry failed HTTP requests up to 3 times.',
+      scope: 'cross-domain',
     });
     const store = makeStore([decision]);
     const specMap = makeSpecMap('services', 'openspec/specs/services/spec.md');
@@ -333,10 +335,11 @@ describe('ADR creation — always writes ADR regardless of content', () => {
     expect(result.modifiedSpecs.some((p) => p.startsWith('openspec/decisions/adr-'))).toBe(true);
   });
 
-  it('writes ADR file on disk for every approved decision', async () => {
+  it('writes ADR file on disk for cross-domain approved decision', async () => {
     const decision = makeDecision({
       title: 'Add retry logic',
       rationale: 'Retry failed HTTP requests up to 3 times.',
+      scope: 'cross-domain',
     });
     const store = makeStore([decision]);
     const specMap = makeSpecMap('services', 'openspec/specs/services/spec.md');
@@ -357,8 +360,8 @@ describe('ADR creation — always writes ADR regardless of content', () => {
   });
 
   it('increments ADR number for each successive decision', async () => {
-    const d1 = makeDecision({ id: 'aaa00001', title: 'First decision' });
-    const d2 = makeDecision({ id: 'bbb00002', title: 'Second decision', status: 'approved' });
+    const d1 = makeDecision({ id: 'aaa00001', title: 'First decision', scope: 'cross-domain' });
+    const d2 = makeDecision({ id: 'bbb00002', title: 'Second decision', status: 'approved', scope: 'system' });
     const specDir = join(tmpDir, 'openspec', 'specs', 'services');
     await mkdir(specDir, { recursive: true });
     const { writeFile, readdir } = await import('node:fs/promises');
@@ -443,5 +446,75 @@ describe('appendDecisionSection via full sync', () => {
     // Only one ## Decisions header
     const occurrences = (content.match(/^## Decisions/gm) ?? []).length;
     expect(occurrences).toBe(1);
+  });
+});
+
+// ============================================================================
+// ADR scope gate — qualifiesForADR via syncApprovedDecisions
+// ============================================================================
+
+describe('ADR scope gate', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => { tmpDir = await createTempDir(); });
+  afterEach(async () => { await rm(tmpDir, { recursive: true, force: true }); });
+
+  async function syncWithScope(scope: PendingDecision['scope']): Promise<string[]> {
+    const specDir = join(tmpDir, 'openspec', 'specs', 'services');
+    await mkdir(specDir, { recursive: true });
+    const { writeFile } = await import('node:fs/promises');
+    await writeFile(join(specDir, 'spec.md'), MINIMAL_SPEC, 'utf-8');
+    const decision = makeDecision({ scope });
+    const { result } = await syncApprovedDecisions(makeStore([decision]), {
+      rootPath: tmpDir,
+      openspecPath: join(tmpDir, 'openspec'),
+      specMap: makeSpecMap('services', 'openspec/specs/services/spec.md'),
+      dryRun: true,
+    });
+    return result.modifiedSpecs;
+  }
+
+  it('cross-domain scope → ADR included in modifiedSpecs', async () => {
+    const specs = await syncWithScope('cross-domain');
+    expect(specs.some((p) => p.startsWith('openspec/decisions/adr-'))).toBe(true);
+  });
+
+  it('system scope → ADR included in modifiedSpecs', async () => {
+    const specs = await syncWithScope('system');
+    expect(specs.some((p) => p.startsWith('openspec/decisions/adr-'))).toBe(true);
+  });
+
+  it('component scope → no ADR in modifiedSpecs', async () => {
+    const specs = await syncWithScope('component');
+    expect(specs.some((p) => p.startsWith('openspec/decisions/adr-'))).toBe(false);
+  });
+
+  it('local scope → no ADR in modifiedSpecs', async () => {
+    const specs = await syncWithScope('local');
+    expect(specs.some((p) => p.startsWith('openspec/decisions/adr-'))).toBe(false);
+  });
+
+  it('undefined scope (backward compat) → no ADR in modifiedSpecs', async () => {
+    const specs = await syncWithScope(undefined);
+    expect(specs.some((p) => p.startsWith('openspec/decisions/adr-'))).toBe(false);
+  });
+
+  it('component scope → still syncs to spec file', async () => {
+    const specs = await syncWithScope('component');
+    expect(specs).toContain('openspec/specs/services/spec.md');
+  });
+
+  it('system scope writes ADR file on disk', async () => {
+    const specDir = join(tmpDir, 'openspec', 'specs', 'services');
+    await mkdir(specDir, { recursive: true });
+    const { writeFile, readdir } = await import('node:fs/promises');
+    await writeFile(join(specDir, 'spec.md'), MINIMAL_SPEC, 'utf-8');
+    await syncApprovedDecisions(makeStore([makeDecision({ scope: 'system' })]), {
+      rootPath: tmpDir,
+      openspecPath: join(tmpDir, 'openspec'),
+      specMap: makeSpecMap('services', 'openspec/specs/services/spec.md'),
+    });
+    const files = await readdir(join(tmpDir, 'openspec', 'decisions'));
+    expect(files.some((f) => f.startsWith('adr-'))).toBe(true);
   });
 });

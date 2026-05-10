@@ -18,7 +18,7 @@ import { getChangedFiles, getFileDiff, resolveBaseRef } from '../drift/git-diff.
 const execFileAsync = promisify(execFile);
 import { matchFileToDomains, getSpecContent } from '../drift/spec-mapper.js';
 import type { LLMService } from '../services/llm-service.js';
-import type { PendingDecision, SpecMap } from '../../types/index.js';
+import type { PendingDecision, SpecMap, DecisionScope } from '../../types/index.js';
 import { makeDecisionId } from './store.js';
 import { parseJSON } from '../../utils/misc.js';
 
@@ -34,13 +34,23 @@ Rules:
 - For trivial changes return []
 - proposedRequirement: one sentence in imperative form ("The system SHALL …"), or null
 
+SCOPE CLASSIFICATION (required):
+Each extraction call processes one spec domain at a time, so cross-domain scope cannot be
+determined here. Classify only within the local/component axis:
+- "local": single file, no cross-cutting concern (refactors, extractions, renames)
+- "component": this component/service/module, may affect its public interface
+
+Scope upgrade to "cross-domain" or "system" happens at consolidation time when the full
+session context across all domains is visible.
+
 Respond with a JSON array only. Each element:
 {
   "title": string,
   "rationale": string,
   "consequences": string,
   "affectedFiles": string[],
-  "proposedRequirement": string | null
+  "proposedRequirement": string | null,
+  "scope": string
 }`;
 
 interface ExtractedRaw {
@@ -49,6 +59,7 @@ interface ExtractedRaw {
   consequences: string;
   affectedFiles: string[];
   proposedRequirement: string | null;
+  scope?: string;
 }
 
 export interface ExtractFromDiffOptions {
@@ -161,6 +172,7 @@ export async function extractFromDiff(options: ExtractFromDiffOptions): Promise<
         rationale: e.rationale,
         consequences: e.consequences,
         proposedRequirement: e.proposedRequirement,
+        scope: (e.scope as DecisionScope) ?? 'component',
         affectedDomains: [domain],
         affectedFiles: e.affectedFiles.length ? e.affectedFiles : domainFiles.map((f) => f.path),
         sessionId,

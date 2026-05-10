@@ -292,4 +292,34 @@ describe('consolidateDrafts — ID reuse', () => {
     const parsed = JSON.parse(call.userPrompt as string);
     expect(parsed.existing).toHaveLength(0);
   });
+
+  it('maps scope from LLM response onto PendingDecision.scope', async () => {
+    const response = JSON.stringify([{
+      title: 'Cross-service auth contract',
+      rationale: 'JWT validated by both API and worker',
+      consequences: 'Shared secret required',
+      affectedDomains: ['api'],
+      affectedFiles: ['src/auth.ts'],
+      proposedRequirement: null,
+      supersededIds: [],
+      scope: 'cross-domain',
+    }]);
+    const { decisions } = await consolidateDrafts(makeStore([{ title: 'Auth draft' }]), makeLLM(response));
+    expect(decisions[0].scope).toBe('cross-domain');
+  });
+
+  it('defaults scope to component when LLM omits the field', async () => {
+    const response = JSON.stringify([{
+      title: 'Use retry helper',
+      rationale: 'Shared retry logic',
+      consequences: 'None',
+      affectedDomains: ['api'],
+      affectedFiles: ['src/retry.ts'],
+      proposedRequirement: null,
+      supersededIds: [],
+      // no scope field
+    }]);
+    const { decisions } = await consolidateDrafts(makeStore([{ title: 'Retry draft' }]), makeLLM(response));
+    expect(decisions[0].scope).toBe('component');
+  });
 });

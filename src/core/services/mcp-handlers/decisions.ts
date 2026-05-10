@@ -22,7 +22,7 @@ import { buildSpecMap, matchFileToDomains } from '../../../core/drift/spec-mappe
 import { readSpecGenConfig } from '../config-manager.js';
 import { join } from 'node:path';
 import { OPENSPEC_DIR } from '../../../constants.js';
-import type { PendingDecision } from '../../../types/index.js';
+import type { PendingDecision, DecisionScope } from '../../../types/index.js';
 
 function spawnConsolidateBackground(rootPath: string): void {
   // Resolve binary: prefer local build over global install (same order as pre-commit hook)
@@ -59,6 +59,7 @@ export async function handleRecordDecision(
   consequences?: string,
   affectedFiles?: string[],
   supersedes?: string,
+  scope?: DecisionScope,
 ): Promise<unknown> {
   try {
     if (!title?.trim()) return { error: 'title is required and must not be empty.' };
@@ -90,9 +91,34 @@ export async function handleRecordDecision(
 
     const id = makeDecisionId(store.sessionId, primaryDomain, title.trim());
 
+    // Resolve scope: explicit caller value wins; otherwise auto-promote via deterministic signals.
+    // Two independent triggers, either is sufficient:
+    //   1. Structural: files span 2+ distinct top-level source dirs (file-topology, no LLM)
+    //   2. Semantic: multiple domains inferred AND rationale contains contract/API keywords
+    // Rationale-only matching is intentionally avoided — too fuzzy to be reliable under replay.
+    let resolvedScope: DecisionScope = scope ?? 'component';
+    if (!scope) {
+      const topLevelDirs = new Set(
+        (affectedFiles ?? []).map((f) => f.split('/').slice(0, 2).join('/')),
+      );
+      const hasStructuralCrossDomain = topLevelDirs.size >= 2;
+
+      const lowerRationale = (rationale ?? '').toLowerCase();
+      const isRefactorOrUtil =
+        /\b(refactor|rename|extract|util|helper|constant|config|logging|test)\b/.test(lowerRationale);
+      const hasContractKeyword =
+        /\b(api|schema|contract|interface|protocol|auth|database|event|migration)\b/.test(lowerRationale);
+      const hasSemanticCrossDomain = inferredDomains.length >= 2 && !isRefactorOrUtil && hasContractKeyword;
+
+      if (hasStructuralCrossDomain || hasSemanticCrossDomain) {
+        resolvedScope = 'cross-domain';
+      }
+    }
+
     const decision: PendingDecision = {
       id,
       status: 'draft',
+      scope: resolvedScope,
       title: title.trim(),
       rationale: rationale.trim(),
       consequences: consequences ?? '',
@@ -174,6 +200,7 @@ export async function handleApproveDecision(
 
     const decision = store.decisions.find((d) => d.id === id);
     if (!decision) return { error: `Decision ${id} not found.` };
+    if (decision.status === 'synced') return { error: `Decision ${id} is already synced to spec files — re-approval not allowed.` };
 
     const updated = patchDecision(store, id, {
       status: 'approved',

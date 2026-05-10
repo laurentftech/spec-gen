@@ -40,6 +40,7 @@ import {
   DECISIONS_EXTRACTION_MAX_FILES,
   DECISIONS_DIFF_MAX_CHARS,
   CONSOLIDATION_GRACE_PERIOD_MS,
+  GATE_REASONS,
 } from '../../constants.js';
 import type { PendingDecision } from '../../types/index.js';
 import { runTuiApproval } from '../tui-approval.js';
@@ -385,9 +386,16 @@ function displayDecision(d: PendingDecision, verbose = false): void {
     d.confidence === 'medium' ? '\x1b[33mmedium\x1b[0m' :
                                 '\x1b[31mlow\x1b[0m';
 
-  console.log(`${icon} [${d.id}] ${d.title}`);
+  const scopeLabel = d.scope ?? 'component';
+  const scopeBadge =
+    scopeLabel === 'system'       ? `\x1b[31m[${scopeLabel}]\x1b[0m` :
+    scopeLabel === 'cross-domain' ? `\x1b[33m[${scopeLabel}]\x1b[0m` :
+    scopeLabel === 'component'    ? `\x1b[34m[${scopeLabel}]\x1b[0m` :
+                                    `\x1b[90m[${scopeLabel}]\x1b[0m`;
+
+  console.log(`${icon} [${d.id}] ${scopeBadge} ${d.title}`);
   if (verbose) {
-    console.log(`   Status     : ${d.status}  Confidence: ${confidence}`);
+    console.log(`   Status     : ${d.status}  Confidence: ${confidence}  Scope: ${scopeLabel}`);
     console.log(`   Rationale  : ${d.rationale}`);
     if (d.affectedDomains.length) console.log(`   Domains    : ${d.affectedDomains.join(', ')}`);
     if (d.proposedRequirement) console.log(`   Requirement: ${d.proposedRequirement}`);
@@ -754,7 +762,7 @@ Examples:
       if (approved.length > 0) {
         const payload = {
           gated: true,
-          reason: 'approved_not_synced',
+          reason: GATE_REASONS.APPROVED_NOT_SYNCED,
           message: `${approved.length} approved decision(s) must be synced to spec files before committing.`,
           approved: approved.map((d) => ({ id: d.id, title: d.title })),
           actions: { sync: 'spec-gen decisions --sync' },
@@ -774,7 +782,7 @@ Examples:
           // Output structured JSON so the agent can relay to the user and act on the answer.
           const payload = {
             gated: true,
-            reason: 'drafts_pending_consolidation',
+            reason: GATE_REASONS.DRAFTS_PENDING_CONSOLIDATION,
             message: `${drafts.length} draft decision(s) were recorded but never consolidated.`,
             drafts: drafts.map((d) => ({ id: d.id, title: d.title, recordedAt: d.recordedAt })),
             actions: {
@@ -815,7 +823,7 @@ Examples:
               // Source files staged but nothing recorded — output JSON for agent to relay.
               const payload = {
                 gated: true,
-                reason: 'no_decisions_recorded',
+                reason: GATE_REASONS.NO_DECISIONS_RECORDED,
                 message: 'Source files are staged but no architectural decisions were recorded.',
                 actions: {
                   consolidateAndGate: 'spec-gen decisions --consolidate --gate',
@@ -855,6 +863,7 @@ Examples:
       // Non-TTY: JSON for ACP/agent consumption
       const payload = {
         gated: true,
+        reason: GATE_REASONS.VERIFIED,
         verified: verified.map((d) => ({
           id: d.id,
           title: d.title,
@@ -898,13 +907,16 @@ Examples:
       const specMap = await buildSpecMap({ rootPath, openspecPath });
       const approved = getDecisionsByStatus(store, 'approved');
 
-      if (approved.length === 0) {
+      if (approved.length === 0 && !options.json) {
         console.log('No approved decisions to sync. Use --approve <id> first.');
-        return;
       }
 
-      if (!options.json) logger.discovery(`Syncing ${approved.length} approved decision(s)...`);
+      if (approved.length > 0 && !options.json) {
+        logger.discovery(`Syncing ${approved.length} approved decision(s)...`);
+      }
 
+      // Always call syncApprovedDecisions so purgeInactiveDecisions runs on the store
+      // even when there are no approved decisions to sync.
       const { result } = await syncApprovedDecisions(store, {
         rootPath,
         openspecPath,
