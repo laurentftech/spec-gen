@@ -97,6 +97,21 @@ export function getDecisionCount(store: DecisionStore): number {
   return store.decisions.length;
 }
 
+/** Status blocks the commit gate until resolved. */
+export function isBlockingStatus(status: DecisionStatus): boolean {
+  return status === 'verified' || status === 'approved';
+}
+
+/** Status requires a --sync run before committing. */
+export function requiresSync(status: DecisionStatus): boolean {
+  return status === 'approved';
+}
+
+/** Statuses excluded from the "activeDecisions" gate guard. */
+export const INACTIVE_STATUSES: ReadonlySet<DecisionStatus> = new Set([
+  'rejected', 'synced', 'phantom',
+]);
+
 /** Stable 8-char ID derived from session + domain + title. */
 export function makeDecisionId(sessionId: string, domain: string, title: string): string {
   return createHash('sha256').update(`${sessionId}:${domain}:${title}`).digest('hex').slice(0, 8);

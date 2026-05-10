@@ -26,6 +26,7 @@ import {
   replaceDecisions,
   patchDecision,
   getDecisionsByStatus,
+  INACTIVE_STATUSES,
 } from '../../core/decisions/store.js';
 import { consolidateDrafts } from '../../core/decisions/consolidator.js';
 import { extractFromDiff } from '../../core/decisions/extractor.js';
@@ -476,6 +477,11 @@ Examples:
         process.exitCode = 1;
         return;
       }
+      if (decision.status === 'synced') {
+        logger.error(`Decision ${id} is already synced to spec files — re-approval not allowed.`);
+        process.exitCode = 1;
+        return;
+      }
       const updated = patchDecision(store, id, {
         status: 'approved',
         reviewedAt: new Date().toISOString(),
@@ -617,12 +623,19 @@ Examples:
       // Reject all original drafts — they've been replaced by consolidated decisions.
       // Also reject any explicitly superseded IDs from prior sessions.
       const originalDraftIds = new Set(drafts.map((d) => d.id));
+      const originalById = new Map(store.decisions.map((d) => [d.id, d]));
       for (const id of [...originalDraftIds, ...supersededIds]) {
         updatedStore = patchDecision(updatedStore, id, { status: 'rejected' });
       }
+      // Preserve recordedAt from original draft — consolidated decisions share the same
+      // deterministic ID, so overwriting would erase when the decision was first recorded.
+      const withProvenance = [...verified, ...phantom].map((d) => {
+        const original = originalById.get(d.id);
+        return original ? { ...d, recordedAt: original.recordedAt } : d;
+      });
       // replaceDecisions (not upsertDecisions) — consolidated decisions share IDs
       // with their original drafts; upsert would silently no-op after the reject above.
-      updatedStore = replaceDecisions(updatedStore, [...verified, ...phantom]);
+      updatedStore = replaceDecisions(updatedStore, withProvenance);
       updatedStore = { ...updatedStore, lastConsolidatedAt: new Date().toISOString() };
       await saveDecisionStore(rootPath, updatedStore);
 
@@ -778,7 +791,7 @@ Examples:
         // Phantom decisions ("recorded but no code evidence") are excluded — stale phantoms from
         // previous sessions would otherwise silently bypass the gate for all future commits.
         const activeDecisions = store.decisions.filter(
-          (d) => !['rejected', 'synced', 'phantom'].includes(d.status),
+          (d) => !INACTIVE_STATUSES.has(d.status),
         );
         if (activeDecisions.length === 0 && await isGitRepository(rootPath)) {
           try {
