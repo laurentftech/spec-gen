@@ -61,6 +61,7 @@ vi.mock('../../decisions/store.js', () => ({
     updatedAt: '2026-01-01T00:00:00.000Z',
     decisions: [],
   })),
+  INACTIVE_STATUSES: new Set(['rejected', 'synced', 'phantom']),
 }));
 
 // ── Imports (after mocks) ─────────────────────────────────────────────────────

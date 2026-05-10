@@ -349,6 +349,8 @@ export async function handleOrient(
   }
 
   // ── Pending decisions (best-effort) ──────────────────────────────────────
+  // Active (non-synced) decisions relevant to this task's domains or files.
+  // Synced decisions appear via the vector index (domain "decisions") in matchingSpecs.
   interface DecisionSummary {
     id: string;
     title: string;
@@ -357,11 +359,19 @@ export async function handleOrient(
   }
   let pendingDecisions: DecisionSummary[] | undefined;
   try {
-    const { loadDecisionStore } = await import('../../decisions/store.js');
+    const { loadDecisionStore, INACTIVE_STATUSES } = await import('../../decisions/store.js');
     const store = await loadDecisionStore(absDir);
-    const active = store.decisions.filter(
-      (d) => d.status !== 'synced' && d.status !== 'rejected',
-    );
+    const relevantDomainSet = new Set(specDomains.map((s) => s.domain));
+    const relevantFileSet = new Set(relevantFiles);
+    const active = store.decisions.filter((d) => {
+      if (INACTIVE_STATUSES.has(d.status)) return false;
+      // Surface if it touches a domain or file the orient task identified
+      if (d.affectedDomains.some((dom) => relevantDomainSet.has(dom))) return true;
+      if (d.affectedFiles.some((f) => relevantFileSet.has(f))) return true;
+      // Always surface approved decisions — agent must sync before committing
+      if (d.status === 'approved') return true;
+      return false;
+    });
     if (active.length > 0) {
       pendingDecisions = active.map((d) => ({
         id: d.id,

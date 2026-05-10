@@ -22,6 +22,7 @@ import {
   MAX_VALIDATION_FILES,
   OPENSPEC_DIR,
   OPENSPEC_SPECS_SUBDIR,
+  OPENSPEC_DECISIONS_SUBDIR,
   SPEC_GEN_ANALYSIS_REL_PATH,
   SPEC_GEN_CONFIG_REL_PATH,
 } from '../../constants.js';
@@ -855,7 +856,8 @@ async function runSpecIndexing(
   const mappingJsonPath = pathJoin(outputPath, 'mapping.json');
 
   try {
-    const { recordCount } = await SpecVectorIndex.build(outputPath, specsDir, embedSvc, mappingJsonPath);
+    const decisionsDir = pathJoin(rootPath, OPENSPEC_DIR, OPENSPEC_DECISIONS_SUBDIR);
+    const { recordCount } = await SpecVectorIndex.build(outputPath, specsDir, embedSvc, mappingJsonPath, decisionsDir);
     console.log(`    ✓ Spec index built (${recordCount} sections)`);
     console.log(`    → ${outputPath.replace(rootPath + '/', '')}vector-index/`);
   } catch (err) {
