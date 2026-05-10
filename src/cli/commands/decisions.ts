@@ -627,11 +627,20 @@ Examples:
       for (const id of [...originalDraftIds, ...supersededIds]) {
         updatedStore = patchDecision(updatedStore, id, { status: 'rejected' });
       }
-      // Preserve recordedAt from original draft — consolidated decisions share the same
-      // deterministic ID, so overwriting would erase when the decision was first recorded.
+      // Preserve recordedAt provenance:
+      // - Direct match: consolidated decision ID matches original draft → use its recordedAt.
+      // - Merged decision (new ID, no match): use earliest recordedAt across all superseded
+      //   drafts so the audit trail reflects when the underlying work was first captured.
+      const earliestSupersededAt = supersededIds
+        .map((id) => originalById.get(id)?.recordedAt)
+        .filter((t): t is string => t !== undefined)
+        .sort()[0];
       const withProvenance = [...verified, ...phantom].map((d) => {
         const original = originalById.get(d.id);
-        return original ? { ...d, recordedAt: original.recordedAt } : d;
+        if (original) return { ...d, recordedAt: original.recordedAt };
+        // Merged decision — anchor to earliest superseded draft's recordedAt
+        if (earliestSupersededAt) return { ...d, recordedAt: earliestSupersededAt };
+        return d;
       });
       // replaceDecisions (not upsertDecisions) — consolidated decisions share IDs
       // with their original drafts; upsert would silently no-op after the reject above.
