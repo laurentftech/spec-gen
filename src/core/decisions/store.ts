@@ -112,6 +112,14 @@ export const INACTIVE_STATUSES: ReadonlySet<DecisionStatus> = new Set([
   'rejected', 'synced', 'phantom',
 ]);
 
+/** Drop all inactive decisions — their content is already in ADRs / spec.md. */
+export function purgeInactiveDecisions(store: DecisionStore): DecisionStore {
+  return {
+    ...store,
+    decisions: store.decisions.filter((d) => !INACTIVE_STATUSES.has(d.status)),
+  };
+}
+
 /** Stable 8-char ID derived from session + domain + title. */
 export function makeDecisionId(sessionId: string, domain: string, title: string): string {
   return createHash('sha256').update(`${sessionId}:${domain}:${title}`).digest('hex').slice(0, 8);

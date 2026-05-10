@@ -268,6 +268,31 @@ describe('syncApprovedDecisions — filesystem writes', () => {
 
     expect(result.synced).toHaveLength(0);
   });
+
+  it('purges inactive decisions from store before saving', async () => {
+    const { saveDecisionStore } = await import('./store.js');
+    const approved = makeDecision({ id: 'app00001', status: 'approved', affectedDomains: ['services'] });
+    const rejected = makeDecision({ id: 'rej00001', status: 'rejected' });
+    const synced = makeDecision({ id: 'syn00001', status: 'synced' });
+    const verified = makeDecision({ id: 'ver00001', status: 'verified' });
+    const store = makeStore([approved, rejected, synced, verified]);
+    const specMap = makeSpecMap('services', 'openspec/specs/services/spec.md');
+
+    await syncApprovedDecisions(store, {
+      rootPath: tmpDir,
+      openspecPath: join(tmpDir, 'openspec'),
+      specMap,
+    });
+
+    const saved = vi.mocked(saveDecisionStore).mock.calls.at(-1)?.[1];
+    expect(saved).toBeDefined();
+    const ids = saved!.decisions.map((d) => d.id);
+    // rejected + synced (original) purged; newly-synced approved also purged; verified kept
+    expect(ids).not.toContain('rej00001');
+    expect(ids).not.toContain('syn00001');
+    expect(ids).not.toContain('app00001');
+    expect(ids).toContain('ver00001');
+  });
 });
 
 // ============================================================================

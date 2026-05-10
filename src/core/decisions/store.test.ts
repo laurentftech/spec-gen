@@ -12,6 +12,7 @@ import {
   upsertDecisions,
   replaceDecisions,
   patchDecision,
+  purgeInactiveDecisions,
   getDecisionsByStatus,
   loadDecisionStore,
   saveDecisionStore,
@@ -188,6 +189,65 @@ describe('replaceDecisions', () => {
     expect(result.decisions).toHaveLength(2);
     expect(result.decisions.find(d => d.id === 'aaaa0001')?.status).toBe('approved');
     expect(result.decisions.find(d => d.id === 'bbbb0002')?.status).toBe('verified');
+  });
+});
+
+// ============================================================================
+// purgeInactiveDecisions
+// ============================================================================
+
+describe('purgeInactiveDecisions', () => {
+  it('removes synced decisions', () => {
+    const store: DecisionStore = {
+      ...emptyStore(),
+      decisions: [
+        makeDecision({ id: 'aaaa0001', status: 'synced' }),
+        makeDecision({ id: 'bbbb0002', status: 'approved' }),
+      ],
+    };
+    const result = purgeInactiveDecisions(store);
+    expect(result.decisions).toHaveLength(1);
+    expect(result.decisions[0].id).toBe('bbbb0002');
+  });
+
+  it('removes rejected and phantom decisions', () => {
+    const store: DecisionStore = {
+      ...emptyStore(),
+      decisions: [
+        makeDecision({ id: 'aaaa0001', status: 'rejected' }),
+        makeDecision({ id: 'bbbb0002', status: 'phantom' }),
+        makeDecision({ id: 'cccc0003', status: 'verified' }),
+      ],
+    };
+    const result = purgeInactiveDecisions(store);
+    expect(result.decisions).toHaveLength(1);
+    expect(result.decisions[0].id).toBe('cccc0003');
+  });
+
+  it('preserves all active statuses', () => {
+    const store: DecisionStore = {
+      ...emptyStore(),
+      decisions: [
+        makeDecision({ id: 'aaaa0001', status: 'draft' }),
+        makeDecision({ id: 'bbbb0002', status: 'consolidated' }),
+        makeDecision({ id: 'cccc0003', status: 'verified' }),
+        makeDecision({ id: 'dddd0004', status: 'approved' }),
+      ],
+    };
+    const result = purgeInactiveDecisions(store);
+    expect(result.decisions).toHaveLength(4);
+  });
+
+  it('returns empty decisions when all inactive', () => {
+    const store: DecisionStore = {
+      ...emptyStore(),
+      decisions: [
+        makeDecision({ id: 'aaaa0001', status: 'synced' }),
+        makeDecision({ id: 'bbbb0002', status: 'rejected' }),
+      ],
+    };
+    const result = purgeInactiveDecisions(store);
+    expect(result.decisions).toHaveLength(0);
   });
 });
 

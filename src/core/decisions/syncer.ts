@@ -12,7 +12,7 @@ import { fileExists } from '../../utils/command-helpers.js';
 import { logger } from '../../utils/logger.js';
 import { parseSpecHeader } from '../drift/spec-mapper.js';
 import type { PendingDecision, DecisionStore, SpecMap } from '../../types/index.js';
-import { patchDecision, saveDecisionStore } from './store.js';
+import { patchDecision, purgeInactiveDecisions, saveDecisionStore } from './store.js';
 
 export interface SyncOptions {
   rootPath: string;
@@ -55,7 +55,7 @@ export async function syncApprovedDecisions(
   }
 
   if (!options.dryRun) {
-    await saveDecisionStore(options.rootPath, updatedStore);
+    await saveDecisionStore(options.rootPath, purgeInactiveDecisions(updatedStore));
   }
 
   return {
