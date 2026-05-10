@@ -17,7 +17,7 @@ import { matchFileToDomains } from '../drift/spec-mapper.js';
 
 const SYSTEM_PROMPT = `You are an architectural decision consolidator for a software project.
 
-You receive a list of architectural decision drafts recorded by an AI agent during a coding session. Some decisions may contradict each other or be superseded by later decisions. Your task is to produce a clean, consolidated set representing the final architectural state after the session.
+You receive a list of architectural decision drafts recorded by an AI agent during a coding session, plus the set of decisions already recorded in prior sessions (with their stable IDs). Some decisions may contradict each other or be superseded by later decisions. Your task is to produce a clean, consolidated set representing the final architectural state after the session.
 
 Rules:
 - Keep only decisions that represent the FINAL state (most recent wins for contradictions)
@@ -26,6 +26,12 @@ Rules:
 - Typically produce 1-3 consolidated decisions; never more than 5
 - Preserve the original rationale and consequences from the drafts
 - proposedRequirement should be a single sentence starting with "The system SHALL", or null
+
+ID REUSE (critical for traceability):
+- If a consolidated decision covers the same concept as an existing decision (provided in the "existing" section of the input), set "id" to that decision's exact ID string
+- Only reuse an ID if you are confident the concept is the same — same architectural choice, same affected area
+- If the consolidated decision is genuinely new, omit "id" entirely
+- Never invent a new ID — either reuse an existing one or omit the field
 
 Keep a decision if it describes ANY of:
 - A new feature, command, flag, or capability added to the system
@@ -44,6 +50,7 @@ Bad examples: "Use TypeScript interfaces for type safety", "Add error handling",
 
 Respond with a JSON array only. Each element:
 {
+  "id": string (optional — only set when reusing an existing decision ID),
   "title": string,
   "rationale": string,
   "consequences": string,
@@ -56,6 +63,7 @@ Respond with a JSON array only. Each element:
 If there are genuinely no decisions worth keeping, return [].`;
 
 interface ConsolidatedRaw {
+  id?: string;
   title: string;
   rationale: string;
   consequences: string;
@@ -78,17 +86,29 @@ export async function consolidateDrafts(
   const drafts = store.decisions.filter((d) => d.status === 'draft');
   if (drafts.length === 0) return { decisions: [], supersededIds: [] };
 
+  // Non-draft decisions passed to LLM so it can reuse their IDs when the same concept recurs.
+  const existing = store.decisions.filter((d) => d.status !== 'draft' && d.status !== 'rejected' && d.status !== 'phantom');
+  const existingIds = new Set(existing.map((d) => d.id));
+
   const userContent = JSON.stringify(
-    drafts.map((d) => ({
-      id: d.id,
-      title: d.title,
-      rationale: d.rationale,
-      consequences: d.consequences,
-      affectedDomains: d.affectedDomains,
-      affectedFiles: d.affectedFiles,
-      supersedes: d.supersedes,
-      recordedAt: d.recordedAt,
-    })),
+    {
+      drafts: drafts.map((d) => ({
+        id: d.id,
+        title: d.title,
+        rationale: d.rationale,
+        consequences: d.consequences,
+        affectedDomains: d.affectedDomains,
+        affectedFiles: d.affectedFiles,
+        supersedes: d.supersedes,
+        recordedAt: d.recordedAt,
+      })),
+      existing: existing.map((d) => ({
+        id: d.id,
+        title: d.title,
+        rationale: d.rationale,
+        status: d.status,
+      })),
+    },
     null,
     2,
   );
@@ -115,8 +135,14 @@ export async function consolidateDrafts(
     // Falls back to LLM names if specMap is absent or files yield no match.
     const resolvedDomains = resolveDomainsFromFiles(c.affectedFiles, c.affectedDomains, specMap);
     const domain = resolvedDomains[0] ?? 'unknown';
+    // Prefer LLM-supplied ID when it matches a known existing decision — this is the
+    // traceability anchor that prevents duplicate IDs across consolidation runs.
+    const id =
+      c.id && existingIds.has(c.id)
+        ? c.id
+        : makeDecisionId(store.sessionId, domain, c.title);
     return {
-      id: makeDecisionId(store.sessionId, domain, c.title),
+      id,
       status: 'consolidated',
       title: c.title,
       rationale: c.rationale,
