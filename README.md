@@ -1,8 +1,8 @@
 # spec-gen
 
-**Persistent architectural memory for AI coding agents.**
+**Persistent architectural memory and structural cognition for AI coding agents.**
 
-spec-gen turns any codebase into a navigable knowledge graph backed by [OpenSpec](https://github.com/Fission-AI/OpenSpec) living specifications. It extracts and maintains specs, detects spec/code drift, gates architectural decisions, and exposes everything through graph-native MCP tools — so agents start every session already knowing the codebase instead of re-discovering it.
+spec-gen turns any evolving codebase into a navigable knowledge graph backed by [OpenSpec](https://github.com/Fission-AI/OpenSpec) living specifications. It maintains persistent architectural context across agent sessions: graph structure, specs, decisions, drift state, and semantic retrieval — so agents start each task already oriented instead of re-discovering the system from file reads.
 
 ---
 
@@ -15,7 +15,9 @@ AI agents are powerful but amnesiac. On every new task:
 - They have no link between specs and code — drift is invisible
 - File-by-file navigation often burns **15,000–50,000 tokens** per orientation pass, before a single line of useful code is written
 
-spec-gen closes this loop. Run a full analysis once, then keep the graph incrementally updated during development. Wire two files into your agent's context — every subsequent session starts informed.
+spec-gen closes this loop. Run a full analysis once, then keep the graph incrementally updated as the codebase evolves. Even greenfield projects become cognitively "brownfield" after only a few agent sessions — architectural context fragments, decisions disappear, and agents repeatedly reconstruct the same understanding from scratch.
+
+spec-gen persists that context continuously: structure, specs, decisions, drift state, and graph relationships remain queryable across sessions.
 
 ---
 
@@ -29,7 +31,7 @@ Three layers, each usable independently:
 | **2. Spec Layer** | LLM-generated living specs, ADRs, drift detection, decision gates | For generation |
 | **3. Agent Runtime** | 45 MCP tools — `orient()`, semantic search, graph expansion | No |
 
-You can use layer 1 alone to give agents structural context. Add layer 2 for spec coverage. Layer 3 is always-on once `spec-gen mcp` is running.
+You can use layer 1 alone to give agents structural context. Add layer 2 for semantic intent and architectural governance through OpenSpec-compatible living specifications. Layer 3 keeps that context continuously accessible through graph-native MCP tools once `spec-gen mcp` is running.
 
 ---
 
@@ -43,6 +45,7 @@ You can use layer 1 alone to give agents structural context. Add layer 2 for spe
 | Offline structural analysis | ❌ | ❌ | ✓ |
 | Token-efficient orient() | ❌ | ❌ | ✓ ~1–3k vs 15–50k tokens |
 | Living spec generation | ❌ | ❌ | ✓ |
+| Persistent cross-session architectural memory | ❌ | Partial | ✓ |
 
 Traditional coding agents reconstruct architecture from repeated file reads every session. spec-gen persists it as a queryable graph.
 
@@ -62,7 +65,7 @@ spec-gen mcp              # start MCP server
 
 Then ask your agent: **`orient("add a new payment method")`**
 
-That single call returns the relevant functions, their call neighbours, matching spec sections, and insertion-point candidates — in one round-trip instead of a dozen file reads, costing ~1,000 tokens instead of ~30,000.
+That single call returns the relevant functions, their call neighbours, matching spec sections, and insertion-point candidates — preserving architectural continuity across sessions instead of forcing the agent to repeatedly reconstruct context from raw file reads. In practice, this often reduces orientation cost from ~30,000 exploratory tokens to ~1,000 targeted tokens.
 
 **Full pipeline** (specs + decisions — optional and additive):
 
@@ -142,7 +145,7 @@ One graph query replaces most exploratory file reads. The agent knows exactly wh
 
 **Analyze** (no API key)
 
-Scans your codebase with pure static analysis. Builds a full call graph persisted to SQLite, runs label-propagation community detection to cluster tightly coupled functions, computes McCabe cyclomatic complexity for every function, and extracts DB schemas, HTTP routes, UI components, middleware chains, and environment variables. Outputs `.spec-gen/analysis/CODEBASE.md` — a ~600-token structural digest that compresses the equivalent of tens of thousands of exploratory tokens into a small, queryable summary.
+Continuously maintains a structural representation of your codebase using pure static analysis. Builds a full call graph persisted to SQLite, runs label-propagation community detection to cluster tightly coupled functions, computes McCabe cyclomatic complexity for every function, and extracts DB schemas, HTTP routes, UI components, middleware chains, and environment variables. Outputs `.spec-gen/analysis/CODEBASE.md` — a ~600-token structural digest that compresses the equivalent of tens of thousands of exploratory tokens into a small, queryable summary.
 
 With `--watch-auto`, the call graph updates incrementally on every file save: changed file and its direct callers are re-parsed and the graph is atomically swapped. Orient and BFS queries remain live between full analyze runs.
 
@@ -156,17 +159,20 @@ Compares git changes against spec mappings in milliseconds. Detects: Gap (code c
 
 **MCP** (no API key)
 
-45 graph-native tools exposed over stdio. `orient()` is the main entry point — one call replaces 10+ file reads. `detect_changes` risk-scores changed functions using call graph centrality × change type multiplier. See [docs/mcp-tools.md](docs/mcp-tools.md).
+45 graph-native tools exposed over stdio. Together they act as a persistent architectural runtime for coding agents: orientation, graph traversal, semantic retrieval, drift awareness, decision context, and structural risk analysis.
+`orient()` is the main entry point — one call replaces 10+ file reads. `detect_changes` risk-scores changed functions using call graph centrality × change type multiplier. See [docs/mcp-tools.md](docs/mcp-tools.md).
 
 `orient()` runs in **~430µs p50** against a 15k-node codebase (TypeScript compiler, ~79k edges). Full benchmark results: [scripts/BENCHMARKS.md](scripts/BENCHMARKS.md).
 
 **Decisions** (API key for consolidation)
 
-Agents call `record_decision` before writing code. Consolidation runs immediately in the background. At commit time, a pre-commit hook gates the commit until all verified decisions are reviewed and written back as requirements in `spec.md` files.
+Agents call `record_decision` before writing code. Consolidation runs immediately in the background. At commit time, a pre-commit hook gates the commit until all verified decisions are reviewed and written back as requirements in `spec.md` files. Decisions are classified by scope (`local / component / cross-domain / system`); only `cross-domain` and `system` decisions produce ADR files, keeping the decision log signal-dense.
 
 ---
 
 ## Architecture
+
+OpenSpec provides semantic intent and workflow structure. spec-gen maintains the evolving implementation as a continuously queryable architectural graph for agents.
 
 ```
 Codebase
@@ -245,7 +251,7 @@ The graph and the OpenSpec spec layer are co-equal: the graph makes orientation 
 ```bash
 npm install
 npm run build
-npm test          # 2580+ unit tests
+npm test          # 2660+ unit tests
 npm run typecheck
 ```
 
