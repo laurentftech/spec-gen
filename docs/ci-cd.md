@@ -25,6 +25,17 @@ spec-gen setup --tools claude         # Install (also installs Claude Code skill
 spec-gen decisions --uninstall-hook   # Remove decisions hook only
 ```
 
+When the gate blocks, the JSON output includes a `reason` field:
+
+| Reason | Meaning | Action |
+|--------|---------|--------|
+| `verified` | Decisions consolidated and verified — await human review | Present to user, call `approve_decision` / `reject_decision`, then `--sync` |
+| `approved_not_synced` | Decisions approved but not written to specs yet | Run `spec-gen decisions --sync`, retry commit |
+| `drafts_pending_consolidation` | Drafts recorded but consolidation never ran | Run `spec-gen decisions --consolidate --gate` |
+| `no_decisions_recorded` | Source files staged but no decisions recorded | Run `spec-gen decisions --consolidate --gate` for fallback extraction |
+
+The gate uses a sentinel file (`.git/SPEC_GEN_GATE_RAN`) written by the pre-commit hook and checked by the post-commit hook. If a commit bypasses the gate via `--no-verify`, the post-commit hook detects the missing sentinel and logs a warning.
+
 **How they relate**: they address different failure modes and do not substitute for each other.
 
 The decisions gate asks: *"has this architectural choice been reviewed by a human?"* It operates on decisions recorded during development — it has no knowledge of which spec files cover which source files.
