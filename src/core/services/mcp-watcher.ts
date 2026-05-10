@@ -44,16 +44,20 @@ export interface McpWatcherOptions {
 
 const SOURCE_EXTENSIONS = /\.(ts|tsx|js|jsx|py|go|rs|rb|java|kt|php|cs|cpp|cc|cxx|h|hpp|c|swift)$/;
 
-const DEFAULT_IGNORED = [
-  '**/node_modules/**',
-  '**/.spec-gen/**',
-  '**/dist/**',
-  '**/.git/**',
-  '**/*.test.ts',
-  '**/*.test.js',
-  '**/*.spec.ts',
-  '**/*.spec.js',
-];
+// String-segment checks evaluated before kqueue/inotify FDs are opened — avoids
+// EMFILE on macOS when chokidar opens FDs for all directories before applying globs.
+const IGNORED_SEGMENTS = ['/node_modules/', '/.spec-gen/', '/dist/', '/.git/'];
+const IGNORED_SUFFIXES = ['.test.ts', '.test.js', '.spec.ts', '.spec.js'];
+
+function isIgnoredPath(filePath: string): boolean {
+  for (const seg of IGNORED_SEGMENTS) {
+    if (filePath.includes(seg)) return true;
+  }
+  for (const suf of IGNORED_SUFFIXES) {
+    if (filePath.endsWith(suf)) return true;
+  }
+  return false;
+}
 
 // ── McpWatcher ────────────────────────────────────────────────────────────────
 
@@ -61,7 +65,7 @@ export class McpWatcher {
   private readonly rootPath: string;
   private readonly outputPath: string;
   private readonly debounceMs: number;
-  private readonly ignore: string[];
+  private readonly extraIgnore: string[];
 
   private fsWatcher?: FSWatcher;
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -71,18 +75,22 @@ export class McpWatcher {
     this.rootPath   = options.rootPath;
     this.outputPath = options.outputPath
       ?? join(options.rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
-    this.debounceMs = options.debounceMs ?? 400;
-    this.ignore     = [...DEFAULT_IGNORED, ...(options.ignore ?? [])];
+    this.debounceMs  = options.debounceMs ?? 400;
+    this.extraIgnore = options.ignore ?? [];
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   async start(): Promise<void> {
     await new Promise<void>((resolve, reject) => {
+      const extraIgnore = this.extraIgnore;
       this.fsWatcher = chokidar.watch(this.rootPath, {
-        ignored: this.ignore,
+        ignored: (filePath: string) =>
+          isIgnoredPath(filePath) ||
+          extraIgnore.some((p) => filePath.includes(p)),
         persistent: true,
         ignoreInitial: true,
+        followSymlinks: false,
         awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
       });
 
