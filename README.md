@@ -232,7 +232,7 @@ The graph and the OpenSpec spec layer are co-equal: the graph makes orientation 
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 22.5+
 - API key for `generate`, `verify`, and `drift --use-llm`:
   ```bash
   export ANTHROPIC_API_KEY=sk-ant-...    # default provider
