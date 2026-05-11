@@ -1246,20 +1246,53 @@ export const TOOL_DEFINITIONS = [
 // MCP SERVER
 // ============================================================================
 
+// Annotations improve Tool Search relevance in Claude Code (BM25/regex ranking).
+// RO = read-only queries, RW_I = writes but idempotent, RW = non-idempotent writes.
+const _RO  = { readOnlyHint: true,  destructiveHint: false, idempotentHint: true  } as const;
+const _RWI = { readOnlyHint: false, destructiveHint: false, idempotentHint: true  } as const;
+const _RW  = { readOnlyHint: false, destructiveHint: false, idempotentHint: false } as const;
+
+const TOOL_ANNOTATIONS: Record<string, typeof _RO | typeof _RWI | typeof _RW> = {
+  orient: _RO, analyze_codebase: _RWI, get_architecture_overview: _RO,
+  get_refactor_report: _RO, get_call_graph: _RO, get_duplicate_report: _RO,
+  get_signatures: _RO, get_subgraph: _RO, trace_execution_path: _RO,
+  get_mapping: _RO, check_spec_drift: _RO, analyze_impact: _RO,
+  get_low_risk_refactor_candidates: _RO, get_leaf_functions: _RO,
+  get_critical_hubs: _RO, get_function_skeleton: _RO, get_god_functions: _RO,
+  suggest_insertion_points: _RO, search_code: _RO, list_spec_domains: _RO,
+  search_specs: _RO, search_unified: _RO, get_spec: _RO, get_function_body: _RO,
+  get_file_dependencies: _RO, generate_change_proposal: _RW, annotate_story: _RW,
+  get_decisions: _RO, get_route_inventory: _RO, get_middleware_inventory: _RO,
+  get_schema_inventory: _RO, get_ui_components: _RO, get_env_vars: _RO,
+  get_external_packages: _RO, audit_spec_coverage: _RO, generate_tests: _RW,
+  get_test_coverage: _RO, get_minimal_context: _RO, get_cluster: _RO,
+  detect_changes: _RO, record_decision: _RW, list_decisions: _RO,
+  approve_decision: _RWI, reject_decision: _RWI, sync_decisions: _RWI,
+};
+
+const MINIMAL_TOOLS = new Set([
+  'orient', 'search_code', 'record_decision', 'detect_changes', 'check_spec_drift',
+]);
+
 interface McpServerOptions {
   watch?: string;
   watchAuto?: boolean;
   watchDebounce?: string;
+  minimal?: boolean;
 }
 
 async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
+  const activeTools = options.minimal
+    ? TOOL_DEFINITIONS.filter(t => MINIMAL_TOOLS.has(t.name))
+    : TOOL_DEFINITIONS;
+
   const server = new Server(
     { name: 'spec-gen', version: '1.0.0' },
     { capabilities: { tools: {} } }
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: TOOL_DEFINITIONS,
+    tools: activeTools.map(t => ({ ...t, annotations: TOOL_ANNOTATIONS[t.name] })),
   }));
 
   // --watch-auto: start the watcher on the first tool call that carries a directory
@@ -1498,4 +1531,5 @@ export const mcpCommand = new Command('mcp')
   .option('--watch <directory>', 'Watch a project directory and incrementally re-index signatures on file changes')
   .option('--watch-auto', 'Auto-detect the project directory from the first tool call and start watching', true)
   .option('--watch-debounce <ms>', 'Debounce delay in ms before re-indexing after a file change (default: 400)', '400')
+  .option('--minimal', 'Expose only core 5 tools (orient, search_code, record_decision, detect_changes, check_spec_drift). Pair with alwaysLoad: true in Claude Code for always-visible core tools.')
   .action((options: McpServerOptions) => startMcpServer(options));

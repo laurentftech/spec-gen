@@ -98,6 +98,36 @@ Wire the generated digest into your agent's context:
 `search_code` · `suggest_insertion_points` · `get_spec <domain>` · `search_specs` · `analyze_impact` · `get_function_body` · `get_function_skeleton`
 ```
 
+**Claude Code — MCP config (token-efficient two-server setup)**
+
+MCP clients load all tool schemas at session start. With 45 tools, this costs ~8–77k tokens before any work begins. Claude Code supports `alwaysLoad: false` (deferred, default) — tools load only when the agent searches for them via Tool Search.
+
+The recommended setup uses two server entries: one always-visible core server and one deferred full server:
+
+```json
+{
+  "mcpServers": {
+    "spec-gen-core": {
+      "type": "stdio",
+      "command": "spec-gen",
+      "args": ["mcp", "--minimal"],
+      "alwaysLoad": true
+    },
+    "spec-gen": {
+      "type": "stdio",
+      "command": "spec-gen",
+      "args": ["mcp"],
+      "alwaysLoad": false
+    }
+  }
+}
+```
+
+- **`spec-gen-core`** exposes 5 tools always visible in context (~500 tokens): `orient`, `search_code`, `record_decision`, `detect_changes`, `check_spec_drift`. These are the tools most likely to be called at session start.
+- **`spec-gen`** exposes all 45 tools deferred — loaded on demand when the agent uses Tool Search (e.g. "find tool for BFS graph traversal").
+
+If you only need one server entry, use `alwaysLoad: false` (the default) with the standard `spec-gen mcp` command — all tools are deferred and searchable via Tool Search.
+
 **Cline / Roo Code / Kilocode** — create `.clinerules/spec-gen.md`:
 
 ```markdown
