@@ -18,7 +18,7 @@
     "spec-gen": "dist/cli/index.js"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.5.0"
   },
   "scripts": {
     "dev": "tsx watch src/cli/index.ts",
@@ -85,7 +85,6 @@
     "@modelcontextprotocol/server-memory": "^2026.1.26",
     "@vitejs/plugin-react": "^5.0.2",
     "apache-arrow": "^21.1.0",
-    "better-sqlite3": "^12.9.0",
     "chalk": "^5.3.0",
     "chokidar": "^5.0.0",
     "commander": "^12.1.0",
@@ -113,7 +112,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.10.5",
     "@vitest/coverage-v8": "^4.0.18",
     "eslint": "^9.17.0",
