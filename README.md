@@ -227,7 +227,7 @@ The graph and the OpenSpec spec layer are co-equal: the graph makes orientation 
 - **LLM spec quality varies**: generated specs reflect the model's understanding. Review sections covering complex business logic before treating them as authoritative.
 - **Embedding is optional**: without an embedding endpoint, `orient` and `search_code` fall back to BM25 keyword search (still useful, less accurate for semantic queries).
 - **Large monorepos**: `spec-gen analyze` on large codebases may take several minutes. Graph storage itself has no practical limit — the pipeline (AST parsing, symbol extraction) is the bottleneck.
-- **`node:sqlite` experimental warning**: Node.js prints `ExperimentalWarning: SQLite is an experimental feature` to stderr on startup. This is cosmetic — the API has been stable since Node 22.5.0 and is marked "release candidate" (Node.js [PR #61262](https://github.com/nodejs/node/pull/61262)). Suppress it with `NODE_NO_WARNINGS=1 spec-gen analyze` if it bothers you.
+- **`node:sqlite` experimental warning on Node 22**: Node.js 22 prints `ExperimentalWarning: SQLite is an experimental feature` to stderr. The warning is gone on Node 24+. Suppress on Node 22 with `NODE_NO_WARNINGS=1 spec-gen analyze`.
 
 ---
 
