@@ -23,9 +23,10 @@ import { isGitRepository, getChangedFiles, getFileDiff, getCommitMessages, resol
 import {
   loadDecisionStore,
   saveDecisionStore,
-  upsertDecisions,
+  replaceDecisions,
   patchDecision,
   getDecisionsByStatus,
+  INACTIVE_STATUSES,
 } from '../../core/decisions/store.js';
 import { consolidateDrafts } from '../../core/decisions/consolidator.js';
 import { extractFromDiff } from '../../core/decisions/extractor.js';
@@ -38,6 +39,8 @@ import {
   OPENSPEC_SPECS_SUBDIR,
   DECISIONS_EXTRACTION_MAX_FILES,
   DECISIONS_DIFF_MAX_CHARS,
+  CONSOLIDATION_GRACE_PERIOD_MS,
+  GATE_REASONS,
 } from '../../constants.js';
 import type { PendingDecision } from '../../types/index.js';
 import { runTuiApproval } from '../tui-approval.js';
@@ -69,6 +72,34 @@ record_decision({
 Decisions are consolidated in the background immediately after \`record_decision\` is called — the pre-commit gate reads the already-consolidated store and adds no LLM latency.
 
 **Performance note**: if you skip \`record_decision\`, the gate detects unrecorded source changes at commit time and triggers a slow LLM extraction on the *next* commit (~10-30s). Calling \`record_decision\` proactively keeps every commit instant.
+
+## When git commit is blocked by the decisions gate
+
+If \`git commit\` fails and the output is JSON with \`"gated": true\`, do NOT retry silently.
+Check the \`reason\` field and act accordingly:
+
+**\`reason: "verified"\` — decisions await review:**
+Present each decision to the user:
+> "The commit is blocked — I found N architectural decision(s) to validate:
+> 1. **[id]** Title — rationale
+Do you approve? (yes/no)"
+For each approval call \`approve_decision\`, for rejections call \`reject_decision\`.
+Then run \`spec-gen decisions --sync\` and retry \`git commit\`.
+
+**\`reason: "approved_not_synced"\` — decisions approved but not written to specs:**
+Run \`spec-gen decisions --sync\` then retry \`git commit\`. Do not skip this step.
+
+**\`reason: "drafts_pending_consolidation"\` — drafts were recorded but not yet consolidated:**
+Present to the user:
+> "N decision draft(s) were recorded but never consolidated. Run consolidation now? (~10-30s)"
+If yes: run \`spec-gen decisions --consolidate --gate\` and handle the result.
+If no: retry with \`git commit --no-verify\` to skip the gate.
+
+**\`reason: "no_decisions_recorded"\` — source files staged but nothing recorded:**
+Present to the user:
+> "Source files are staged but no architectural decisions were recorded. Run fallback extraction to check for undocumented decisions? (~10-30s)"
+If yes: run \`spec-gen decisions --consolidate --gate\` and handle the result.
+If no: retry with \`git commit --no-verify\` to skip the gate.
 <!-- end-spec-gen-decisions-instructions -->
 `;
 
@@ -121,7 +152,26 @@ fi
 if [ "$DECISIONS_EXIT" -ne 0 ]; then
   exit "$DECISIONS_EXIT"
 fi
+# Sentinel written on successful gate pass. Post-commit checks for its absence to detect --no-verify bypass.
+touch "$(git rev-parse --git-dir 2>/dev/null || echo .git)/SPEC_GEN_GATE_RAN" 2>/dev/null || true
 # end-spec-gen-decisions-hook
+`;
+
+const POST_COMMIT_HOOK_MARKER = '# spec-gen-decisions-post-hook';
+const POST_COMMIT_HOOK_CONTENT = `${POST_COMMIT_HOOK_MARKER}
+# Warn when the pre-commit gate was bypassed via --no-verify.
+# post-commit is NOT skipped by --no-verify (only pre-commit and commit-msg are).
+SENTINEL="$(git rev-parse --git-dir 2>/dev/null || echo .git)/SPEC_GEN_GATE_RAN"
+if [ -f "$SENTINEL" ]; then
+  rm -f "$SENTINEL"
+else
+  echo "" >&2
+  echo "⚠️  spec-gen: pre-commit gate was bypassed (--no-verify)." >&2
+  echo "    Architectural decisions were NOT reviewed for this commit." >&2
+  echo "    Run: spec-gen decisions --consolidate --gate" >&2
+  echo "" >&2
+fi
+# end-spec-gen-decisions-post-hook
 `;
 
 async function ensureGitignored(rootPath: string, entry: string): Promise<void> {
@@ -165,6 +215,21 @@ export async function installPreCommitHook(rootPath: string): Promise<void> {
   await chmod(hookPath, 0o755);
   logger.success('Pre-commit hook installed at .git/hooks/pre-commit');
   logger.discovery('Commits will be gated until decisions are approved. Use --no-verify to skip.');
+
+  // Install post-commit hook to detect --no-verify bypass
+  const postCommitPath = join(hooksDir, 'post-commit');
+  let existingPostContent = '';
+  if (await fileExists(postCommitPath)) {
+    existingPostContent = await readFile(postCommitPath, 'utf-8');
+    if (!existingPostContent.includes(POST_COMMIT_HOOK_MARKER)) {
+      const strippedPost = existingPostContent.trimEnd().replace(/\n*\nexit 0\s*$/, '');
+      await writeFile(postCommitPath, strippedPost + '\n\n' + POST_COMMIT_HOOK_CONTENT, 'utf-8');
+    }
+  } else {
+    await writeFile(postCommitPath, '#!/bin/sh\n\n' + POST_COMMIT_HOOK_CONTENT, 'utf-8');
+  }
+  await chmod(postCommitPath, 0o755);
+  logger.success('Post-commit hook installed at .git/hooks/post-commit (bypass detector)');
 
   // Ensure pending decisions store is not accidentally committed
   await ensureGitignored(rootPath, '.spec-gen/decisions/');
@@ -211,6 +276,25 @@ export async function uninstallPreCommitHook(rootPath: string): Promise<void> {
   } else {
     await writeFile(hookPath, newContent + '\n', 'utf-8');
     logger.success('Spec-gen decisions gate removed from pre-commit hook.');
+  }
+
+  // Remove post-commit bypass detector
+  const postCommitPath = join(rootPath, '.git', 'hooks', 'post-commit');
+  if (await fileExists(postCommitPath)) {
+    const postContent = await readFile(postCommitPath, 'utf-8');
+    if (postContent.includes(POST_COMMIT_HOOK_MARKER)) {
+      const newPostContent = postContent
+        .replace(/\n*# spec-gen-decisions-post-hook[\s\S]*?# end-spec-gen-decisions-post-hook\n*/g, '')
+        .trim();
+      if (!newPostContent || newPostContent === '#!/bin/sh') {
+        const { unlink } = await import('node:fs/promises');
+        await unlink(postCommitPath);
+        logger.success('Post-commit hook removed.');
+      } else {
+        await writeFile(postCommitPath, newPostContent + '\n', 'utf-8');
+        logger.success('Spec-gen bypass detector removed from post-commit hook.');
+      }
+    }
   }
 
   // Remove record_decision instructions from agent context files
@@ -302,9 +386,16 @@ function displayDecision(d: PendingDecision, verbose = false): void {
     d.confidence === 'medium' ? '\x1b[33mmedium\x1b[0m' :
                                 '\x1b[31mlow\x1b[0m';
 
-  console.log(`${icon} [${d.id}] ${d.title}`);
+  const scopeLabel = d.scope ?? 'component';
+  const scopeBadge =
+    scopeLabel === 'system'       ? `\x1b[31m[${scopeLabel}]\x1b[0m` :
+    scopeLabel === 'cross-domain' ? `\x1b[33m[${scopeLabel}]\x1b[0m` :
+    scopeLabel === 'component'    ? `\x1b[34m[${scopeLabel}]\x1b[0m` :
+                                    `\x1b[90m[${scopeLabel}]\x1b[0m`;
+
+  console.log(`${icon} [${d.id}] ${scopeBadge} ${d.title}`);
   if (verbose) {
-    console.log(`   Status     : ${d.status}  Confidence: ${confidence}`);
+    console.log(`   Status     : ${d.status}  Confidence: ${confidence}  Scope: ${scopeLabel}`);
     console.log(`   Rationale  : ${d.rationale}`);
     if (d.affectedDomains.length) console.log(`   Domains    : ${d.affectedDomains.join(', ')}`);
     if (d.proposedRequirement) console.log(`   Requirement: ${d.proposedRequirement}`);
@@ -391,6 +482,11 @@ Examples:
       const decision = store.decisions.find((d) => d.id === id);
       if (!decision) {
         logger.error(`Decision ${id} not found.`);
+        process.exitCode = 1;
+        return;
+      }
+      if (decision.status === 'synced') {
+        logger.error(`Decision ${id} is already synced to spec files — re-approval not allowed.`);
         process.exitCode = 1;
         return;
       }
@@ -535,10 +631,28 @@ Examples:
       // Reject all original drafts — they've been replaced by consolidated decisions.
       // Also reject any explicitly superseded IDs from prior sessions.
       const originalDraftIds = new Set(drafts.map((d) => d.id));
+      const originalById = new Map(store.decisions.map((d) => [d.id, d]));
       for (const id of [...originalDraftIds, ...supersededIds]) {
         updatedStore = patchDecision(updatedStore, id, { status: 'rejected' });
       }
-      updatedStore = upsertDecisions(updatedStore, [...verified, ...phantom]);
+      // Preserve recordedAt provenance:
+      // - Direct match: consolidated decision ID matches original draft → use its recordedAt.
+      // - Merged decision (new ID, no match): use earliest recordedAt across all superseded
+      //   drafts so the audit trail reflects when the underlying work was first captured.
+      const earliestSupersededAt = supersededIds
+        .map((id) => originalById.get(id)?.recordedAt)
+        .filter((t): t is string => t !== undefined)
+        .sort()[0];
+      const withProvenance = [...verified, ...phantom].map((d) => {
+        const original = originalById.get(d.id);
+        if (original) return { ...d, recordedAt: original.recordedAt };
+        // Merged decision — anchor to earliest superseded draft's recordedAt
+        if (earliestSupersededAt) return { ...d, recordedAt: earliestSupersededAt };
+        return d;
+      });
+      // replaceDecisions (not upsertDecisions) — consolidated decisions share IDs
+      // with their original drafts; upsert would silently no-op after the reject above.
+      updatedStore = replaceDecisions(updatedStore, withProvenance);
       updatedStore = { ...updatedStore, lastConsolidatedAt: new Date().toISOString() };
       await saveDecisionStore(rootPath, updatedStore);
 
@@ -643,17 +757,32 @@ Examples:
 
     // ── Gate only (no consolidation — consolidation happens on record_decision) ──
     if (options.gate && !options.consolidate) {
+      // Block if approved decisions haven't been synced to spec files yet.
+      const approved = getDecisionsByStatus(store, 'approved');
+      if (approved.length > 0) {
+        const payload = {
+          gated: true,
+          reason: GATE_REASONS.APPROVED_NOT_SYNCED,
+          message: `${approved.length} approved decision(s) must be synced to spec files before committing.`,
+          approved: approved.map((d) => ({ id: d.id, title: d.title })),
+          actions: { sync: 'spec-gen decisions --sync' },
+        };
+        process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
+        process.exitCode = 1;
+        return;
+      }
+
       const verified = getDecisionsByStatus(store, 'verified');
       const missing: Array<{ file: string; description: string }> = [];
 
-      if (verified.length === 0 && missing.length === 0) {
+      if (verified.length === 0) {
         const drafts = getDecisionsByStatus(store, 'draft');
         if (drafts.length > 0) {
           // Drafts recorded but consolidation never completed.
           // Output structured JSON so the agent can relay to the user and act on the answer.
           const payload = {
             gated: true,
-            reason: 'drafts_pending_consolidation',
+            reason: GATE_REASONS.DRAFTS_PENDING_CONSOLIDATION,
             message: `${drafts.length} draft decision(s) were recorded but never consolidated.`,
             drafts: drafts.map((d) => ({ id: d.id, title: d.title, recordedAt: d.recordedAt })),
             actions: {
@@ -669,15 +798,17 @@ Examples:
 
         // If consolidation already ran recently, trust it found nothing — skip the warning.
         const consolidatedRecently = store.lastConsolidatedAt
-          && (Date.now() - new Date(store.lastConsolidatedAt).getTime()) < 60 * 60 * 1000;
+          && (Date.now() - new Date(store.lastConsolidatedAt).getTime()) < CONSOLIDATION_GRACE_PERIOD_MS;
         if (consolidatedRecently) {
           process.exitCode = 0;
           return;
         }
 
         // If source files are staged but nothing was recorded, offer to run the fallback extractor.
+        // Phantom decisions ("recorded but no code evidence") are excluded — stale phantoms from
+        // previous sessions would otherwise silently bypass the gate for all future commits.
         const activeDecisions = store.decisions.filter(
-          (d) => !['rejected', 'synced'].includes(d.status),
+          (d) => !INACTIVE_STATUSES.has(d.status),
         );
         if (activeDecisions.length === 0 && await isGitRepository(rootPath)) {
           try {
@@ -692,7 +823,7 @@ Examples:
               // Source files staged but nothing recorded — output JSON for agent to relay.
               const payload = {
                 gated: true,
-                reason: 'no_decisions_recorded',
+                reason: GATE_REASONS.NO_DECISIONS_RECORDED,
                 message: 'Source files are staged but no architectural decisions were recorded.',
                 actions: {
                   consolidateAndGate: 'spec-gen decisions --consolidate --gate',
@@ -732,6 +863,7 @@ Examples:
       // Non-TTY: JSON for ACP/agent consumption
       const payload = {
         gated: true,
+        reason: GATE_REASONS.VERIFIED,
         verified: verified.map((d) => ({
           id: d.id,
           title: d.title,
@@ -775,13 +907,16 @@ Examples:
       const specMap = await buildSpecMap({ rootPath, openspecPath });
       const approved = getDecisionsByStatus(store, 'approved');
 
-      if (approved.length === 0) {
+      if (approved.length === 0 && !options.json) {
         console.log('No approved decisions to sync. Use --approve <id> first.');
-        return;
       }
 
-      if (!options.json) logger.discovery(`Syncing ${approved.length} approved decision(s)...`);
+      if (approved.length > 0 && !options.json) {
+        logger.discovery(`Syncing ${approved.length} approved decision(s)...`);
+      }
 
+      // Always call syncApprovedDecisions so purgeInactiveDecisions runs on the store
+      // even when there are no approved decisions to sync.
       const { result } = await syncApprovedDecisions(store, {
         rootPath,
         openspecPath,

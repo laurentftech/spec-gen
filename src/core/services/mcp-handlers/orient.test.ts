@@ -54,6 +54,16 @@ vi.mock('../../analyzer/spec-vector-index.js', () => ({
   },
 }));
 
+vi.mock('../../decisions/store.js', () => ({
+  loadDecisionStore: vi.fn(async () => ({
+    version: '1',
+    sessionId: 'test-session',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    decisions: [],
+  })),
+  INACTIVE_STATUSES: new Set(['rejected', 'synced', 'phantom']),
+}));
+
 // ── Imports (after mocks) ─────────────────────────────────────────────────────
 
 import { handleOrient } from './orient.js';
@@ -62,6 +72,7 @@ import { EmbeddingService } from '../../analyzer/embedding-service.js';
 import { SpecVectorIndex } from '../../analyzer/spec-vector-index.js';
 import { loadMappingIndex, specsForFile, functionsForDomain, readCachedContext } from './utils.js';
 import { readSpecGenConfig } from '../config-manager.js';
+import { loadDecisionStore } from '../../decisions/store.js';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -102,6 +113,12 @@ describe('handleOrient', () => {
     vi.mocked(readSpecGenConfig).mockResolvedValue(null);
     vi.mocked(EmbeddingService.fromEnv).mockImplementation(() => { throw new Error('no env'); });
     vi.mocked(EmbeddingService.fromConfig).mockReturnValue(null);
+    vi.mocked(loadDecisionStore).mockResolvedValue({
+      version: '1',
+      sessionId: 'test-session',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      decisions: [],
+    });
   });
 
   it('returns error when no code index exists', async () => {
@@ -272,5 +289,144 @@ describe('handleOrient', () => {
     expect(result.matchingSpecs).toBeDefined();
     const specs = result.matchingSpecs as Array<{ domain: string }>;
     expect(specs[0].domain).toBe('auth');
+  });
+
+  it('filters out external synthetic nodes from relevantFunctions', async () => {
+    vi.mocked(VectorIndex.exists).mockReturnValue(true);
+    vi.mocked(VectorIndex.search).mockResolvedValue([
+      makeSearchResult({ name: 'realFn', filePath: 'src/real.ts' }),
+      { score: 0.5, record: { ...makeSearchResult().record, id: 'external::fetch', name: 'fetch', filePath: 'external' } },
+      { score: 0.4, record: { ...makeSearchResult().record, id: 'external::https.request', name: 'https.request', filePath: 'src/real.ts' } },
+    ]);
+
+    const result = await handleOrient('/tmp/proj', 'fetch task') as Record<string, unknown>;
+    const fns = result.relevantFunctions as Array<{ name: string; filePath: string }>;
+
+    expect(fns.some(f => f.filePath === 'external')).toBe(false);
+    expect(fns.some(f => f.name === 'fetch')).toBe(false);
+    // The node with id starting with 'external::' is also filtered even if filePath differs
+    expect(fns.some(f => f.name === 'https.request')).toBe(false);
+  });
+
+  it('includes pendingDecisions when active decisions exist', async () => {
+    vi.mocked(VectorIndex.exists).mockReturnValue(true);
+    vi.mocked(VectorIndex.search).mockResolvedValue([makeSearchResult()]);
+    vi.mocked(loadDecisionStore).mockResolvedValue({
+      version: '1',
+      sessionId: 'test-session',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      decisions: [
+        {
+          id: 'abc12345',
+          status: 'approved',
+          title: 'Use SQLite',
+          rationale: 'JSON too big',
+          consequences: '',
+          proposedRequirement: null,
+          affectedDomains: ['services'],
+          affectedFiles: [],
+          sessionId: 'test-session',
+          recordedAt: '2026-01-01T00:00:00.000Z',
+          confidence: 'medium',
+          syncedToSpecs: [],
+        },
+        {
+          id: 'def67890',
+          status: 'synced', // excluded — synced decisions are not active
+          title: 'Already synced',
+          rationale: 'Done',
+          consequences: '',
+          proposedRequirement: null,
+          affectedDomains: [],
+          affectedFiles: [],
+          sessionId: 'test-session',
+          recordedAt: '2026-01-01T00:00:00.000Z',
+          confidence: 'medium',
+          syncedToSpecs: ['services'],
+        },
+      ],
+    });
+
+    const result = await handleOrient('/tmp/proj', 'task') as Record<string, unknown>;
+
+    expect(result.pendingDecisions).toBeDefined();
+    const decisions = result.pendingDecisions as Array<{ id: string; status: string }>;
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0].id).toBe('abc12345');
+    expect(decisions[0].status).toBe('approved');
+  });
+
+  it('omits pendingDecisions when all decisions are synced or rejected', async () => {
+    vi.mocked(VectorIndex.exists).mockReturnValue(true);
+    vi.mocked(VectorIndex.search).mockResolvedValue([makeSearchResult()]);
+    vi.mocked(loadDecisionStore).mockResolvedValue({
+      version: '1',
+      sessionId: 'test-session',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      decisions: [
+        {
+          id: 'aaa11111',
+          status: 'synced',
+          title: 'Done',
+          rationale: 'r',
+          consequences: '',
+          proposedRequirement: null,
+          affectedDomains: [],
+          affectedFiles: [],
+          sessionId: 's',
+          recordedAt: '2026-01-01T00:00:00.000Z',
+          confidence: 'low',
+          syncedToSpecs: [],
+        },
+        {
+          id: 'bbb22222',
+          status: 'rejected',
+          title: 'Bad',
+          rationale: 'r',
+          consequences: '',
+          proposedRequirement: null,
+          affectedDomains: [],
+          affectedFiles: [],
+          sessionId: 's',
+          recordedAt: '2026-01-01T00:00:00.000Z',
+          confidence: 'low',
+          syncedToSpecs: [],
+        },
+      ],
+    });
+
+    const result = await handleOrient('/tmp/proj', 'task') as Record<string, unknown>;
+
+    expect(result.pendingDecisions).toBeUndefined();
+  });
+
+  it('omits external callee neighbours from call paths', async () => {
+    vi.mocked(VectorIndex.exists).mockReturnValue(true);
+    const searchResult = makeSearchResult({ id: 'src/foo.ts::doFoo', name: 'doFoo', filePath: 'src/foo.ts' });
+    vi.mocked(VectorIndex.search).mockResolvedValue([searchResult]);
+    vi.mocked(readCachedContext).mockResolvedValue({
+      callGraph: { nodes: [], edges: [], classes: [], inheritanceEdges: [], hubFunctions: [], entryPoints: [], layerViolations: [], stats: { totalNodes: 0, totalEdges: 0, avgFanIn: 0, avgFanOut: 0 } },
+      edgeStore: {
+        getCallers: () => [],
+        getCallees: () => [
+          { callerId: 'src/foo.ts::doFoo', calleeId: 'external::fetch', calleeName: 'fetch', confidence: 'name_only' },
+          { callerId: 'src/foo.ts::doFoo', calleeId: 'src/bar.ts::doBar', calleeName: 'doBar', confidence: 'exact' },
+        ],
+        getNode: (id: string) => {
+          if (id === 'external::fetch') return { id, name: 'fetch', filePath: 'external', fanIn: 0, fanOut: 0, isAsync: false, language: 'TypeScript', startIndex: 0, endIndex: 0, isExternal: true };
+          if (id === 'src/bar.ts::doBar') return { id, name: 'doBar', filePath: 'src/bar.ts', fanIn: 0, fanOut: 0, isAsync: false, language: 'TypeScript', startIndex: 0, endIndex: 50 };
+          return null;
+        },
+      },
+    } as never);
+
+    const result = await handleOrient('/tmp/proj', 'task') as Record<string, unknown>;
+    const callPaths = result.callPaths as Array<{ function: string; callees: Array<{ name: string }> }>;
+    const fooPaths = callPaths.find(p => p.function === 'doFoo');
+
+    expect(fooPaths).toBeDefined();
+    // External node (fetch) must be filtered out; internal doBar kept
+    expect(fooPaths!.callees.some(c => c.name === 'fetch')).toBe(false);
+    expect(fooPaths!.callees.some(c => c.name === 'doBar')).toBe(true);
   });
 });

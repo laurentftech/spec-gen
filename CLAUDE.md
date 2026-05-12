@@ -48,9 +48,12 @@ Check the `reason` field and act accordingly:
 Present each decision to the user:
 > "The commit is blocked — I found N architectural decision(s) to validate:
 > 1. **[id]** Title — rationale
-> Do you approve? (yes/no)"
+Do you approve? (yes/no)"
 For each approval call `approve_decision`, for rejections call `reject_decision`.
 Then run `spec-gen decisions --sync` and retry `git commit`.
+
+**`reason: "approved_not_synced"` — decisions approved but not written to specs:**
+Run `spec-gen decisions --sync` then retry `git commit`. Do not skip this step.
 
 **`reason: "drafts_pending_consolidation"` — drafts were recorded but not yet consolidated:**
 Present to the user:

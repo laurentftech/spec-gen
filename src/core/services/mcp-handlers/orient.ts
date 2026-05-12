@@ -349,6 +349,8 @@ export async function handleOrient(
   }
 
   // ── Pending decisions (best-effort) ──────────────────────────────────────
+  // Active (non-synced) decisions relevant to this task's domains or files.
+  // Synced decisions appear via the vector index (domain "decisions") in matchingSpecs.
   interface DecisionSummary {
     id: string;
     title: string;
@@ -357,11 +359,19 @@ export async function handleOrient(
   }
   let pendingDecisions: DecisionSummary[] | undefined;
   try {
-    const { loadDecisionStore } = await import('../../decisions/store.js');
+    const { loadDecisionStore, INACTIVE_STATUSES } = await import('../../decisions/store.js');
     const store = await loadDecisionStore(absDir);
-    const active = store.decisions.filter(
-      (d) => d.status !== 'synced' && d.status !== 'rejected',
-    );
+    const relevantDomainSet = new Set(specDomains.map((s) => s.domain));
+    const relevantFileSet = new Set(relevantFiles);
+    const active = store.decisions.filter((d) => {
+      if (INACTIVE_STATUSES.has(d.status)) return false;
+      // Surface if it touches a domain or file the orient task identified
+      if (d.affectedDomains.some((dom) => relevantDomainSet.has(dom))) return true;
+      if (d.affectedFiles.some((f) => relevantFileSet.has(f))) return true;
+      // Always surface approved decisions — agent must sync before committing
+      if (d.status === 'approved') return true;
+      return false;
+    });
     if (active.length > 0) {
       pendingDecisions = active.map((d) => ({
         id: d.id,
@@ -373,6 +383,23 @@ export async function handleOrient(
   } catch {
     // non-fatal — decisions feature may not be initialised
   }
+
+  // ── Suggested tools (portable discovery for non-Claude Code clients) ─────
+  // Derived from what orient already knows — no extra I/O.
+  const _suggested: string[] = ['record_decision'];
+  if (relevantFunctions.some(f => f.isHub)) _suggested.push('analyze_impact');
+  if (insertionPoints.length > 0) _suggested.push('get_subgraph');
+  if (specDomains.length > 0) _suggested.push('get_spec');
+  const _taskLow = task.toLowerCase();
+  if (/\b(debug|trace|flow|path|reach|call.?chain)\b/.test(_taskLow)) _suggested.push('trace_execution_path');
+  if (/\b(schema|database|db|model|table|entity|migration)\b/.test(_taskLow)) _suggested.push('get_schema_inventory');
+  if (/\b(route|endpoint|api|http|rest|request|handler)\b/.test(_taskLow)) _suggested.push('get_route_inventory');
+  if (/\b(test|coverage|spec.?driven)\b/.test(_taskLow)) _suggested.push('get_test_coverage');
+  if (/\b(duplicate|clone|similar|refactor)\b/.test(_taskLow)) _suggested.push('get_duplicate_report');
+  if (/\b(cluster|community|coupled|group)\b/.test(_taskLow)) _suggested.push('get_cluster');
+  _suggested.push('check_spec_drift');
+  const _seen = new Set<string>();
+  const suggestedTools = _suggested.filter(t => (_seen.has(t) ? false : (_seen.add(t), true)));
 
   // ── Next steps ────────────────────────────────────────────────────────────
   const nextSteps: string[] = [];
@@ -407,6 +434,7 @@ export async function handleOrient(
     insertionPoints,
     ...(matchingSpecs !== undefined ? { matchingSpecs } : {}),
     ...(pendingDecisions !== undefined ? { pendingDecisions } : {}),
+    suggestedTools,
     nextSteps,
   };
 }

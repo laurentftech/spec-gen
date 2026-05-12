@@ -340,36 +340,35 @@ record_decision({
 })
 ```
 
-Decisions are consolidated and cross-checked against the git diff before each commit.
+Decisions are consolidated in the background immediately after `record_decision` is called — the pre-commit gate reads the already-consolidated store and adds no LLM latency.
 
 **Performance note**: if you skip `record_decision`, the gate detects unrecorded source changes at commit time and triggers a slow LLM extraction on the *next* commit (~10-30s). Calling `record_decision` proactively keeps every commit instant.
 
 ## When git commit is blocked by the decisions gate
 
-If `git commit` fails and the output is JSON with `"gated": true`, do NOT approve decisions yourself. Always present them to the user first.
-
+If `git commit` fails and the output is JSON with `"gated": true`, do NOT retry silently.
 Check the `reason` field and act accordingly:
 
 **`reason: "verified"` — decisions await review:**
 Present each decision to the user:
 > "The commit is blocked — I found N architectural decision(s) to validate:
 > 1. **[id]** Title — rationale
-> Do you approve? (yes/no)"
-
+Do you approve? (yes/no)"
 For each approval call `approve_decision`, for rejections call `reject_decision`.
 Then run `spec-gen decisions --sync` and retry `git commit`.
+
+**`reason: "approved_not_synced"` — decisions approved but not written to specs:**
+Run `spec-gen decisions --sync` then retry `git commit`. Do not skip this step.
 
 **`reason: "drafts_pending_consolidation"` — drafts were recorded but not yet consolidated:**
 Present to the user:
 > "N decision draft(s) were recorded but never consolidated. Run consolidation now? (~10-30s)"
-
 If yes: run `spec-gen decisions --consolidate --gate` and handle the result.
 If no: retry with `git commit --no-verify` to skip the gate.
 
 **`reason: "no_decisions_recorded"` — source files staged but nothing recorded:**
 Present to the user:
 > "Source files are staged but no architectural decisions were recorded. Run fallback extraction to check for undocumented decisions? (~10-30s)"
-
 If yes: run `spec-gen decisions --consolidate --gate` and handle the result.
 If no: retry with `git commit --no-verify` to skip the gate.
 <!-- end-spec-gen-decisions-instructions -->

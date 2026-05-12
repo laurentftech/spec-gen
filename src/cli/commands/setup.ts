@@ -305,16 +305,16 @@ export const setupCommand = new Command('setup')
         message: 'Which agent tools do you want to install skills for?',
         choices: [
           {
-            name: 'Mistral Vibe  (.vibe/skills/spec-gen-{name}/SKILL.md — 8 skills)',
-            value: 'vibe' as ToolName,
+            name: 'Claude Code   (.claude/skills/ — 8 skills + pre-commit & PostToolUse hooks)',
+            value: 'claude' as ToolName,
           },
           {
             name: 'Cline / Roo   (.clinerules/workflows/spec-gen-{name}.md — 7 workflows)',
             value: 'cline' as ToolName,
           },
           {
-            name: 'Claude Code   (.claude/skills/ — 8 skills + pre-commit & PostToolUse hooks)',
-            value: 'claude' as ToolName,
+            name: 'Mistral Vibe  (.vibe/skills/spec-gen-{name}/SKILL.md — 8 skills)',
+            value: 'vibe' as ToolName,
           },
           {
             name: 'OpenCode      (.opencode/skills/spec-gen-{name}/SKILL.md — 8 skills + agent-guard plugin)',

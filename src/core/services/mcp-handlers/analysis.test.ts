@@ -22,6 +22,11 @@ import {
   ARTIFACT_DEPENDENCY_GRAPH,
   ARTIFACT_MAPPING,
   ARTIFACT_ROUTE_INVENTORY,
+  ARTIFACT_MIDDLEWARE_INVENTORY,
+  ARTIFACT_SCHEMA_INVENTORY,
+  ARTIFACT_UI_INVENTORY,
+  ARTIFACT_ENV_INVENTORY,
+  ARTIFACT_EXTERNAL_PACKAGES,
 } from '../../../constants.js';
 
 // ============================================================================
@@ -638,5 +643,375 @@ describe('handleGetRouteInventory', () => {
     // Malformed JSON → JSON.parse throws → falls through to live extraction → cached: false
     expect(result.cached).toBe(false);
     expect(result).toHaveProperty('total');
+  });
+});
+
+// ============================================================================
+// handleGetMiddlewareInventory
+// ============================================================================
+
+describe('handleGetMiddlewareInventory', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    tmpDir = await createTmpDir();
+    const utils = await import('./utils.js');
+    vi.mocked(utils.validateDirectory).mockResolvedValue(tmpDir);
+  });
+
+  it('returns cached: true when middleware-inventory.json exists', async () => {
+    const payload = [{ name: 'authMiddleware', file: 'src/middleware/auth.ts' }];
+    await writeAnalysisFile(tmpDir, ARTIFACT_MIDDLEWARE_INVENTORY, payload);
+    const { handleGetMiddlewareInventory } = await import('./analysis.js');
+    const result = await handleGetMiddlewareInventory(tmpDir) as Record<string, unknown>;
+    expect(result.cached).toBe(true);
+    expect(result.total).toBe(1);
+    expect(Array.isArray(result.entries)).toBe(true);
+  });
+
+  it('falls back to live extraction (cached: false) when artifact absent', async () => {
+    const { handleGetMiddlewareInventory } = await import('./analysis.js');
+    const result = await handleGetMiddlewareInventory(tmpDir) as Record<string, unknown>;
+    expect(result.cached).toBe(false);
+    expect(result).toHaveProperty('total');
+    expect(result).toHaveProperty('entries');
+  });
+});
+
+// ============================================================================
+// handleGetSchemaInventory
+// ============================================================================
+
+describe('handleGetSchemaInventory', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    tmpDir = await createTmpDir();
+    const utils = await import('./utils.js');
+    vi.mocked(utils.validateDirectory).mockResolvedValue(tmpDir);
+  });
+
+  it('returns cached: true when schema-inventory.json exists', async () => {
+    const payload = [{ name: 'User', type: 'interface', file: 'src/types.ts' }];
+    await writeAnalysisFile(tmpDir, ARTIFACT_SCHEMA_INVENTORY, payload);
+    const { handleGetSchemaInventory } = await import('./analysis.js');
+    const result = await handleGetSchemaInventory(tmpDir) as Record<string, unknown>;
+    expect(result.cached).toBe(true);
+    expect(result.total).toBe(1);
+    expect(Array.isArray(result.schemas)).toBe(true);
+  });
+
+  it('falls back to live extraction when artifact absent', async () => {
+    const { handleGetSchemaInventory } = await import('./analysis.js');
+    const result = await handleGetSchemaInventory(tmpDir) as Record<string, unknown>;
+    expect(result.cached).toBe(false);
+    expect(result).toHaveProperty('schemas');
+  });
+});
+
+// ============================================================================
+// handleGetUIComponents
+// ============================================================================
+
+describe('handleGetUIComponents', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    tmpDir = await createTmpDir();
+    const utils = await import('./utils.js');
+    vi.mocked(utils.validateDirectory).mockResolvedValue(tmpDir);
+  });
+
+  it('returns cached: true when ui-inventory.json exists', async () => {
+    const payload = [{ name: 'Button', file: 'src/components/Button.tsx' }];
+    await writeAnalysisFile(tmpDir, ARTIFACT_UI_INVENTORY, payload);
+    const { handleGetUIComponents } = await import('./analysis.js');
+    const result = await handleGetUIComponents(tmpDir) as Record<string, unknown>;
+    expect(result.cached).toBe(true);
+    expect(result.total).toBe(1);
+    expect(Array.isArray(result.components)).toBe(true);
+  });
+
+  it('falls back to live extraction when artifact absent', async () => {
+    const { handleGetUIComponents } = await import('./analysis.js');
+    const result = await handleGetUIComponents(tmpDir) as Record<string, unknown>;
+    expect(result.cached).toBe(false);
+    expect(result).toHaveProperty('components');
+  });
+});
+
+// ============================================================================
+// handleGetEnvVars
+// ============================================================================
+
+describe('handleGetEnvVars', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    tmpDir = await createTmpDir();
+    const utils = await import('./utils.js');
+    vi.mocked(utils.validateDirectory).mockResolvedValue(tmpDir);
+  });
+
+  it('returns cached: true when env-inventory.json exists', async () => {
+    const payload = [{ name: 'DATABASE_URL', file: 'src/config.ts' }];
+    await writeAnalysisFile(tmpDir, ARTIFACT_ENV_INVENTORY, payload);
+    const { handleGetEnvVars } = await import('./analysis.js');
+    const result = await handleGetEnvVars(tmpDir) as Record<string, unknown>;
+    expect(result.cached).toBe(true);
+    expect(result.total).toBe(1);
+    expect(Array.isArray(result.envVars)).toBe(true);
+  });
+
+  it('falls back to live extraction when artifact absent', async () => {
+    const { handleGetEnvVars } = await import('./analysis.js');
+    const result = await handleGetEnvVars(tmpDir) as Record<string, unknown>;
+    expect(result.cached).toBe(false);
+    expect(result).toHaveProperty('envVars');
+  });
+});
+
+// ============================================================================
+// handleGetExternalPackages
+// ============================================================================
+
+describe('handleGetExternalPackages', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    tmpDir = await createTmpDir();
+    const utils = await import('./utils.js');
+    vi.mocked(utils.validateDirectory).mockResolvedValue(tmpDir);
+  });
+
+  it('returns cached: true when external-packages.json exists', async () => {
+    const payload = { total: 2, packages: [{ name: 'express', version: '^4.18.0' }] };
+    await writeAnalysisFile(tmpDir, ARTIFACT_EXTERNAL_PACKAGES, payload);
+    const { handleGetExternalPackages } = await import('./analysis.js');
+    const result = await handleGetExternalPackages(tmpDir) as Record<string, unknown>;
+    expect(result.cached).toBe(true);
+    expect(result.total).toBe(2);
+  });
+
+  it('falls back to live extraction when artifact absent', async () => {
+    const { handleGetExternalPackages } = await import('./analysis.js');
+    const result = await handleGetExternalPackages(tmpDir) as Record<string, unknown>;
+    expect(result.cached).toBe(false);
+  });
+});
+
+// ============================================================================
+// handleGetMinimalContext
+// ============================================================================
+
+function makeCallGraph(overrides: Partial<{
+  nodes: unknown[]; edges: unknown[];
+}> = {}) {
+  return {
+    nodes: [],
+    edges: [],
+    entryPoints: [],
+    hubFunctions: [],
+    layerViolations: [],
+    inheritanceEdges: [],
+    classes: [],
+    stats: { totalNodes: 0, totalEdges: 0, avgFanIn: 0, avgFanOut: 0 },
+    ...overrides,
+  };
+}
+
+describe('handleGetMinimalContext', () => {
+  let tmpDir: string;
+  let readCachedContext: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    tmpDir = await createTmpDir();
+    const utils = await import('./utils.js');
+    vi.mocked(utils.validateDirectory).mockResolvedValue(tmpDir);
+    readCachedContext = vi.mocked(utils.readCachedContext);
+  });
+
+  it('returns error when no call graph available', async () => {
+    readCachedContext.mockResolvedValue(null);
+    const { handleGetMinimalContext } = await import('./analysis.js');
+    const result = await handleGetMinimalContext(tmpDir, 'myFn') as { error: string };
+    expect(result.error).toMatch(/No call graph/);
+  });
+
+  it('returns error when function not found in call graph', async () => {
+    readCachedContext.mockResolvedValue({ callGraph: makeCallGraph() });
+    const { handleGetMinimalContext } = await import('./analysis.js');
+    const result = await handleGetMinimalContext(tmpDir, 'nonExistentFn') as { error: string };
+    expect(result.error).toMatch(/"nonExistentFn" not found/);
+  });
+
+  it('returns function metadata with callers and callees', async () => {
+    const node = {
+      id: 'src/a.ts::doWork', name: 'doWork', filePath: `${tmpDir}/src/a.ts`,
+      signature: 'doWork(x: number): void', language: 'typescript',
+      fanIn: 2, fanOut: 1, startLine: 1, endLine: 5,
+      isExternal: false, isTest: false,
+    };
+    const callerNode = {
+      id: 'src/b.ts::caller', name: 'caller', filePath: `${tmpDir}/src/b.ts`,
+      signature: 'caller()', language: 'typescript',
+      fanIn: 0, fanOut: 1, startLine: 1, endLine: 3,
+      isExternal: false, isTest: false,
+    };
+    readCachedContext.mockResolvedValue({
+      callGraph: makeCallGraph({
+        nodes: [node, callerNode],
+        edges: [
+          { callerId: 'src/b.ts::caller', calleeId: 'src/a.ts::doWork', calleeName: 'doWork', confidence: 'exact', kind: 'calls' },
+        ],
+      }),
+    });
+    const { handleGetMinimalContext } = await import('./analysis.js');
+    const result = await handleGetMinimalContext(tmpDir, 'doWork') as Record<string, unknown>;
+    expect((result.function as Record<string, unknown>).name).toBe('doWork');
+    expect(Array.isArray(result.callers)).toBe(true);
+    expect((result.callers as unknown[]).length).toBeGreaterThanOrEqual(0);
+    expect(Array.isArray(result.callees)).toBe(true);
+    expect(Array.isArray(result.testedBy)).toBe(true);
+  });
+
+  it('includes testedBy edges when present', async () => {
+    const node = {
+      id: 'src/a.ts::compute', name: 'compute', filePath: `${tmpDir}/src/a.ts`,
+      signature: 'compute()', language: 'typescript',
+      fanIn: 0, fanOut: 0, startLine: 1, endLine: 3,
+      isExternal: false, isTest: false,
+    };
+    readCachedContext.mockResolvedValue({
+      callGraph: makeCallGraph({
+        nodes: [node],
+        edges: [
+          { callerId: 'src/a.ts::compute', calleeId: 'src/a.test.ts::testCompute', calleeName: 'compute.test.ts', confidence: 'import', kind: 'tested_by' },
+        ],
+      }),
+    });
+    const { handleGetMinimalContext } = await import('./analysis.js');
+    const result = await handleGetMinimalContext(tmpDir, 'compute') as { testedBy: Array<{ confidence: string }> };
+    expect(result.testedBy).toHaveLength(1);
+    expect(result.testedBy[0].confidence).toBe('imported');
+  });
+});
+
+// ============================================================================
+// handleGetCluster
+// ============================================================================
+
+describe('handleGetCluster', () => {
+  let tmpDir: string;
+  let readCachedContext: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    tmpDir = await createTmpDir();
+    const utils = await import('./utils.js');
+    vi.mocked(utils.validateDirectory).mockResolvedValue(tmpDir);
+    readCachedContext = vi.mocked(utils.readCachedContext);
+  });
+
+  it('returns error when no call graph', async () => {
+    readCachedContext.mockResolvedValue(null);
+    const { handleGetCluster } = await import('./analysis.js');
+    const result = await handleGetCluster(tmpDir, 'foo') as { error: string };
+    expect(result.error).toMatch(/No call graph/);
+  });
+
+  it('returns error when function not found', async () => {
+    readCachedContext.mockResolvedValue({ callGraph: makeCallGraph() });
+    const { handleGetCluster } = await import('./analysis.js');
+    const result = await handleGetCluster(tmpDir, 'missing') as { error: string };
+    expect(result.error).toMatch(/"missing" not found/);
+  });
+
+  it('returns error when function has no community data', async () => {
+    const node = {
+      id: 'src/a.ts::fn', name: 'fn', filePath: `${tmpDir}/src/a.ts`,
+      fanIn: 0, fanOut: 0, isExternal: false, isTest: false,
+      // no communityId
+    };
+    readCachedContext.mockResolvedValue({ callGraph: makeCallGraph({ nodes: [node] }) });
+    const { handleGetCluster } = await import('./analysis.js');
+    const result = await handleGetCluster(tmpDir, 'fn') as { error: string };
+    expect(result.error).toMatch(/No community data/);
+  });
+
+  it('returns cluster members and stats for function with communityId', async () => {
+    const mkNode = (name: string) => ({
+      id: `src/a.ts::${name}`, name, filePath: `${tmpDir}/src/a.ts`,
+      fanIn: 1, fanOut: 1, isExternal: false, isTest: false,
+      communityId: 42, communityLabel: 'auth-cluster',
+    });
+    const nodes = [mkNode('login'), mkNode('logout'), mkNode('refresh')];
+    readCachedContext.mockResolvedValue({ callGraph: makeCallGraph({ nodes, edges: [] }) });
+    const { handleGetCluster } = await import('./analysis.js');
+    const result = await handleGetCluster(tmpDir, 'login') as Record<string, unknown>;
+    expect(result.communityId).toBe(42);
+    expect(result.communityLabel).toBe('auth-cluster');
+    expect((result.stats as Record<string, number>).members).toBe(3);
+    expect(Array.isArray(result.functions)).toBe(true);
+  });
+});
+
+// ============================================================================
+// handleDetectChanges
+// ============================================================================
+
+describe('handleDetectChanges', () => {
+  let tmpDir: string;
+  let readCachedContext: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    tmpDir = await createTmpDir();
+    const utils = await import('./utils.js');
+    vi.mocked(utils.validateDirectory).mockResolvedValue(tmpDir);
+    readCachedContext = vi.mocked(utils.readCachedContext);
+  });
+
+  it('returns error when no call graph', async () => {
+    readCachedContext.mockResolvedValue(null);
+    const { handleDetectChanges } = await import('./analysis.js');
+    const result = await handleDetectChanges(tmpDir) as { error: string };
+    expect(result.error).toMatch(/No call graph/);
+  });
+
+  it('returns git error when directory is not a git repository', async () => {
+    readCachedContext.mockResolvedValue({ callGraph: makeCallGraph() });
+    const { handleDetectChanges } = await import('./analysis.js');
+    // tmpDir is not a git repo — git diff will fail
+    const result = await handleDetectChanges(tmpDir) as { error: string };
+    expect(result.error).toMatch(/git diff failed/);
+  });
+});
+
+// ============================================================================
+// handleAuditSpecCoverage
+// ============================================================================
+
+describe('handleAuditSpecCoverage', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    tmpDir = await createTmpDir();
+    const utils = await import('./utils.js');
+    vi.mocked(utils.validateDirectory).mockResolvedValue(tmpDir);
+  });
+
+  it('returns error when audit fails (no analysis)', async () => {
+    const { handleAuditSpecCoverage } = await import('./analysis.js');
+    const result = await handleAuditSpecCoverage(tmpDir) as { error: string };
+    // No analysis cache → specGenAudit throws
+    expect(result.error).toMatch(/Audit failed/);
   });
 });

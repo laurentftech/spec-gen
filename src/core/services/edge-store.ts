@@ -1,25 +1,53 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { createRequire } from 'node:module';
+import { DatabaseSync, type StatementSync } from 'node:sqlite';
 import type { CallEdge, FunctionNode, ClassNode, InheritanceEdge } from '../analyzer/call-graph.js';
 import { ARTIFACT_CALL_GRAPH_DB } from '../../constants.js';
 
-const require = createRequire(import.meta.url);
 
-function openDatabase(dbPath: string): import('better-sqlite3').Database {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const DatabaseCtor = require('better-sqlite3') as any;
-  const db: import('better-sqlite3').Database = new DatabaseCtor(dbPath) as import('better-sqlite3').Database;
-  db.pragma('journal_mode = WAL');
-  db.pragma('synchronous = NORMAL');
+function openDatabase(dbPath: string): DatabaseSync {
+  const db = new DatabaseSync(dbPath);
+  db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA synchronous = NORMAL');
   return db;
+}
+
+// Track nesting depth per db instance to support nested transactions via SAVEPOINT
+const txDepth = new WeakMap<DatabaseSync, number>();
+
+function runTransaction(db: DatabaseSync, fn: () => void): void {
+  const depth = txDepth.get(db) ?? 0;
+  const sp = `sp${depth}`;
+  if (depth === 0) {
+    db.exec('BEGIN');
+  } else {
+    db.exec(`SAVEPOINT ${sp}`);
+  }
+  txDepth.set(db, depth + 1);
+  try {
+    fn();
+    if (depth === 0) {
+      db.exec('COMMIT');
+    } else {
+      db.exec(`RELEASE ${sp}`);
+    }
+  } catch (err) {
+    if (depth === 0) {
+      db.exec('ROLLBACK');
+    } else {
+      db.exec(`ROLLBACK TO ${sp}`);
+    }
+    throw err;
+  } finally {
+    txDepth.set(db, depth);
+  }
 }
 
 /** Bump when schema changes. Old DBs are dropped and rebuilt on next analyze --force. */
 const SCHEMA_VERSION = 2;
 
 export class EdgeStore {
-  private constructor(private readonly db: import('better-sqlite3').Database) {
+  private constructor(private readonly db: DatabaseSync) {
     this.initSchema();
   }
 
@@ -119,17 +147,17 @@ export class EdgeStore {
   getCallerFiles(calleeFile: string): string[] {
     const rows = this.db
       .prepare('SELECT DISTINCT caller_file FROM edges WHERE callee_file = ?')
-      .all(calleeFile) as Array<{ caller_file: string }>;
+      .all(calleeFile) as unknown as Array<{ caller_file: string }>;
     return rows.map(r => r.caller_file);
   }
 
   /** All outgoing + incoming edges touching a file. */
   getEdgesForFile(file: string): { outgoing: CallEdge[]; incoming: CallEdge[] } {
     const outgoing = (
-      this.db.prepare('SELECT * FROM edges WHERE caller_file = ?').all(file) as RawEdge[]
+      this.db.prepare('SELECT * FROM edges WHERE caller_file = ?').all(file) as unknown as RawEdge[]
     ).map(rawToCallEdge);
     const incoming = (
-      this.db.prepare('SELECT * FROM edges WHERE callee_file = ?').all(file) as RawEdge[]
+      this.db.prepare('SELECT * FROM edges WHERE callee_file = ?').all(file) as unknown as RawEdge[]
     ).map(rawToCallEdge);
     return { outgoing, incoming };
   }
@@ -137,14 +165,14 @@ export class EdgeStore {
   /** Outgoing edges from a node ID (its direct callees). */
   getCallees(nodeId: string): CallEdge[] {
     return (
-      this.db.prepare('SELECT * FROM edges WHERE caller_id = ?').all(nodeId) as RawEdge[]
+      this.db.prepare('SELECT * FROM edges WHERE caller_id = ?').all(nodeId) as unknown as RawEdge[]
     ).map(rawToCallEdge);
   }
 
   /** Incoming edges to a node ID (its direct callers). */
   getCallers(nodeId: string): CallEdge[] {
     return (
-      this.db.prepare('SELECT * FROM edges WHERE callee_id = ?').all(nodeId) as RawEdge[]
+      this.db.prepare('SELECT * FROM edges WHERE callee_id = ?').all(nodeId) as unknown as RawEdge[]
     ).map(rawToCallEdge);
   }
 
@@ -153,7 +181,7 @@ export class EdgeStore {
     if (callerIds.length === 0) return [];
     const placeholders = callerIds.map(() => '?').join(',');
     return (
-      this.db.prepare(`SELECT * FROM edges WHERE caller_id IN (${placeholders})`).all(...callerIds) as RawEdge[]
+      this.db.prepare(`SELECT * FROM edges WHERE caller_id IN (${placeholders})`).all(...callerIds) as unknown as RawEdge[]
     ).map(rawToCallEdge);
   }
 
@@ -162,7 +190,7 @@ export class EdgeStore {
     if (calleeIds.length === 0) return [];
     const placeholders = calleeIds.map(() => '?').join(',');
     return (
-      this.db.prepare(`SELECT * FROM edges WHERE callee_id IN (${placeholders})`).all(...calleeIds) as RawEdge[]
+      this.db.prepare(`SELECT * FROM edges WHERE callee_id IN (${placeholders})`).all(...calleeIds) as unknown as RawEdge[]
     ).map(rawToCallEdge);
   }
 
@@ -180,41 +208,39 @@ export class EdgeStore {
 
   /** Bulk-insert edges in a single transaction. */
   insertEdges(edges: CallEdge[]): void {
-    const stmt = this.db.prepare(`
+    const stmt: StatementSync = this.db.prepare(`
       INSERT INTO edges (caller_id, caller_file, callee_id, callee_file, callee_name, line, confidence, kind, call_type)
       VALUES (@callerId, @callerFile, @calleeId, @calleeFile, @calleeName, @line, @confidence, @kind, @callType)
     `);
-    const insert = this.db.transaction((batch: CallEdge[]) => {
-      for (const e of batch) {
+    runTransaction(this.db, () => {
+      for (const e of edges) {
         const callerFile = e.callerId.includes('::') ? e.callerId.split('::')[0] : e.callerId;
         const calleeFile = e.calleeId.includes('::') ? e.calleeId.split('::')[0] : null;
         stmt.run({
-          callerId:   e.callerId,
-          callerFile,
-          calleeId:   e.calleeId,
-          calleeFile,
-          calleeName: e.calleeName,
-          line:       e.line ?? null,
-          confidence: e.confidence,
-          kind:       e.kind ?? null,
-          callType:   e.callType ?? null,
+          '@callerId':   e.callerId,
+          '@callerFile': callerFile,
+          '@calleeId':   e.calleeId,
+          '@calleeFile': calleeFile,
+          '@calleeName': e.calleeName,
+          '@line':       e.line ?? null,
+          '@confidence': e.confidence,
+          '@kind':       e.kind ?? null,
+          '@callType':   e.callType ?? null,
         });
       }
     });
-    insert(edges);
   }
 
   /** Bulk-insert inheritance edges in a single transaction. */
   insertInheritanceEdges(edges: InheritanceEdge[]): void {
-    const stmt = this.db.prepare(
+    const stmt: StatementSync = this.db.prepare(
       'INSERT INTO inheritance_edges (parent_id, child_id, kind) VALUES (@parentId, @childId, @kind)'
     );
-    const insert = this.db.transaction((batch: InheritanceEdge[]) => {
-      for (const e of batch) {
-        stmt.run({ parentId: e.parentId, childId: e.childId, kind: e.kind ?? null });
+    runTransaction(this.db, () => {
+      for (const e of edges) {
+        stmt.run({ '@parentId': e.parentId, '@childId': e.childId, '@kind': e.kind ?? null });
       }
     });
-    insert(edges);
   }
 
   // ── Node queries ──────────────────────────────────────────────────────────────
@@ -226,7 +252,7 @@ export class EdgeStore {
 
   getNodesForFile(file: string): FunctionNode[] {
     return (
-      this.db.prepare('SELECT * FROM nodes WHERE file_path = ?').all(file) as RawNode[]
+      this.db.prepare('SELECT * FROM nodes WHERE file_path = ?').all(file) as unknown as RawNode[]
     ).map(rawToFunctionNode);
   }
 
@@ -241,13 +267,13 @@ export class EdgeStore {
             WHERE nodes_fts MATCH ? AND n.is_external = 0
             LIMIT ?
           `)
-          .all(pattern, limit) as RawNode[]
+          .all(pattern, limit) as unknown as RawNode[]
       ).map(rawToFunctionNode);
     }
     return (
       this.db
         .prepare('SELECT * FROM nodes WHERE name LIKE ? AND is_external = 0 LIMIT ?')
-        .all(`%${pattern}%`, limit) as RawNode[]
+        .all(`%${pattern}%`, limit) as unknown as RawNode[]
     ).map(rawToFunctionNode);
   }
 
@@ -255,7 +281,7 @@ export class EdgeStore {
     return (
       this.db
         .prepare('SELECT * FROM nodes WHERE is_hub = 1 AND is_external = 0 ORDER BY fan_in DESC LIMIT ?')
-        .all(limit) as RawNode[]
+        .all(limit) as unknown as RawNode[]
     ).map(rawToFunctionNode);
   }
 
@@ -263,7 +289,7 @@ export class EdgeStore {
     return (
       this.db
         .prepare('SELECT * FROM nodes WHERE is_entry_point = 1 AND is_external = 0 ORDER BY fan_out DESC LIMIT ?')
-        .all(limit) as RawNode[]
+        .all(limit) as unknown as RawNode[]
     ).map(rawToFunctionNode);
   }
 
@@ -276,7 +302,7 @@ export class EdgeStore {
 
   deleteNodesForFile(file: string): void {
     const ids = (
-      this.db.prepare('SELECT id FROM nodes WHERE file_path = ?').all(file) as Array<{ id: string }>
+      this.db.prepare('SELECT id FROM nodes WHERE file_path = ?').all(file) as unknown as Array<{ id: string }>
     ).map(r => r.id);
     this.db.prepare('DELETE FROM nodes WHERE file_path = ?').run(file);
     if (ids.length > 0) {
@@ -290,7 +316,7 @@ export class EdgeStore {
    * omit them during incremental watcher updates (flags preserved from last analyze).
    */
   insertNodes(nodes: FunctionNode[], hubIds?: Set<string>, entryIds?: Set<string>): void {
-    const stmt = this.db.prepare(`
+    const stmt: StatementSync = this.db.prepare(`
       INSERT OR REPLACE INTO nodes
         (id, name, file_path, class_name, is_async, language, start_index, end_index,
          fan_in, fan_out, docstring, signature, is_external, external_kind, is_hub, is_entry_point)
@@ -298,31 +324,30 @@ export class EdgeStore {
         (@id, @name, @filePath, @className, @isAsync, @language, @startIndex, @endIndex,
          @fanIn, @fanOut, @docstring, @signature, @isExternal, @externalKind, @isHub, @isEntryPoint)
     `);
-    const ftsStmt = this.db.prepare('INSERT OR REPLACE INTO nodes_fts (node_id, name) VALUES (?, ?)');
-    const insert = this.db.transaction((batch: FunctionNode[]) => {
-      for (const n of batch) {
+    const ftsStmt: StatementSync = this.db.prepare('INSERT OR REPLACE INTO nodes_fts (node_id, name) VALUES (?, ?)');
+    runTransaction(this.db, () => {
+      for (const n of nodes) {
         stmt.run({
-          id:           n.id,
-          name:         n.name,
-          filePath:     n.filePath,
-          className:    n.className ?? null,
-          isAsync:      n.isAsync ? 1 : 0,
-          language:     n.language,
-          startIndex:   n.startIndex,
-          endIndex:     n.endIndex,
-          fanIn:        n.fanIn,
-          fanOut:       n.fanOut,
-          docstring:    n.docstring ?? null,
-          signature:    n.signature ?? null,
-          isExternal:   n.isExternal ? 1 : 0,
-          externalKind: n.externalKind ?? null,
-          isHub:        hubIds ? (hubIds.has(n.id) ? 1 : 0) : 0,
-          isEntryPoint: entryIds ? (entryIds.has(n.id) ? 1 : 0) : 0,
+          '@id':           n.id,
+          '@name':         n.name,
+          '@filePath':     n.filePath,
+          '@className':    n.className ?? null,
+          '@isAsync':      n.isAsync ? 1 : 0,
+          '@language':     n.language,
+          '@startIndex':   n.startIndex,
+          '@endIndex':     n.endIndex,
+          '@fanIn':        n.fanIn,
+          '@fanOut':       n.fanOut,
+          '@docstring':    n.docstring ?? null,
+          '@signature':    n.signature ?? null,
+          '@isExternal':   n.isExternal ? 1 : 0,
+          '@externalKind': n.externalKind ?? null,
+          '@isHub':        hubIds ? (hubIds.has(n.id) ? 1 : 0) : 0,
+          '@isEntryPoint': entryIds ? (entryIds.has(n.id) ? 1 : 0) : 0,
         });
         if (!n.isExternal) ftsStmt.run(n.id, n.name);
       }
     });
-    insert(nodes);
   }
 
   // ── Class queries ─────────────────────────────────────────────────────────────
@@ -334,7 +359,7 @@ export class EdgeStore {
 
   getClassesForFile(file: string): ClassNode[] {
     return (
-      this.db.prepare('SELECT * FROM classes WHERE file_path = ?').all(file) as RawClass[]
+      this.db.prepare('SELECT * FROM classes WHERE file_path = ?').all(file) as unknown as RawClass[]
     ).map(rawToClassNode);
   }
 
@@ -345,29 +370,28 @@ export class EdgeStore {
   }
 
   insertClasses(classes: ClassNode[]): void {
-    const stmt = this.db.prepare(`
+    const stmt: StatementSync = this.db.prepare(`
       INSERT OR REPLACE INTO classes
         (id, name, file_path, language, parent_classes, interfaces, method_ids, fan_in, fan_out, is_module)
       VALUES
         (@id, @name, @filePath, @language, @parentClasses, @interfaces, @methodIds, @fanIn, @fanOut, @isModule)
     `);
-    const insert = this.db.transaction((batch: ClassNode[]) => {
-      for (const c of batch) {
+    runTransaction(this.db, () => {
+      for (const c of classes) {
         stmt.run({
-          id:            c.id,
-          name:          c.name,
-          filePath:      c.filePath,
-          language:      c.language,
-          parentClasses: JSON.stringify(c.parentClasses),
-          interfaces:    JSON.stringify(c.interfaces),
-          methodIds:     JSON.stringify(c.methodIds),
-          fanIn:         c.fanIn,
-          fanOut:        c.fanOut,
-          isModule:      c.isModule ? 1 : 0,
+          '@id':            c.id,
+          '@name':          c.name,
+          '@filePath':      c.filePath,
+          '@language':      c.language,
+          '@parentClasses': JSON.stringify(c.parentClasses),
+          '@interfaces':    JSON.stringify(c.interfaces),
+          '@methodIds':     JSON.stringify(c.methodIds),
+          '@fanIn':         c.fanIn,
+          '@fanOut':        c.fanOut,
+          '@isModule':      c.isModule ? 1 : 0,
         });
       }
     });
-    insert(classes);
   }
 
   // ── Content-hash cache ────────────────────────────────────────────────────────
@@ -392,9 +416,9 @@ export class EdgeStore {
     this.db.exec('DELETE FROM edges; DELETE FROM inheritance_edges; DELETE FROM nodes; DELETE FROM classes; DELETE FROM nodes_fts; DELETE FROM file_hashes;');
   }
 
-  /** Run fn inside a single SQLite transaction. Nested calls use savepoints. */
+  /** Run fn inside a single SQLite transaction. */
   transaction(fn: () => void): void {
-    this.db.transaction(fn)();
+    runTransaction(this.db, fn);
   }
 
   close(): void {

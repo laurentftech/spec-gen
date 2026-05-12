@@ -60,6 +60,20 @@ export function upsertDecisions(store: DecisionStore, incoming: PendingDecision[
   return { ...store, decisions: [...byId.values()] };
 }
 
+/**
+ * Merge incoming decisions into the store, always overwriting by id.
+ * Use this for consolidation output — consolidated decisions share IDs with
+ * their original drafts (makeDecisionId is deterministic), so upsertDecisions
+ * would silently no-op after patchDecision marks the originals rejected.
+ */
+export function replaceDecisions(store: DecisionStore, incoming: PendingDecision[]): DecisionStore {
+  const byId = new Map(store.decisions.map((d) => [d.id, d]));
+  for (const d of incoming) {
+    byId.set(d.id, d);
+  }
+  return { ...store, decisions: [...byId.values()] };
+}
+
 /** Patch a single decision by id. Returns the updated store (not yet saved). */
 export function patchDecision(
   store: DecisionStore,
@@ -81,6 +95,29 @@ export function getDecisionsByStatus(
 
 export function getDecisionCount(store: DecisionStore): number {
   return store.decisions.length;
+}
+
+/** Status blocks the commit gate until resolved. */
+export function isBlockingStatus(status: DecisionStatus): boolean {
+  return status === 'verified' || status === 'approved';
+}
+
+/** Status requires a --sync run before committing. */
+export function requiresSync(status: DecisionStatus): boolean {
+  return status === 'approved';
+}
+
+/** Statuses excluded from the "activeDecisions" gate guard. */
+export const INACTIVE_STATUSES: ReadonlySet<DecisionStatus> = new Set([
+  'rejected', 'synced', 'phantom',
+]);
+
+/** Drop all inactive decisions — their content is already in ADRs / spec.md. */
+export function purgeInactiveDecisions(store: DecisionStore): DecisionStore {
+  return {
+    ...store,
+    decisions: store.decisions.filter((d) => !INACTIVE_STATUSES.has(d.status)),
+  };
 }
 
 /** Stable 8-char ID derived from session + domain + title. */

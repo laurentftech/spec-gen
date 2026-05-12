@@ -11,8 +11,19 @@ import { join } from 'node:path';
 import { fileExists } from '../../utils/command-helpers.js';
 import { logger } from '../../utils/logger.js';
 import { parseSpecHeader } from '../drift/spec-mapper.js';
-import type { PendingDecision, DecisionStore, SpecMap } from '../../types/index.js';
-import { patchDecision, saveDecisionStore } from './store.js';
+import type { PendingDecision, DecisionStore, SpecMap, DecisionScope } from '../../types/index.js';
+import { patchDecision, purgeInactiveDecisions, saveDecisionStore } from './store.js';
+
+/**
+ * ADRs are durable architectural memory, not a log of every implementation choice.
+ * Only cross-domain and system decisions are persisted as ADRs to avoid semantic
+ * dilution and retrieval pollution in the vector index.
+ */
+const ADR_SCOPES = new Set<DecisionScope>(['cross-domain', 'system']);
+
+function qualifiesForADR(decision: PendingDecision): boolean {
+  return ADR_SCOPES.has(decision.scope ?? 'component');
+}
 
 export interface SyncOptions {
   rootPath: string;
@@ -55,7 +66,11 @@ export async function syncApprovedDecisions(
   }
 
   if (!options.dryRun) {
-    await saveDecisionStore(options.rootPath, updatedStore);
+    // Purge happens only after all per-decision syncs complete (errors kept in store).
+    // Invariant: store and ADR files agree — a decision is removed from store only after
+    // status='synced', which is set only after spec + ADR writes succeed (or are skipped).
+    // Partial failure leaves the decision in store at status='approved', safe to retry.
+    await saveDecisionStore(options.rootPath, purgeInactiveDecisions(updatedStore));
   }
 
   return {
@@ -88,7 +103,7 @@ async function syncDecision(
     }
   }
 
-  if (isArchitectural(decision)) {
+  if (qualifiesForADR(decision)) {
     if (options.dryRun) {
       const slug = toKebabCase(decision.title);
       modified.push(`openspec/decisions/adr-XXXX-${slug}.md`);
@@ -234,28 +249,6 @@ ${decision.consequences}
 
   await writeFile(adrPath, content, 'utf-8');
   return `openspec/decisions/${filename}`;
-}
-
-function isArchitectural(decision: PendingDecision): boolean {
-  // Require at least 2 keyword matches across title + rationale to avoid ADR explosion.
-  // Broad terms like "api" or "service" alone are too common; structural weight matters.
-  const keywords = [
-    /\barchitect(ure|ural)?\b/i,
-    /\bdesign pattern\b/i,
-    /\binterface contract\b/i,
-    /\bpublic api\b/i,
-    /\bschema\b/i,
-    /\bframework\b/i,
-    /\bdependency\b/i,
-    /\blayer(ing|ed)?\b/i,
-    /\bauthentication\b|\bauthorization\b/i,
-    /\bdatabase\b|\bdata store\b/i,
-    /\bcaching strategy\b/i,
-    /\bmessage queue\b|\bevent bus\b/i,
-  ];
-  const combined = `${decision.title} ${decision.rationale}`;
-  const matches = keywords.filter((re) => re.test(combined)).length;
-  return matches >= 2;
 }
 
 function toPascalCase(str: string): string {

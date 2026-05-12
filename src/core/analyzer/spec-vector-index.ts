@@ -195,6 +195,59 @@ function buildText(domain: string, section: ParsedSection): string {
 }
 
 // ============================================================================
+// ADR PARSER
+// ============================================================================
+
+interface AdrRecord {
+  id: string;
+  domain: string;
+  section: string;
+  title: string;
+  text: string;
+  linkedFiles: string;
+}
+
+async function findAdrFiles(decisionsDir: string): Promise<string[]> {
+  if (!(await fileExists(decisionsDir))) return [];
+  try {
+    const entries = await readdir(decisionsDir);
+    return entries
+      .filter((f) => /^adr-\d+.*\.md$/i.test(f))
+      .map((f) => join(decisionsDir, f));
+  } catch {
+    return [];
+  }
+}
+
+async function parseAdrFiles(decisionsDir: string): Promise<AdrRecord[]> {
+  const files = await findAdrFiles(decisionsDir);
+  const records: AdrRecord[] = [];
+
+  for (const filePath of files) {
+    try {
+      const content = await readFile(filePath, 'utf-8');
+      const titleMatch = content.match(/^#\s+(ADR-\d+):\s+(.+)$/m);
+      if (!titleMatch) continue;
+      const adrNum = titleMatch[1];
+      const title = titleMatch[2].trim();
+
+      records.push({
+        id: `decisions.${adrNum.toLowerCase()}`,
+        domain: 'decisions',
+        section: adrNum,
+        title: `${adrNum}: ${title}`,
+        text: `[decision] ${adrNum}: ${title}\n${content}`,
+        linkedFiles: '[]',
+      });
+    } catch {
+      continue;
+    }
+  }
+
+  return records;
+}
+
+// ============================================================================
 // SPEC VECTOR INDEX
 // ============================================================================
 
@@ -211,7 +264,8 @@ export class SpecVectorIndex {
     outputDir: string,
     specsDir: string,
     embedSvc: EmbeddingService,
-    mappingJsonPath?: string
+    mappingJsonPath?: string,
+    decisionsDir?: string
   ): Promise<{ recordCount: number }> {
     const { connect } = await import('@lancedb/lancedb');
 
@@ -266,6 +320,12 @@ export class SpecVectorIndex {
           linkedFiles: JSON.stringify(linkedFiles),
         });
       }
+    }
+
+    // Also index ADR files from openspec/decisions/ if decisionsDir provided
+    if (decisionsDir) {
+      const adrRecords = await parseAdrFiles(decisionsDir);
+      records.push(...adrRecords);
     }
 
     if (records.length === 0) {

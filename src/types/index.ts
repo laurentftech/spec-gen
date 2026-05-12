@@ -388,6 +388,12 @@ export interface AuditReport {
 // DECISIONS
 // ============================================================================
 
+export type DecisionScope =
+  | 'local'        // single file, no cross-cutting concern
+  | 'component'    // single component/service/module boundary
+  | 'cross-domain' // touches multiple spec domains or service contracts
+  | 'system';      // global constraint (auth, data model, infra, API protocol)
+
 export type DecisionStatus =
   | 'draft'         // recorded by agent during dev session
   | 'consolidated'  // LLM has merged/resolved drafts
@@ -421,6 +427,9 @@ export interface PendingDecision {
   recordedAt: string;
   consolidatedAt?: string;
   verifiedAt?: string;
+
+  // Scope — gates ADR creation: only cross-domain and system produce ADRs
+  scope?: DecisionScope;
 
   // Verification output
   confidence: 'high' | 'medium' | 'low';

@@ -160,7 +160,7 @@ Most tools run on **pure static analysis** — no LLM quota consumed. Exceptions
 | `get_mapping` | Requirement->function mapping produced by `spec-gen generate`. Shows which functions implement which spec requirements, confidence level, and orphan functions with no spec coverage. | Yes (generate) |
 | `get_decisions` | List or search Architecture Decision Records (ADRs) stored in `openspec/decisions/`. Optional keyword query. | Yes (generate) |
 | `check_spec_drift` | Detect code changes not reflected in OpenSpec specs. Compares git-changed files against spec coverage maps. Issues: gap / stale / uncovered / orphaned-spec / adr-gap. | Yes (generate) |
-| `search_specs` | Semantic search over OpenSpec specifications to find requirements, design notes, and architecture decisions by meaning. Returns linked source files for graph highlighting. Use this when asked "which spec covers X?" or "where should we implement Z?". Requires a spec index built with `spec-gen analyze` or `--reindex-specs`. | Yes (generate) |
+| `search_specs` | Semantic search over OpenSpec specifications to find requirements, design notes, and architecture decisions by meaning. Also searches ADR files (`openspec/decisions/adr-*.md`) indexed under domain `decisions`. Returns linked source files for graph highlighting. Use this when asked "which spec covers X?" or "where should we implement Z?" or "what decisions were made about Y?". Requires a spec index built with `spec-gen analyze` or `--reindex-specs`. | Yes (generate) |
 | `list_spec_domains` | List all OpenSpec domains available in this project. Use this to discover what domains exist before doing a targeted `search_specs` call. | Yes (generate) |
 | `audit_spec_coverage` | Parity audit: uncovered functions (in call graph, no spec), hub gaps (high fan-in + no spec), orphan requirements (spec with no implementation found), and stale domains (source changed after spec). Run before starting a feature to understand coverage health. No LLM required. | Yes (analyze) |
 
@@ -172,7 +172,7 @@ Most tools run on **pure static analysis** — no LLM quota consumed. Exceptions
 | `list_decisions` | List decisions in the store, optionally filtered by status (`draft`, `consolidated`, `verified`, `approved`, `synced`, `phantom`). | No |
 | `approve_decision` | Approve one or more decisions by ID, marking them ready to sync into specs and ADRs. | No |
 | `reject_decision` | Reject a decision by ID with a reason. Rejected decisions are excluded from sync. | No |
-| `sync_decisions` | Write approved decisions into OpenSpec spec.md files (as requirements) and create ADR files in `openspec/decisions/`. Append-only — never rewrites existing content. Pass `dryRun: true` to preview. | No |
+| `sync_decisions` | Write approved decisions into OpenSpec spec.md files (as requirements) and create ADR files in `openspec/decisions/`. Append-only — never rewrites existing content. After sync, inactive decisions (synced/rejected/phantom) are purged from the store — their content lives in ADRs and git. Pass `dryRun: true` to preview. | No |
 
 **Story Management**
 
@@ -441,7 +441,9 @@ dryRun     boolean   Preview changes without writing files (default: false)
    #   - call-graph neighbourhood for each top function
    #   - best insertion-point candidates
    #   - spec-linked peer functions (cross-graph traversal)
-   #   - matching spec sections
+   #   - matching spec sections AND matching ADRs (domain "decisions")
+   #   - active decisions touching the task's domains (pendingDecisions)
+   #   - approved decisions always surfaced — must sync before committing
 2. get_spec({ directory, domain: "..." })             # read full spec before writing code
 3. check_spec_drift({ directory })                    # verify after implementation
 ```
@@ -462,6 +464,11 @@ dryRun     boolean   Preview changes without writing files (default: false)
 2. [implement the feature / refactor]
 3. git commit  # decisions hook consolidates drafts, cross-checks against diff,
                # blocks commit if unreviewed decisions remain
+   # If blocked, check "reason":
+   #   "verified"              → present decisions to user, approve/reject, then sync
+   #   "approved_not_synced"   → run sync_decisions, then retry commit
+   #   "drafts_pending_consolidation" → run spec-gen decisions --consolidate --gate
+   #   "no_decisions_recorded" → run spec-gen decisions --consolidate --gate
 4. list_decisions({ directory, status: "verified" })
    # Review the consolidated + verified decisions
 5. approve_decision({ directory, ids: ["<id>"] })

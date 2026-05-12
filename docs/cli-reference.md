@@ -140,12 +140,15 @@ spec-gen setup                   # workflow skills
 spec-gen decisions [options]
   --list                 # List decisions, optionally filtered by --status
   --status <status>      # Filter by status: draft, consolidated, verified, approved, synced, phantom
-  --approve <id>         # Approve a decision by ID
+                         # Note: synced/rejected/phantom are purged from store after --sync
+  --approve <id>         # Approve a decision by ID (blocked if already synced)
   --reject <id>          # Reject a decision by ID
   --reason <text>        # Rejection reason (used with --reject)
-  --sync                 # Write approved decisions into specs and ADRs
+  --sync                 # Write approved decisions into specs and ADRs, then purge inactive entries
   --dry-run              # Preview sync without writing files
   --gate                 # Run commit gate check (reads pending.json, no LLM — used by pre-commit hook)
+                         # Gate reason codes: verified | approved_not_synced |
+                         #   drafts_pending_consolidation | no_decisions_recorded
   --consolidate          # Manually trigger LLM consolidation + diff verification of drafts
   --json                 # Machine-readable output
   --uninstall-hook       # Remove decisions pre-commit hook (install via: spec-gen setup --tools claude)

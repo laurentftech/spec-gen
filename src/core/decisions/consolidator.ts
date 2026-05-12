@@ -10,14 +10,14 @@ import {
 } from '../../constants.js';
 import { logger } from '../../utils/logger.js';
 import type { LLMService } from '../services/llm-service.js';
-import type { PendingDecision, DecisionStore, SpecMap } from '../../types/index.js';
+import type { PendingDecision, DecisionStore, SpecMap, DecisionScope } from '../../types/index.js';
 import { makeDecisionId } from './store.js';
 import { parseJSON } from '../../utils/misc.js';
 import { matchFileToDomains } from '../drift/spec-mapper.js';
 
 const SYSTEM_PROMPT = `You are an architectural decision consolidator for a software project.
 
-You receive a list of architectural decision drafts recorded by an AI agent during a coding session. Some decisions may contradict each other or be superseded by later decisions. Your task is to produce a clean, consolidated set representing the final architectural state after the session.
+You receive a list of architectural decision drafts recorded by an AI agent during a coding session, plus the set of decisions already recorded in prior sessions (with their stable IDs). Some decisions may contradict each other or be superseded by later decisions. Your task is to produce a clean, consolidated set representing the final architectural state after the session.
 
 Rules:
 - Keep only decisions that represent the FINAL state (most recent wins for contradictions)
@@ -26,6 +26,12 @@ Rules:
 - Typically produce 1-3 consolidated decisions; never more than 5
 - Preserve the original rationale and consequences from the drafts
 - proposedRequirement should be a single sentence starting with "The system SHALL", or null
+
+ID REUSE (critical for traceability):
+- If a consolidated decision covers the same concept as an existing decision (provided in the "existing" section of the input), set "id" to that decision's exact ID string
+- Only reuse an ID if you are confident the concept is the same — same architectural choice, same affected area
+- If the consolidated decision is genuinely new, omit "id" entirely
+- Never invent a new ID — either reuse an existing one or omit the field
 
 Keep a decision if it describes ANY of:
 - A new feature, command, flag, or capability added to the system
@@ -42,20 +48,40 @@ Only discard decisions that are ALL of:
 Good examples: "Move hook installation from decisions to setup command", "Use system prompt injection instead of tool-output blocking for completion guard", "Prefer local dist/cli/index.js over global spec-gen in pre-commit hook"
 Bad examples: "Use TypeScript interfaces for type safety", "Add error handling", "Follow existing service pattern"
 
+SCOPE CLASSIFICATION (required):
+Classify each consolidated decision with one of these scopes:
+- "local": single file, no cross-cutting concern (refactors, extractions, renames)
+- "component": single component/service/module, no cross-boundary contract impact
+- "cross-domain": touches multiple spec domains AND changes behavioral contracts or public interfaces
+- "system": global architectural constraint (auth strategy, data model, infra, API protocol)
+
+Only "cross-domain" and "system" decisions will generate ADR files. Be conservative.
+
+DO NOT classify as "cross-domain" when:
+- multiple files changed but within one logical module
+- helper utilities were extracted to a shared file
+- tests were updated alongside implementation
+- config/constants changed
+- middleware was added inside a single service
+- internal refactors touched shared code without changing contracts
+
 Respond with a JSON array only. Each element:
 {
+  "id": string (optional — only set when reusing an existing decision ID),
   "title": string,
   "rationale": string,
   "consequences": string,
   "affectedDomains": string[],
   "affectedFiles": string[],
   "proposedRequirement": string | null,
-  "supersededIds": string[]
+  "supersededIds": string[],
+  "scope": string
 }
 
 If there are genuinely no decisions worth keeping, return [].`;
 
 interface ConsolidatedRaw {
+  id?: string;
   title: string;
   rationale: string;
   consequences: string;
@@ -63,6 +89,7 @@ interface ConsolidatedRaw {
   affectedFiles: string[];
   proposedRequirement: string | null;
   supersededIds: string[];
+  scope?: string;
 }
 
 export interface ConsolidateResult {
@@ -78,17 +105,32 @@ export async function consolidateDrafts(
   const drafts = store.decisions.filter((d) => d.status === 'draft');
   if (drafts.length === 0) return { decisions: [], supersededIds: [] };
 
+  // Non-draft decisions passed to LLM so it can reuse their IDs when the same concept recurs.
+  // Includes 'synced' intentionally — if a synced concept resurfaces in a new session, the LLM
+  // should reuse the stable ID for traceability rather than minting a duplicate. Synced decisions
+  // are purged from the store after sync, so this set is empty in the common case.
+  const existing = store.decisions.filter((d) => d.status !== 'draft' && d.status !== 'rejected' && d.status !== 'phantom');
+  const existingIds = new Set(existing.map((d) => d.id));
+
   const userContent = JSON.stringify(
-    drafts.map((d) => ({
-      id: d.id,
-      title: d.title,
-      rationale: d.rationale,
-      consequences: d.consequences,
-      affectedDomains: d.affectedDomains,
-      affectedFiles: d.affectedFiles,
-      supersedes: d.supersedes,
-      recordedAt: d.recordedAt,
-    })),
+    {
+      drafts: drafts.map((d) => ({
+        id: d.id,
+        title: d.title,
+        rationale: d.rationale,
+        consequences: d.consequences,
+        affectedDomains: d.affectedDomains,
+        affectedFiles: d.affectedFiles,
+        supersedes: d.supersedes,
+        recordedAt: d.recordedAt,
+      })),
+      existing: existing.map((d) => ({
+        id: d.id,
+        title: d.title,
+        rationale: d.rationale,
+        status: d.status,
+      })),
+    },
     null,
     2,
   );
@@ -115,8 +157,14 @@ export async function consolidateDrafts(
     // Falls back to LLM names if specMap is absent or files yield no match.
     const resolvedDomains = resolveDomainsFromFiles(c.affectedFiles, c.affectedDomains, specMap);
     const domain = resolvedDomains[0] ?? 'unknown';
+    // Prefer LLM-supplied ID when it matches a known existing decision — this is the
+    // traceability anchor that prevents duplicate IDs across consolidation runs.
+    const id =
+      c.id && existingIds.has(c.id)
+        ? c.id
+        : makeDecisionId(store.sessionId, domain, c.title);
     return {
-      id: makeDecisionId(store.sessionId, domain, c.title),
+      id,
       status: 'consolidated',
       title: c.title,
       rationale: c.rationale,
@@ -124,6 +172,7 @@ export async function consolidateDrafts(
       proposedRequirement: c.proposedRequirement,
       affectedDomains: resolvedDomains,
       affectedFiles: c.affectedFiles,
+      scope: (c.scope as DecisionScope) ?? 'component',
       confidence: 'medium',
       sessionId: store.sessionId,
       recordedAt: now,
