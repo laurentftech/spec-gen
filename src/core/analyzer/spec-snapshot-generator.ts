@@ -11,8 +11,8 @@ import { promisify } from 'node:util';
 import { readFile, stat, readdir, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import {
-  SPEC_GEN_DIR,
-  SPEC_GEN_ANALYSIS_SUBDIR,
+  OPENLORE_DIR,
+  OPENLORE_ANALYSIS_SUBDIR,
   ARTIFACT_LLM_CONTEXT,
   ARTIFACT_MAPPING,
   ARTIFACT_SPEC_SNAPSHOT,
@@ -141,7 +141,7 @@ export class SpecSnapshotGenerator {
   ) {}
 
   async generate(): Promise<SpecSnapshot> {
-    const analysisDir = join(this.rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+    const analysisDir = join(this.rootPath, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
     const openspecPath = join(this.rootPath, this.openspecRelPath);
 
     // Load artifacts in parallel
@@ -236,7 +236,7 @@ export class SpecSnapshotGenerator {
   static async load(rootPath: string): Promise<SpecSnapshot | null> {
     try {
       const raw = await readFile(
-        join(rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_SPEC_SNAPSHOT),
+        join(rootPath, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_SPEC_SNAPSHOT),
         'utf-8',
       );
       return JSON.parse(raw) as SpecSnapshot;

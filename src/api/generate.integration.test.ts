@@ -1,5 +1,5 @@
 /**
- * Integration tests for specGenGenerate() — RAG pipeline wiring
+ * Integration tests for openloreGenerate() — RAG pipeline wiring
  *
  * These tests exercise the full generate pipeline on a minimal fixture project
  * built in a tmpdir. They catch wiring bugs that unit tests miss: e.g., the
@@ -210,8 +210,8 @@ function makeDepGraph() {
   };
 }
 
-/** Minimal spec-gen config */
-function makeSpecGenConfig(openspecPath = './openspec') {
+/** Minimal openlore config */
+function makeOpenLoreConfig(openspecPath = './openspec') {
   return {
     version: '1.0.0',
     projectType: 'nodejs',
@@ -234,32 +234,32 @@ async function createFile(dir: string, relPath: string, content: string): Promis
 // TESTS
 // ============================================================================
 
-describe('specGenGenerate() integration — RAG pipeline wiring', () => {
+describe('openloreGenerate() integration — RAG pipeline wiring', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-gen-integration-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-gen-integration-'));
 
     // Set a fake API key so the key check passes
     process.env.ANTHROPIC_API_KEY = 'test-key-integration';
 
     // Write minimal project fixtures
-    await createFile(tmpDir, '.spec-gen/config.json',
-      JSON.stringify(makeSpecGenConfig(), null, 2));
+    await createFile(tmpDir, '.openlore/config.json',
+      JSON.stringify(makeOpenLoreConfig(), null, 2));
 
     // openspec config.yaml (readOpenSpecConfig tolerates missing file; create it for completeness)
     await createFile(tmpDir, 'openspec/config.yaml', 'schema: openspec/v1\n');
 
     // Analysis artifacts
-    await createFile(tmpDir, '.spec-gen/analysis/repo-structure.json',
+    await createFile(tmpDir, '.openlore/analysis/repo-structure.json',
       JSON.stringify(makeRepoStructure(), null, 2));
-    await createFile(tmpDir, '.spec-gen/analysis/llm-context.json',
+    await createFile(tmpDir, '.openlore/analysis/llm-context.json',
       JSON.stringify(makeLlmContext(), null, 2));
-    await createFile(tmpDir, '.spec-gen/analysis/dependency-graph.json',
+    await createFile(tmpDir, '.openlore/analysis/dependency-graph.json',
       JSON.stringify(makeDepGraph(), null, 2));
 
     // Intermediate generation dir (writer may create it, but ensure parent exists)
-    await mkdir(join(tmpDir, '.spec-gen', 'generation'), { recursive: true });
+    await mkdir(join(tmpDir, '.openlore', 'generation'), { recursive: true });
   });
 
   afterEach(async () => {
@@ -271,8 +271,8 @@ describe('specGenGenerate() integration — RAG pipeline wiring', () => {
   // Test 1 — rag-manifest.json is written and has correct domain entries
   // --------------------------------------------------------------------------
   it('writes rag-manifest.json with domain entries', async () => {
-    const { specGenGenerate } = await import('./generate.js');
-    await specGenGenerate({ rootPath: tmpDir });
+    const { openloreGenerate } = await import('./generate.js');
+    await openloreGenerate({ rootPath: tmpDir });
 
     const manifestPath = join(tmpDir, 'openspec', 'rag-manifest.json');
     const raw = await readFile(manifestPath, 'utf-8');
@@ -288,8 +288,8 @@ describe('specGenGenerate() integration — RAG pipeline wiring', () => {
   // Test 2 — cross-cluster edges populate dependsOn / calledBy
   // --------------------------------------------------------------------------
   it('populates dependsOn and calledBy from depGraph edges', async () => {
-    const { specGenGenerate } = await import('./generate.js');
-    await specGenGenerate({ rootPath: tmpDir });
+    const { openloreGenerate } = await import('./generate.js');
+    await openloreGenerate({ rootPath: tmpDir });
 
     const manifestPath = join(tmpDir, 'openspec', 'rag-manifest.json');
     const manifest = JSON.parse(await readFile(manifestPath, 'utf-8'));
@@ -312,8 +312,8 @@ describe('specGenGenerate() integration — RAG pipeline wiring', () => {
   // Test 3 — sourceFiles come from the matching cluster
   // --------------------------------------------------------------------------
   it('includes sourceFiles from the matching depGraph cluster', async () => {
-    const { specGenGenerate } = await import('./generate.js');
-    await specGenGenerate({ rootPath: tmpDir });
+    const { openloreGenerate } = await import('./generate.js');
+    await openloreGenerate({ rootPath: tmpDir });
 
     const manifest = JSON.parse(
       await readFile(join(tmpDir, 'openspec', 'rag-manifest.json'), 'utf-8'));
@@ -326,8 +326,8 @@ describe('specGenGenerate() integration — RAG pipeline wiring', () => {
   // Test 4 — domain spec files are written to openspec/specs/<domain>/spec.md
   // --------------------------------------------------------------------------
   it('writes domain spec files for each discovered domain', async () => {
-    const { specGenGenerate } = await import('./generate.js');
-    await specGenGenerate({ rootPath: tmpDir });
+    const { openloreGenerate } = await import('./generate.js');
+    await openloreGenerate({ rootPath: tmpDir });
 
     // At minimum an overview spec should be written
     const overviewPath = join(tmpDir, 'openspec', 'specs', 'overview', 'spec.md');
@@ -344,8 +344,8 @@ describe('specGenGenerate() integration — RAG pipeline wiring', () => {
   // Test 5 — ## Dependencies section is present when cross-cluster edges exist
   // --------------------------------------------------------------------------
   it('includes ## Dependencies section in domain specs when edges exist', async () => {
-    const { specGenGenerate } = await import('./generate.js');
-    await specGenGenerate({ rootPath: tmpDir });
+    const { openloreGenerate } = await import('./generate.js');
+    await openloreGenerate({ rootPath: tmpDir });
 
     // generator → analyzer edge must produce a ## Dependencies section
     const generatorSpecPath = join(tmpDir, 'openspec', 'specs', 'generator', 'spec.md');
@@ -357,8 +357,8 @@ describe('specGenGenerate() integration — RAG pipeline wiring', () => {
   // Test 6 — report has filesWritten list
   // --------------------------------------------------------------------------
   it('returns a report with at least one written file', async () => {
-    const { specGenGenerate } = await import('./generate.js');
-    const result = await specGenGenerate({ rootPath: tmpDir });
+    const { openloreGenerate } = await import('./generate.js');
+    const result = await openloreGenerate({ rootPath: tmpDir });
 
     expect(result.report.filesWritten.length).toBeGreaterThan(0);
     expect(result.duration).toBeGreaterThan(0);

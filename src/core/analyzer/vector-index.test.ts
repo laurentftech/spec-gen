@@ -115,7 +115,7 @@ describe('VectorIndex', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-vector-test-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-vector-test-'));
   });
 
   // Clean up after each test

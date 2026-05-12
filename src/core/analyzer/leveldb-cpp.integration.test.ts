@@ -53,7 +53,7 @@ async function collectCppFiles(
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
       // Skip third_party and build dirs
-      if (['third_party', 'build', '.git', '.spec-gen'].includes(entry.name)) return;
+      if (['third_party', 'build', '.git', '.openlore'].includes(entry.name)) return;
       await collectCppFiles(full, files);
     } else {
       const ext = extname(entry.name).toLowerCase();

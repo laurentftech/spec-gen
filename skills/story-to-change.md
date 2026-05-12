@@ -9,7 +9,7 @@ Trigger this skill when:
 - explicit command `/story-to-change`
 
 **This skill writes no code.** It produces `openspec/changes/{slug}/proposal.md` only.
-To implement the change, use `spec-gen-implement-feature` or the BMAD dev agent.
+To implement the change, use `openlore-implement-feature` or the BMAD dev agent.
 
 ---
 
@@ -32,7 +32,7 @@ If the user provides a BMAD story file path, read it first.
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>generate_change_proposal</tool_name>
   <arguments>{
     "directory": "$DIRECTORY",
@@ -56,7 +56,7 @@ Present:
 - **Max risk score**: N (`low` / `medium` / `high` / `critical`)
 
 If risk is `high` or `critical`:
-> "⚠️ One or more functions in scope have high risk scores. Consider running `/spec-gen-plan-refactor`
+> "⚠️ One or more functions in scope have high risk scores. Consider running `/openlore-plan-refactor`
 > before implementing this change."
 
 ---

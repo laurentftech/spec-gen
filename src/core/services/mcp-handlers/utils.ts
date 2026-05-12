@@ -7,7 +7,7 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { extname, join, relative, resolve, sep } from 'node:path';
 import type { LLMContext } from '../../analyzer/artifact-generator.js';
 import { EdgeStore } from '../edge-store.js';
-import { ANALYSIS_STALE_THRESHOLD_MS, ARTIFACT_FINGERPRINT, ARTIFACT_LLM_CONTEXT, SPEC_GEN_ANALYSIS_SUBDIR, SPEC_GEN_DIR } from '../../../constants.js';
+import { ANALYSIS_STALE_THRESHOLD_MS, ARTIFACT_FINGERPRINT, ARTIFACT_LLM_CONTEXT, OPENLORE_ANALYSIS_SUBDIR, OPENLORE_DIR } from '../../../constants.js';
 
 /** LLMContext with optional SQLite edge store attached (present when call-graph.db exists). */
 export type CachedContext = LLMContext & { edgeStore?: EdgeStore };
@@ -107,7 +107,7 @@ export function safeJoin(absDir: string, filePath: string): string {
 }
 
 export async function readCachedContext(directory: string, timeout?: number): Promise<CachedContext | null> {
-  const analysisDir = join(directory, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+  const analysisDir = join(directory, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
 
   async function load(): Promise<CachedContext | null> {
     try {
@@ -140,7 +140,7 @@ export async function readCachedContext(directory: string, timeout?: number): Pr
 // ============================================================================
 
 const FINGERPRINT_SKIP_DIRS = new Set([
-  '.git', 'node_modules', 'dist', 'build', '.next', '.spec-gen',
+  '.git', 'node_modules', 'dist', 'build', '.next', '.openlore',
   'coverage', '.cache', '__pycache__', '.venv', 'venv', 'target',
   '.dart_tool', '.pub-cache',
 ]);
@@ -192,7 +192,7 @@ export async function computeProjectFingerprint(rootDir: string): Promise<string
  * Uses content-hash fingerprint when available; falls back to TTL check.
  */
 export async function isCacheFresh(directory: string): Promise<boolean> {
-  const fingerprintPath = join(directory, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_FINGERPRINT);
+  const fingerprintPath = join(directory, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_FINGERPRINT);
   try {
     const stored = JSON.parse(await readFile(fingerprintPath, 'utf-8')) as { hash: string };
     const current = await computeProjectFingerprint(directory);
@@ -200,7 +200,7 @@ export async function isCacheFresh(directory: string): Promise<boolean> {
   } catch {
     // No fingerprint yet — fall back to TTL
     try {
-      const s = await stat(join(directory, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_LLM_CONTEXT));
+      const s = await stat(join(directory, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_LLM_CONTEXT));
       return Date.now() - s.mtimeMs < ANALYSIS_STALE_THRESHOLD_MS;
     } catch {
       return false;
@@ -242,7 +242,7 @@ export async function loadMappingIndex(absDir: string, retryCount: number = 1): 
   
   const loadAttempt = async (attempt: number): Promise<MappingIndex | null> => {
     try {
-      const raw = await readFile(join(absDir, '.spec-gen', 'analysis', 'mapping.json'), 'utf-8');
+      const raw = await readFile(join(absDir, '.openlore', 'analysis', 'mapping.json'), 'utf-8');
       const data = JSON.parse(raw) as { mappings: MappingEntry[] };
       const entries = data.mappings ?? [];
       

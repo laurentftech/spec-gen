@@ -1,5 +1,5 @@
 /**
- * Tests for spec-gen analyze command
+ * Tests for openlore analyze command
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -97,7 +97,7 @@ vi.mock('../../core/analyzer/ai-config-generator.js', () => ({
 }));
 
 vi.mock('../../core/services/config-manager.js', () => ({
-  readSpecGenConfig: vi.fn(),
+  readOpenLoreConfig: vi.fn(),
 }));
 
 describe('analyze command', () => {
@@ -110,7 +110,7 @@ describe('analyze command', () => {
     it('should have --output option with default', () => {
       const outputOption = analyzeCommand.options.find(o => o.long === '--output');
       expect(outputOption).toBeDefined();
-      expect(outputOption?.defaultValue).toBe('.spec-gen/analysis/');
+      expect(outputOption?.defaultValue).toBe('.openlore/analysis/');
     });
 
     it('should have --max-files option with default', () => {
@@ -249,7 +249,7 @@ describe('analyze command', () => {
 
   describe('runAnalysis — excludePatterns from config', () => {
     let MockRepositoryMapper: ReturnType<typeof vi.fn>;
-    let readSpecGenConfig: ReturnType<typeof vi.fn>;
+    let readOpenLoreConfig: ReturnType<typeof vi.fn>;
 
     beforeEach(async () => {
       const mapperMod = await import('../../core/analyzer/repository-mapper.js');
@@ -257,7 +257,7 @@ describe('analyze command', () => {
       MockRepositoryMapper.mockClear();
 
       const cfgMod = await import('../../core/services/config-manager.js');
-      readSpecGenConfig = vi.mocked(cfgMod.readSpecGenConfig);
+      readOpenLoreConfig = vi.mocked(cfgMod.readOpenLoreConfig);
     });
 
     function makeConfig(excludePatterns: string[], includePatterns: string[] = []) {
@@ -283,9 +283,9 @@ describe('analyze command', () => {
     }
 
     it('passes config excludePatterns to RepositoryMapper when caller passes none', async () => {
-      readSpecGenConfig.mockResolvedValue(makeConfig(['static/**', 'vendor/**']));
+      readOpenLoreConfig.mockResolvedValue(makeConfig(['static/**', 'vendor/**']));
 
-      await runAnalysis('/fake/root', '/fake/root/.spec-gen/analysis', {
+      await runAnalysis('/fake/root', '/fake/root/.openlore/analysis', {
         maxFiles: 100000, include: [], exclude: [],
       });
 
@@ -295,9 +295,9 @@ describe('analyze command', () => {
     });
 
     it('merges config excludePatterns with caller-supplied exclude patterns', async () => {
-      readSpecGenConfig.mockResolvedValue(makeConfig(['static/**']));
+      readOpenLoreConfig.mockResolvedValue(makeConfig(['static/**']));
 
-      await runAnalysis('/fake/root', '/fake/root/.spec-gen/analysis', {
+      await runAnalysis('/fake/root', '/fake/root/.openlore/analysis', {
         maxFiles: 100000, include: [], exclude: ['legacy/**'],
       });
 
@@ -307,9 +307,9 @@ describe('analyze command', () => {
     });
 
     it('deduplicates patterns that appear in both config and caller exclude', async () => {
-      readSpecGenConfig.mockResolvedValue(makeConfig(['node_modules/**']));
+      readOpenLoreConfig.mockResolvedValue(makeConfig(['node_modules/**']));
 
-      await runAnalysis('/fake/root', '/fake/root/.spec-gen/analysis', {
+      await runAnalysis('/fake/root', '/fake/root/.openlore/analysis', {
         maxFiles: 100000, include: [], exclude: ['node_modules/**'],
       });
 
@@ -318,9 +318,9 @@ describe('analyze command', () => {
     });
 
     it('works when no config exists (null) and uses caller-supplied patterns only', async () => {
-      readSpecGenConfig.mockResolvedValue(null);
+      readOpenLoreConfig.mockResolvedValue(null);
 
-      await runAnalysis('/fake/root', '/fake/root/.spec-gen/analysis', {
+      await runAnalysis('/fake/root', '/fake/root/.openlore/analysis', {
         maxFiles: 100000, include: [], exclude: ['dist/**'],
       });
 
@@ -332,14 +332,14 @@ describe('analyze command', () => {
 
   describe('runAnalysis — includePatterns from config', () => {
     let MockRepositoryMapper: ReturnType<typeof vi.fn>;
-    let readSpecGenConfig: ReturnType<typeof vi.fn>;
+    let readOpenLoreConfig: ReturnType<typeof vi.fn>;
 
     beforeEach(async () => {
       const mapperMod = await import('../../core/analyzer/repository-mapper.js');
       MockRepositoryMapper = vi.mocked(mapperMod.RepositoryMapper);
       MockRepositoryMapper.mockClear();
       const cfgMod = await import('../../core/services/config-manager.js');
-      readSpecGenConfig = vi.mocked(cfgMod.readSpecGenConfig);
+      readOpenLoreConfig = vi.mocked(cfgMod.readOpenLoreConfig);
     });
 
     function makeConfig(includePatterns: string[], excludePatterns: string[] = []) {
@@ -358,9 +358,9 @@ describe('analyze command', () => {
     }
 
     it('passes config includePatterns to RepositoryMapper when caller passes none', async () => {
-      readSpecGenConfig.mockResolvedValue(makeConfig(['*.graphql', '*.prisma']));
+      readOpenLoreConfig.mockResolvedValue(makeConfig(['*.graphql', '*.prisma']));
 
-      await runAnalysis('/fake/root', '/fake/root/.spec-gen/analysis', {
+      await runAnalysis('/fake/root', '/fake/root/.openlore/analysis', {
         maxFiles: 100000, include: [], exclude: [],
       });
 
@@ -370,9 +370,9 @@ describe('analyze command', () => {
     });
 
     it('merges config includePatterns with caller-supplied include patterns', async () => {
-      readSpecGenConfig.mockResolvedValue(makeConfig(['*.graphql']));
+      readOpenLoreConfig.mockResolvedValue(makeConfig(['*.graphql']));
 
-      await runAnalysis('/fake/root', '/fake/root/.spec-gen/analysis', {
+      await runAnalysis('/fake/root', '/fake/root/.openlore/analysis', {
         maxFiles: 100000, include: ['*.proto'], exclude: [],
       });
 
@@ -382,9 +382,9 @@ describe('analyze command', () => {
     });
 
     it('deduplicates include patterns present in both config and caller', async () => {
-      readSpecGenConfig.mockResolvedValue(makeConfig(['*.graphql']));
+      readOpenLoreConfig.mockResolvedValue(makeConfig(['*.graphql']));
 
-      await runAnalysis('/fake/root', '/fake/root/.spec-gen/analysis', {
+      await runAnalysis('/fake/root', '/fake/root/.openlore/analysis', {
         maxFiles: 100000, include: ['*.graphql'], exclude: [],
       });
 
@@ -404,7 +404,7 @@ describe('analyze command', () => {
     let mockStat:     ReturnType<typeof vi.fn>;
     let mockMkdir:    ReturnType<typeof vi.fn>;
     let mockReadFile: ReturnType<typeof vi.fn>;
-    let mockReadSpecGenConfig: ReturnType<typeof vi.fn>;
+    let mockReadOpenLoreConfig: ReturnType<typeof vi.fn>;
 
     let consoleSpy: ReturnType<typeof vi.spyOn>;
     let cwdSpy:     ReturnType<typeof vi.spyOn>;
@@ -438,14 +438,14 @@ describe('analyze command', () => {
       mockMkdir    = vi.mocked(fsMod.mkdir as any);
        
       mockReadFile = vi.mocked(fsMod.readFile as any);
-      mockReadSpecGenConfig = vi.mocked(cfgMod.readSpecGenConfig);
+      mockReadOpenLoreConfig = vi.mocked(cfgMod.readOpenLoreConfig);
 
       // Safe defaults: file exists, stale (2 h), mkdir ok, readFile gives empty JSON
       mockAccess.mockReset().mockResolvedValue(undefined);
       mockStat.mockReset().mockResolvedValue({ mtime: new Date(Date.now() - 2 * 3_600_000) });
       mockMkdir.mockReset().mockResolvedValue(undefined);
       mockReadFile.mockReset().mockResolvedValue('{}');
-      mockReadSpecGenConfig.mockReset();
+      mockReadOpenLoreConfig.mockReset();
 
       cwdSpy     = vi.spyOn(process, 'cwd').mockReturnValue('/fake/root');
       consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -459,7 +459,7 @@ describe('analyze command', () => {
     });
 
     it('exits with code 1 when no config found', async () => {
-      mockReadSpecGenConfig.mockResolvedValue(null);
+      mockReadOpenLoreConfig.mockResolvedValue(null);
 
       await analyzeCommand.parseAsync([], { from: 'user' });
 
@@ -467,7 +467,7 @@ describe('analyze command', () => {
     });
 
     it('skips analysis when recent cache exists (< 1 hour) without --force', async () => {
-      mockReadSpecGenConfig.mockResolvedValue(FAKE_CONFIG);
+      mockReadOpenLoreConfig.mockResolvedValue(FAKE_CONFIG);
       // mtime 30 minutes ago → recent
       mockStat.mockResolvedValue({ mtime: new Date(Date.now() - 30 * 60_000) });
       mockReadFile.mockResolvedValue(CACHED_STRUCTURE);
@@ -483,7 +483,7 @@ describe('analyze command', () => {
     });
 
     it('runs analysis even with recent cache when --force is passed', async () => {
-      mockReadSpecGenConfig.mockResolvedValue(FAKE_CONFIG);
+      mockReadOpenLoreConfig.mockResolvedValue(FAKE_CONFIG);
       mockStat.mockResolvedValue({ mtime: new Date(Date.now() - 30 * 60_000) });
 
       const mapperMod = await import('../../core/analyzer/repository-mapper.js');
@@ -496,7 +496,7 @@ describe('analyze command', () => {
     });
 
     it('runs fresh analysis when no previous analysis exists', async () => {
-      mockReadSpecGenConfig.mockResolvedValue(FAKE_CONFIG);
+      mockReadOpenLoreConfig.mockResolvedValue(FAKE_CONFIG);
       // access rejects → fileExists returns false → getAnalysisAge returns null
       mockAccess.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
 
@@ -510,7 +510,7 @@ describe('analyze command', () => {
     });
 
     it('re-runs stale analysis automatically (> 1 hour, no --force needed)', async () => {
-      mockReadSpecGenConfig.mockResolvedValue(FAKE_CONFIG);
+      mockReadOpenLoreConfig.mockResolvedValue(FAKE_CONFIG);
       // Default beforeEach stat: 2 hours old → stale
 
       const mapperMod = await import('../../core/analyzer/repository-mapper.js');
@@ -523,7 +523,7 @@ describe('analyze command', () => {
     });
 
     it('sets exitCode=1 and logs error message when analysis pipeline throws', async () => {
-      mockReadSpecGenConfig.mockResolvedValue(FAKE_CONFIG);
+      mockReadOpenLoreConfig.mockResolvedValue(FAKE_CONFIG);
       mockAccess.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
       mockMkdir.mockRejectedValue(new Error('Permission denied'));
 

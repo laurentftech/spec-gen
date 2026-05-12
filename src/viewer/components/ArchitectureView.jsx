@@ -169,7 +169,7 @@ export function ArchitectureView({ graph, llmCtx, focusedIds }) {
         )}
 
         {globalEntryPoints.length === 0 && criticalHubs.length === 0 && (
-          <div style={{ ...S, color: 'var(--tx-ghost)' }}>Run <code style={{ color: 'var(--ac-primary)' }}>spec-gen analyze</code> to populate call graph data.</div>
+          <div style={{ ...S, color: 'var(--tx-ghost)' }}>Run <code style={{ color: 'var(--ac-primary)' }}>openlore analyze</code> to populate call graph data.</div>
         )}
       </div>
     </div>

@@ -1,10 +1,10 @@
-# spec-gen Architecture
+# openlore Architecture
 
-This document describes the internal architecture of spec-gen.
+This document describes the internal architecture of openlore.
 
 ## Overview
 
-spec-gen is a CLI tool that reverse-engineers OpenSpec specifications from existing codebases. It follows a pipeline architecture with five main phases (plus an optional ADR enrichment stage):
+openlore is a CLI tool that reverse-engineers OpenSpec specifications from existing codebases. It follows a pipeline architecture with five main phases (plus an optional ADR enrichment stage):
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
@@ -54,12 +54,12 @@ The API layer provides a programmatic interface for external consumers (like Ope
 src/api/
 ├── index.ts           # Barrel export — public API surface
 ├── types.ts           # Option and result type definitions
-├── init.ts            # specGenInit() — project detection, config creation
-├── analyze.ts         # specGenAnalyze() — static analysis pipeline
-├── generate.ts        # specGenGenerate() — LLM spec generation
-├── verify.ts          # specGenVerify() — spec accuracy testing
-├── drift.ts           # specGenDrift() — spec-to-code drift detection
-└── run.ts             # specGenRun() — full pipeline orchestration
+├── init.ts            # openloreInit() — project detection, config creation
+├── analyze.ts         # openloreAnalyze() — static analysis pipeline
+├── generate.ts        # openloreGenerate() — LLM spec generation
+├── verify.ts          # openloreVerify() — spec accuracy testing
+├── drift.ts           # openloreDrift() — spec-to-code drift detection
+└── run.ts             # openloreRun() — full pipeline orchestration
 ```
 
 **Design Principles:**
@@ -69,7 +69,7 @@ src/api/
 - All functions return typed result objects
 - Optional dependencies on LLM providers (only imported when needed)
 
-**Package exports:** `import { specGenAnalyze } from 'spec-gen'` imports the API; the CLI is available at `spec-gen/cli`.
+**Package exports:** `import { openloreAnalyze } from 'openlore'` imports the API; the CLI is available at `openlore/cli`.
 
 ### Core Layer (`src/core/`)
 
@@ -96,7 +96,7 @@ FileWalker ──▶ SignificanceScorer ──▶ ImportParser ──▶ Depende
 RepositoryMapper ◀────────────────────────────────────────────┘
       │
       ▼
-ArtifactGenerator ──▶ .spec-gen/analysis/
+ArtifactGenerator ──▶ .openlore/analysis/
 ```
 
 #### Generator (`src/core/generator/`)
@@ -179,7 +179,7 @@ interface DependencyNode { ... }
 interface DependencyEdge { ... }
 
 // Configuration types
-interface SpecGenConfig {
+interface OpenLoreConfig {
   version: string;
   projectType: ProjectType;
   openspecPath: string;
@@ -271,7 +271,7 @@ Score = NameScore (0-30) + PathScore (0-25) +
 ### Full Pipeline
 
 ```
-User runs: spec-gen
+User runs: openlore
 
   ┌─────────────────────────────────────────────────────────────┐
   │                      INITIALIZATION                          │
@@ -297,7 +297,7 @@ User runs: spec-gen
   │  └─────────────┘    └─────────────┘                         │
   │         │                 │                                  │
   │         ▼                 ▼                                  │
-  │  .spec-gen/         Dependency                               │
+  │  .openlore/         Dependency                               │
   │  analysis/          Graph                                    │
   └─────────────────────────────────────────────────────────────┘
                                 │
@@ -389,7 +389,7 @@ CLI --insecure flag  >  config.json llm.sslVerify  >  true (default)
 ### Error Categories
 
 ```typescript
-class SpecGenError extends Error {
+class OpenLoreError extends Error {
   code: string;        // Machine-readable code
   suggestion?: string; // User-friendly fix
 }

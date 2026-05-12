@@ -213,10 +213,10 @@ describe('verifySpecs — end-to-end', () => {
   let llmService: LLMService;
 
   beforeEach(async () => {
-    testDir = join(tmpdir(), `spec-gen-e2e-verify-${Date.now()}`);
+    testDir = join(tmpdir(), `openlore-e2e-verify-${Date.now()}`);
     openspecDir = join(testDir, 'openspec');
     specsDir = join(openspecDir, 'specs');
-    outputDir = join(testDir, '.spec-gen', 'verification');
+    outputDir = join(testDir, '.openlore', 'verification');
     srcDir = join(testDir, 'src');
 
     await mkdir(join(specsDir, 'payment'), { recursive: true });

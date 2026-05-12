@@ -7,7 +7,7 @@
  *
  * The call graph is deliberately excluded — rebuilding it requires full
  * tree-sitter analysis of all call sites and is too expensive for a watch loop.
- * It stays current via the post-commit hook (spec-gen analyze --force --embed).
+ * It stays current via the post-commit hook (openlore analyze --force --embed).
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
@@ -18,8 +18,8 @@ import { extractSignatures, detectLanguage } from '../analyzer/signature-extract
 import type { LLMContext } from '../analyzer/artifact-generator.js';
 import { EdgeStore } from './edge-store.js';
 import {
-  SPEC_GEN_DIR,
-  SPEC_GEN_ANALYSIS_SUBDIR,
+  OPENLORE_DIR,
+  OPENLORE_ANALYSIS_SUBDIR,
   ARTIFACT_LLM_CONTEXT,
 } from '../../constants.js';
 
@@ -34,7 +34,7 @@ const CALLER_REPARSE_LIMIT = 10;
 export interface McpWatcherOptions {
   /** Absolute path to the project root being watched */
   rootPath: string;
-  /** Absolute path to .spec-gen/analysis/ — where llm-context.json lives */
+  /** Absolute path to .openlore/analysis/ — where llm-context.json lives */
   outputPath?: string;
   /** Milliseconds to debounce file-change events (default: 400) */
   debounceMs?: number;
@@ -46,7 +46,7 @@ const SOURCE_EXTENSIONS = /\.(ts|tsx|js|jsx|py|go|rs|rb|java|kt|php|cs|cpp|cc|cx
 
 // String-segment checks evaluated before kqueue/inotify FDs are opened — avoids
 // EMFILE on macOS when chokidar opens FDs for all directories before applying globs.
-const IGNORED_SEGMENTS = ['/node_modules/', '/.spec-gen/', '/dist/', '/.git/'];
+const IGNORED_SEGMENTS = ['/node_modules/', '/.openlore/', '/dist/', '/.git/'];
 const IGNORED_SUFFIXES = ['.test.ts', '.test.js', '.spec.ts', '.spec.js'];
 
 function isIgnoredPath(filePath: string): boolean {
@@ -74,7 +74,7 @@ export class McpWatcher {
   constructor(options: McpWatcherOptions) {
     this.rootPath   = options.rootPath;
     this.outputPath = options.outputPath
-      ?? join(options.rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+      ?? join(options.rootPath, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
     this.debounceMs  = options.debounceMs ?? 400;
     this.extraIgnore = options.ignore ?? [];
   }
@@ -228,7 +228,7 @@ export class McpWatcher {
     try {
       const { VectorIndex }      = await import('../analyzer/vector-index.js');
       const { EmbeddingService } = await import('../analyzer/embedding-service.js');
-      const { readSpecGenConfig } = await import('./config-manager.js');
+      const { readOpenLoreConfig } = await import('./config-manager.js');
 
       if (!VectorIndex.exists(this.outputPath)) return;
 
@@ -236,7 +236,7 @@ export class McpWatcher {
       try {
         embedSvc = EmbeddingService.fromEnv();
       } catch {
-        const cfg = await readSpecGenConfig(this.rootPath);
+        const cfg = await readOpenLoreConfig(this.rootPath);
         embedSvc = cfg ? EmbeddingService.fromConfig(cfg) : null;
       }
       if (!embedSvc) {

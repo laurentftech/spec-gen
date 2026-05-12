@@ -8,7 +8,7 @@
 import { opendir, readFile, stat } from 'node:fs/promises';
 import { join, relative, basename, extname, dirname } from 'node:path';
 import ignoreModule from 'ignore';
-import { DEFAULT_MAX_FILES, SPEC_GEN_DIR, OPENSPEC_DIR } from '../../constants.js';
+import { DEFAULT_MAX_FILES, OPENLORE_DIR, OPENSPEC_DIR } from '../../constants.js';
 const ignore = ignoreModule.default ?? ignoreModule;
 type Ignore = ReturnType<typeof ignore>;
 import type { FileMetadata, FileWalkerResult } from '../../types/index.js';
@@ -66,7 +66,7 @@ const SKIP_DIRECTORIES = new Set([
   '.vscode',
   '.vs',
   OPENSPEC_DIR,
-  SPEC_GEN_DIR,
+  OPENLORE_DIR,
 ]);
 
 /**
@@ -344,13 +344,13 @@ async function loadIgnorePatterns(rootPath: string): Promise<Ignore> {
     // .gitignore not found, continue without it
   }
 
-  // Load .spec-gen-ignore (optional)
+  // Load .openlore-ignore (optional)
   try {
-    const specGenIgnorePath = join(rootPath, '.spec-gen-ignore');
-    const specGenIgnoreContent = await readFile(specGenIgnorePath, 'utf-8');
-    ig.add(specGenIgnoreContent);
+    const openloreIgnorePath = join(rootPath, '.openlore-ignore');
+    const openloreIgnoreContent = await readFile(openloreIgnorePath, 'utf-8');
+    ig.add(openloreIgnoreContent);
   } catch {
-    // .spec-gen-ignore not found, continue without it
+    // .openlore-ignore not found, continue without it
   }
 
   return ig;

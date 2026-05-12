@@ -1,5 +1,5 @@
 schema: spec-driven
-spec-gen:
+openlore:
   version: 1.0.0
   generatedAt: 2026-04-05T08:50:47.894Z
   domains:
@@ -24,7 +24,7 @@ context: >-
 
   # User-provided context (preserved)
 
-  # Auto-detected by spec-gen
+  # Auto-detected by openlore
 
   Tech stack: TypeScript, React, Vitest
 
@@ -36,7 +36,7 @@ context: >-
   Key patterns: Component-based UI
 
 
-  # Auto-detected by spec-gen
+  # Auto-detected by openlore
 
   Tech stack: TypeScript, React, Vitest
 
@@ -48,7 +48,7 @@ context: >-
   Key patterns: Component-based UI
 
 
-  # Auto-detected by spec-gen
+  # Auto-detected by openlore
 
   Tech stack: TypeScript, React, Vitest
 

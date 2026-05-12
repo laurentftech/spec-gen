@@ -37,7 +37,7 @@ so that **{benefit}**.
 
 ## Risk Context
 
-> Pre-filled by the Architect Agent using spec-gen.
+> Pre-filled by the Architect Agent using openlore.
 > Dev Agent reads this — does NOT rediscover it at implementation time.
 
 - **Domains in scope**: {e.g. auth, api}

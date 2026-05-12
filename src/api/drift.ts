@@ -1,14 +1,14 @@
 /**
- * spec-gen drift — programmatic API
+ * openlore drift — programmatic API
  *
  * Detects spec drift: finds code changes not reflected in specs.
  * No side effects (no process.exit, no console.log).
  */
 
 import { join } from 'node:path';
-import { DEFAULT_DRIFT_MAX_FILES, DEFAULT_ANTHROPIC_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_COMPAT_MODEL, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, SPEC_GEN_LOGS_SUBDIR, OPENSPEC_DIR, OPENSPEC_SPECS_SUBDIR, ARTIFACT_REPO_STRUCTURE } from '../constants.js';
+import { DEFAULT_DRIFT_MAX_FILES, DEFAULT_ANTHROPIC_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_COMPAT_MODEL, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, OPENLORE_LOGS_SUBDIR, OPENSPEC_DIR, OPENSPEC_SPECS_SUBDIR, ARTIFACT_REPO_STRUCTURE } from '../constants.js';
 import { fileExists } from '../utils/command-helpers.js';
-import { readSpecGenConfig } from '../core/services/config-manager.js';
+import { readOpenLoreConfig } from '../core/services/config-manager.js';
 import {
   getChangedFiles,
   isGitRepository,
@@ -32,11 +32,11 @@ function progress(onProgress: ProgressCallback | undefined, step: string, status
  * and reports gaps, stale specs, uncovered files, and orphaned specs.
  *
  * @throws Error if not a git repository
- * @throws Error if no spec-gen configuration found
+ * @throws Error if no openlore configuration found
  * @throws Error if no specs found
  * @throws Error if LLM enhanced mode requested but no API key
  */
-export async function specGenDrift(options: DriftApiOptions = {}): Promise<DriftResult> {
+export async function openloreDrift(options: DriftApiOptions = {}): Promise<DriftResult> {
   const startTime = Date.now();
   const rootPath = options.rootPath ?? process.cwd();
   const baseRef = options.baseRef ?? 'auto';
@@ -53,16 +53,16 @@ export async function specGenDrift(options: DriftApiOptions = {}): Promise<Drift
   }
 
   // Load config
-  const specGenConfig = await readSpecGenConfig(rootPath);
-  if (!specGenConfig) {
-    throw new Error('No spec-gen configuration found. Run specGenInit() first.');
+  const openloreConfig = await readOpenLoreConfig(rootPath);
+  if (!openloreConfig) {
+    throw new Error('No openlore configuration found. Run openloreInit() first.');
   }
 
   // Check specs exist
-  const openspecPath = join(rootPath, specGenConfig.openspecPath ?? OPENSPEC_DIR);
+  const openspecPath = join(rootPath, openloreConfig.openspecPath ?? OPENSPEC_DIR);
   const specsPath = join(openspecPath, OPENSPEC_SPECS_SUBDIR);
   if (!(await fileExists(specsPath))) {
-    throw new Error('No specs found. Run specGenGenerate() first.');
+    throw new Error('No specs found. Run openloreGenerate() first.');
   }
 
   // Create LLM service if needed — support all four providers
@@ -89,12 +89,12 @@ export async function specGenDrift(options: DriftApiOptions = {}): Promise<Drift
     llm = createLLMService({
       provider,
       model: options.model ?? defaultModels[provider] ?? DEFAULT_ANTHROPIC_MODEL,
-      apiBase: options.apiBase ?? specGenConfig.llm?.apiBase,
+      apiBase: options.apiBase ?? openloreConfig.llm?.apiBase,
       openaiCompatBaseUrl: options.openaiCompatBaseUrl,
-      sslVerify: options.sslVerify ?? specGenConfig.llm?.sslVerify ?? true,
-      timeout: options.timeout ?? specGenConfig.generation?.timeout,
+      sslVerify: options.sslVerify ?? openloreConfig.llm?.sslVerify ?? true,
+      timeout: options.timeout ?? openloreConfig.generation?.timeout,
       enableLogging: true,
-      logDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_LOGS_SUBDIR),
+      logDir: join(rootPath, OPENLORE_DIR, OPENLORE_LOGS_SUBDIR),
     });
   }
 
@@ -130,7 +130,7 @@ export async function specGenDrift(options: DriftApiOptions = {}): Promise<Drift
 
   // Build spec map
   progress(onProgress, 'Loading spec mappings', 'start');
-  const repoStructurePath = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_REPO_STRUCTURE);
+  const repoStructurePath = join(rootPath, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_REPO_STRUCTURE);
   const hasRepoStructure = await fileExists(repoStructurePath);
 
   const specMap = await buildSpecMap({
@@ -155,7 +155,7 @@ export async function specGenDrift(options: DriftApiOptions = {}): Promise<Drift
     changedFiles: gitResult.files,
     failOn,
     domainFilter: domains.length > 0 ? domains : undefined,
-    openspecRelPath: specGenConfig.openspecPath ?? OPENSPEC_DIR,
+    openspecRelPath: openloreConfig.openspecPath ?? OPENSPEC_DIR,
     llm,
     baseRef: gitResult.resolvedBase,
     adrMap: adrMap ?? undefined,

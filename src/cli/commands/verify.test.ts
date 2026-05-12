@@ -43,7 +43,7 @@ describe('verify command', () => {
 
   beforeEach(async () => {
     // Create test directories
-    await mkdir(join(testDir, '.spec-gen', 'analysis'), { recursive: true });
+    await mkdir(join(testDir, '.openlore', 'analysis'), { recursive: true });
     await mkdir(join(testDir, 'openspec', 'specs'), { recursive: true });
   });
 

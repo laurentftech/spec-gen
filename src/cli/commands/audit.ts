@@ -1,5 +1,5 @@
 /**
- * spec-gen audit command
+ * openlore audit command
  *
  * Reports spec coverage gaps: uncovered functions, orphan requirements,
  * hub gaps, and stale domains. No LLM required.
@@ -8,8 +8,8 @@
 import { Command } from 'commander';
 import { join } from 'node:path';
 import { formatDuration } from '../../utils/command-helpers.js';
-import { SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_AUDIT_REPORT } from '../../constants.js';
-import { specGenAudit } from '../../api/audit.js';
+import { OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_AUDIT_REPORT } from '../../constants.js';
+import { openloreAudit } from '../../api/audit.js';
 import type { AuditReport } from '../../types/index.js';
 
 // ============================================================================
@@ -67,7 +67,7 @@ function printReport(report: AuditReport, rootPath: string): void {
     console.log('');
   }
 
-  const reportPath = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_AUDIT_REPORT);
+  const reportPath = join(rootPath, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_AUDIT_REPORT);
   console.log(`   Report saved to: ${reportPath}`);
   console.log('');
 }
@@ -95,7 +95,7 @@ export const auditCommand = new Command('audit')
         console.log('Running spec coverage audit…');
       }
 
-      const report = await specGenAudit({
+      const report = await openloreAudit({
         rootPath,
         maxUncovered: parseInt(opts.maxUncovered, 10),
         hubThreshold: parseInt(opts.hubThreshold, 10),

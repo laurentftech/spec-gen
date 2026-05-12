@@ -17,8 +17,8 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  SPEC_GEN_DIR,
-  SPEC_GEN_ANALYSIS_SUBDIR,
+  OPENLORE_DIR,
+  OPENLORE_ANALYSIS_SUBDIR,
   ARTIFACT_DEPENDENCY_GRAPH,
   ARTIFACT_MAPPING,
   ARTIFACT_ROUTE_INVENTORY,
@@ -52,11 +52,11 @@ vi.mock('../../../cli/commands/analyze.js', () => ({
 // ============================================================================
 
 async function createTmpDir(): Promise<string> {
-  return mkdtemp(join(tmpdir(), 'spec-gen-analysis-test-'));
+  return mkdtemp(join(tmpdir(), 'openlore-analysis-test-'));
 }
 
 async function writeAnalysisFile(rootPath: string, filename: string, content: unknown): Promise<void> {
-  const dir = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+  const dir = join(rootPath, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
   await mkdir(dir, { recursive: true });
   await writeFile(join(dir, filename), JSON.stringify(content), 'utf-8');
 }
@@ -191,7 +191,7 @@ describe('handleGetDuplicateReport', () => {
   });
 
   it('returns error when duplicates.json is malformed JSON', async () => {
-    const dir = join(tmpDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+    const dir = join(tmpDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, 'duplicates.json'), 'not-json', 'utf-8');
     const { handleGetDuplicateReport } = await import('./analysis.js');
@@ -201,7 +201,7 @@ describe('handleGetDuplicateReport', () => {
 
   it('returns parsed duplicates report', async () => {
     const payload = { groups: [{ files: ['a.ts', 'b.ts'], similarity: 0.9 }] };
-    const dir = join(tmpDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+    const dir = join(tmpDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, 'duplicates.json'), JSON.stringify(payload), 'utf-8');
     const { handleGetDuplicateReport } = await import('./analysis.js');
@@ -633,7 +633,7 @@ describe('handleGetRouteInventory', () => {
 
   it('handles malformed JSON artifact gracefully — falls through to live extraction', async () => {
     // Write a corrupted artifact file
-    const dir = join(tmpDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+    const dir = join(tmpDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, ARTIFACT_ROUTE_INVENTORY), 'not-valid-json!!!', 'utf-8');
 
@@ -1011,7 +1011,7 @@ describe('handleAuditSpecCoverage', () => {
   it('returns error when audit fails (no analysis)', async () => {
     const { handleAuditSpecCoverage } = await import('./analysis.js');
     const result = await handleAuditSpecCoverage(tmpDir) as { error: string };
-    // No analysis cache → specGenAudit throws
+    // No analysis cache → openloreAudit throws
     expect(result.error).toMatch(/Audit failed/);
   });
 });

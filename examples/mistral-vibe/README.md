@@ -1,18 +1,18 @@
-# Mistral Vibe assets for spec-gen
+# Mistral Vibe assets for openlore
 
-Mistral Vibe implementation of the [spec-gen agentic workflow pattern](../../docs/agentic-workflows/README.md).
+Mistral Vibe implementation of the [openlore agentic workflow pattern](../../docs/agentic-workflows/README.md).
 
 ## Contents
 
 | Path | Purpose |
 |---|---|
-| `skills/spec-gen-analyze-codebase/` | Full static analysis — architecture, call graph, refactor issues, duplicates |
-| `skills/spec-gen-generate/` | Generate OpenSpec specs from analysis results |
-| `skills/spec-gen-brainstorm/` | Design a feature: greenfield (Domain Sketch) or brownfield (Constrained Option Tree) → annotated story |
-| `skills/spec-gen-plan-refactor/` | Identify highest-priority refactor target and write a plan |
-| `skills/spec-gen-execute-refactor/` | Apply a refactor plan produced by spec-gen-plan-refactor |
-| `skills/spec-gen-implement-story/` | Implement a story with structural pre-flight check, test gate, and drift verification |
-| `skills/spec-gen-debug/` | Debug a bug: hypothesis-first, RED/GREEN test verification, spec invariant feedback loop |
+| `skills/openlore-analyze-codebase/` | Full static analysis — architecture, call graph, refactor issues, duplicates |
+| `skills/openlore-generate/` | Generate OpenSpec specs from analysis results |
+| `skills/openlore-brainstorm/` | Design a feature: greenfield (Domain Sketch) or brownfield (Constrained Option Tree) → annotated story |
+| `skills/openlore-plan-refactor/` | Identify highest-priority refactor target and write a plan |
+| `skills/openlore-execute-refactor/` | Apply a refactor plan produced by openlore-plan-refactor |
+| `skills/openlore-implement-story/` | Implement a story with structural pre-flight check, test gate, and drift verification |
+| `skills/openlore-debug/` | Debug a bug: hypothesis-first, RED/GREEN test verification, spec invariant feedback loop |
 | `antipatterns-template.md` | Starter template for `.claude/antipatterns.md` — copy to your project root |
 
 ## Workflow
@@ -20,20 +20,20 @@ Mistral Vibe implementation of the [spec-gen agentic workflow pattern](../../doc
 ```mermaid
 flowchart TD
     subgraph ANALYSIS ["📊 Analysis (one-time)"]
-        A["/spec-gen-analyze-codebase"] --> B["/spec-gen-generate"]
+        A["/openlore-analyze-codebase"] --> B["/openlore-generate"]
     end
 
     subgraph REFACTOR ["🔧 Refactor cycle (optional)"]
-        C["/spec-gen-plan-refactor\n→ .spec-gen/refactor-plan.md"] --> D["/spec-gen-execute-refactor\nchange by change, test gate"]
+        C["/openlore-plan-refactor\n→ .openlore/refactor-plan.md"] --> D["/openlore-execute-refactor\nchange by change, test gate"]
     end
 
     subgraph DESIGN ["💡 Design"]
-        K["/spec-gen-brainstorm\ngreenfield or brownfield"] --> L["Won't Do + testable ACs\nadversarial challenge"]
+        K["/openlore-brainstorm\ngreenfield or brownfield"] --> L["Won't Do + testable ACs\nadversarial challenge"]
         L --> M["annotate_story\n→ story.md with risk_context"]
     end
 
     subgraph FEATURE ["⚙️ Feature / Story"]
-        E["/spec-gen-implement-story"] --> F["orient + analyze_impact\nrisk gate ≥ 70 → blocks"]
+        E["/openlore-implement-story"] --> F["orient + analyze_impact\nrisk gate ≥ 70 → blocks"]
         F --> F2["adversarial self-check\n+ antipatterns"]
         F2 --> G["search_specs\nread requirements"]
         G --> H["implement"]
@@ -42,7 +42,7 @@ flowchart TD
     end
 
     subgraph DEBUG ["🐛 Debug"]
-        N["/spec-gen-debug\nhypothesis-first"] --> O["RED/GREEN\ntest verification"]
+        N["/openlore-debug\nhypothesis-first"] --> O["RED/GREEN\ntest verification"]
         O --> P["spec invariant\nfeedback loop"]
     end
 
@@ -60,13 +60,13 @@ flowchart TD
 Copy the skills into your Mistral Vibe project skills directory and invoke them with their slash commands:
 
 ```
-/spec-gen-analyze-codebase
-/spec-gen-generate
-/spec-gen-brainstorm
-/spec-gen-plan-refactor
-/spec-gen-execute-refactor
-/spec-gen-implement-story
-/spec-gen-debug
+/openlore-analyze-codebase
+/openlore-generate
+/openlore-brainstorm
+/openlore-plan-refactor
+/openlore-execute-refactor
+/openlore-implement-story
+/openlore-debug
 ```
 
 Each skill follows the generic pre-flight pattern:
@@ -83,19 +83,19 @@ Copy `antipatterns-template.md` to `.claude/antipatterns.md` in your project:
 cp examples/mistral-vibe/antipatterns-template.md .claude/antipatterns.md
 ```
 
-The antipatterns list is read by `spec-gen-brainstorm` (Step 1) and `spec-gen-implement-story` (Step 4b),
-and written by `spec-gen-debug` (Step 9d) when a bug reveals a cross-cutting failure pattern.
+The antipatterns list is read by `openlore-brainstorm` (Step 1) and `openlore-implement-story` (Step 4b),
+and written by `openlore-debug` (Step 9d) when a bug reveals a cross-cutting failure pattern.
 
 ## OpenSpec spec baseline
 
-`search_specs` and `check_spec_drift` require specs to exist. Run `/spec-gen-generate`
-once before using `/spec-gen-implement-story` for the first time — this creates the
+`search_specs` and `check_spec_drift` require specs to exist. Run `/openlore-generate`
+once before using `/openlore-implement-story` for the first time — this creates the
 baseline that makes spec alignment meaningful.
 
 | State | What to do |
 |---|---|
-| No specs yet | `/spec-gen-analyze-codebase` then `/spec-gen-generate` |
+| No specs yet | `/openlore-analyze-codebase` then `/openlore-generate` |
 | Specs exist | All skills work as expected |
-| Post-sprint spec refresh | `/spec-gen-generate` again to update specs after new code |
+| Post-sprint spec refresh | `/openlore-generate` again to update specs after new code |
 
-`/spec-gen-implement-story` detects missing specs automatically and tells you what to do.
+`/openlore-implement-story` detects missing specs automatically and tells you what to do.

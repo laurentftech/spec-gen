@@ -27,7 +27,7 @@ describe('drift command', () => {
   const testDir = join(process.cwd(), 'test-drift-cmd');
 
   beforeEach(async () => {
-    await mkdir(join(testDir, '.spec-gen', 'analysis'), { recursive: true });
+    await mkdir(join(testDir, '.openlore', 'analysis'), { recursive: true });
     await mkdir(join(testDir, 'openspec', 'specs'), { recursive: true });
   });
 
@@ -243,13 +243,13 @@ describe('drift command', () => {
 
   describe('hook management', () => {
     it('should define hook marker for identification', () => {
-      const HOOK_MARKER = '# spec-gen-drift-hook';
-      expect(HOOK_MARKER).toContain('spec-gen');
+      const HOOK_MARKER = '# openlore-drift-hook';
+      expect(HOOK_MARKER).toContain('openlore');
     });
 
     it('should use npx to invoke drift in hook', () => {
-      const hookContent = 'npx spec-gen drift --fail-on warning --quiet';
-      expect(hookContent).toContain('spec-gen drift');
+      const hookContent = 'npx openlore drift --fail-on warning --quiet';
+      expect(hookContent).toContain('openlore drift');
       expect(hookContent).toContain('--fail-on');
     });
   });

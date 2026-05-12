@@ -45,7 +45,7 @@ export interface ParsedScenario {
   then: string[];
   mappedFunctions: FunctionRef[];
 
-  // Business-logic controls (from <!-- spec-gen-test: ... --> annotations)
+  // Business-logic controls (from <!-- openlore-test: ... --> annotations)
   skip: boolean;
   skipReason?: string;
   tags: string[];
@@ -111,7 +111,7 @@ export interface CoveredScenario {
   requirement: string;
   scenarioName: string;
   testFile: string;       // path to the test file that covers it
-  discoveredBy: 'tag' | 'semantic';  // tag = // spec-gen: JSON; semantic = --discover match
+  discoveredBy: 'tag' | 'semantic';  // tag = // openlore: JSON; semantic = --discover match
   similarity?: number;    // only set when discoveredBy === 'semantic'
 }
 
@@ -132,7 +132,7 @@ export interface DomainCoverage {
 export interface TestCoverageReport {
   timestamp: string;
   totalScenarios: number;
-  taggedScenarios: number;      // covered via // spec-gen: tag
+  taggedScenarios: number;      // covered via // openlore: tag
   discoveredScenarios: number;  // covered via semantic match
   coveredScenarios: number;     // taggedScenarios + discoveredScenarios
   coveragePercent: number;

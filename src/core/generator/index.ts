@@ -13,7 +13,7 @@ export {
   normalizeDomainName,
   buildDetectedContext,
   type OpenSpecConfig,
-  type SpecGenMetadata,
+  type OpenLoreMetadata,
   type DetectedContext,
 } from './openspec-compat.js';
 export * from './openspec-writer.js';

@@ -17,8 +17,8 @@ describe('UnifiedSearch E2E', () => {
 
   beforeAll(async () => {
     // Create temporary test directory
-    testDir = join(tmpdir(), 'spec-gen-e2e-' + Math.random().toString(36).substr(2, 9));
-    outputDir = join(testDir, '.spec-gen', 'analysis');
+    testDir = join(tmpdir(), 'openlore-e2e-' + Math.random().toString(36).substr(2, 9));
+    outputDir = join(testDir, '.openlore', 'analysis');
 
     // Create directory structure
     await mkdir(outputDir, { recursive: true });

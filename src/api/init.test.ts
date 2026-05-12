@@ -1,9 +1,9 @@
 /**
- * Tests for specGenInit programmatic API
+ * Tests for openloreInit programmatic API
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { specGenInit } from './init.js';
+import { openloreInit } from './init.js';
 
 // ============================================================================
 // MOCKS
@@ -16,8 +16,8 @@ vi.mock('../core/services/project-detector.js', () => ({
 
 vi.mock('../core/services/config-manager.js', () => ({
   getDefaultConfig: vi.fn(),
-  writeSpecGenConfig: vi.fn(),
-  specGenConfigExists: vi.fn(),
+  writeOpenLoreConfig: vi.fn(),
+  openloreConfigExists: vi.fn(),
   openspecDirExists: vi.fn(),
   createOpenSpecStructure: vi.fn(),
 }));
@@ -34,8 +34,8 @@ import {
 } from '../core/services/project-detector.js';
 import {
   getDefaultConfig,
-  writeSpecGenConfig,
-  specGenConfigExists,
+  writeOpenLoreConfig,
+  openloreConfigExists,
   openspecDirExists,
   createOpenSpecStructure,
 } from '../core/services/config-manager.js';
@@ -48,8 +48,8 @@ import {
 const mockDetectProjectType = vi.mocked(detectProjectType);
 const mockGetProjectTypeName = vi.mocked(getProjectTypeName);
 const mockGetDefaultConfig = vi.mocked(getDefaultConfig);
-const mockWriteSpecGenConfig = vi.mocked(writeSpecGenConfig);
-const mockSpecGenConfigExists = vi.mocked(specGenConfigExists);
+const mockWriteOpenLoreConfig = vi.mocked(writeOpenLoreConfig);
+const mockOpenLoreConfigExists = vi.mocked(openloreConfigExists);
 const mockOpenspecDirExists = vi.mocked(openspecDirExists);
 const mockCreateOpenSpecStructure = vi.mocked(createOpenSpecStructure);
 const mockGitignoreExists = vi.mocked(gitignoreExists);
@@ -68,8 +68,8 @@ beforeEach(() => {
   mockDetectProjectType.mockResolvedValue({ projectType: 'nodejs' } as Awaited<ReturnType<typeof detectProjectType>>);
   mockGetProjectTypeName.mockReturnValue('nodejs');
   mockGetDefaultConfig.mockReturnValue(DEFAULT_CONFIG);
-  mockWriteSpecGenConfig.mockResolvedValue(undefined);
-  mockSpecGenConfigExists.mockResolvedValue(false);
+  mockWriteOpenLoreConfig.mockResolvedValue(undefined);
+  mockOpenLoreConfigExists.mockResolvedValue(false);
   mockOpenspecDirExists.mockResolvedValue(false);
   mockCreateOpenSpecStructure.mockResolvedValue(undefined);
   mockGitignoreExists.mockResolvedValue(false);
@@ -81,32 +81,32 @@ beforeEach(() => {
 // TESTS
 // ============================================================================
 
-describe('specGenInit', () => {
+describe('openloreInit', () => {
   describe('happy path — new project', () => {
     it('creates config and openspec structure', async () => {
-      const result = await specGenInit({ rootPath: ROOT });
+      const result = await openloreInit({ rootPath: ROOT });
 
       expect(result.created).toBe(true);
       expect(result.projectType).toBe('nodejs');
-      expect(result.configPath).toBe('.spec-gen/config.json');
-      expect(mockWriteSpecGenConfig).toHaveBeenCalledOnce();
+      expect(result.configPath).toBe('.openlore/config.json');
+      expect(mockWriteOpenLoreConfig).toHaveBeenCalledOnce();
       expect(mockCreateOpenSpecStructure).toHaveBeenCalledOnce();
     });
 
-    it('adds .spec-gen/ to .gitignore when gitignore exists', async () => {
+    it('adds .openlore/ to .gitignore when gitignore exists', async () => {
       mockGitignoreExists.mockResolvedValue(true);
       mockIsInGitignore.mockResolvedValue(false);
 
-      await specGenInit({ rootPath: ROOT });
+      await openloreInit({ rootPath: ROOT });
 
-      expect(mockAddToGitignore).toHaveBeenCalledWith(ROOT, '.spec-gen/', expect.any(String));
+      expect(mockAddToGitignore).toHaveBeenCalledWith(ROOT, '.openlore/', expect.any(String));
     });
 
-    it('skips addToGitignore when .spec-gen/ already in gitignore', async () => {
+    it('skips addToGitignore when .openlore/ already in gitignore', async () => {
       mockGitignoreExists.mockResolvedValue(true);
       mockIsInGitignore.mockResolvedValue(true);
 
-      await specGenInit({ rootPath: ROOT });
+      await openloreInit({ rootPath: ROOT });
 
       expect(mockAddToGitignore).not.toHaveBeenCalled();
     });
@@ -114,7 +114,7 @@ describe('specGenInit', () => {
     it('skips addToGitignore when no .gitignore file', async () => {
       mockGitignoreExists.mockResolvedValue(false);
 
-      await specGenInit({ rootPath: ROOT });
+      await openloreInit({ rootPath: ROOT });
 
       expect(mockAddToGitignore).not.toHaveBeenCalled();
     });
@@ -122,7 +122,7 @@ describe('specGenInit', () => {
     it('skips createOpenSpecStructure when openspec dir already exists', async () => {
       mockOpenspecDirExists.mockResolvedValue(true);
 
-      await specGenInit({ rootPath: ROOT });
+      await openloreInit({ rootPath: ROOT });
 
       expect(mockCreateOpenSpecStructure).not.toHaveBeenCalled();
     });
@@ -130,34 +130,34 @@ describe('specGenInit', () => {
 
   describe('skip when config already exists', () => {
     it('returns created=false and skips writing config', async () => {
-      mockSpecGenConfigExists.mockResolvedValue(true);
+      mockOpenLoreConfigExists.mockResolvedValue(true);
 
-      const result = await specGenInit({ rootPath: ROOT });
+      const result = await openloreInit({ rootPath: ROOT });
 
       expect(result.created).toBe(false);
-      expect(mockWriteSpecGenConfig).not.toHaveBeenCalled();
+      expect(mockWriteOpenLoreConfig).not.toHaveBeenCalled();
     });
 
     it('force=true re-creates config even if it exists', async () => {
-      mockSpecGenConfigExists.mockResolvedValue(true);
+      mockOpenLoreConfigExists.mockResolvedValue(true);
 
-      const result = await specGenInit({ rootPath: ROOT, force: true });
+      const result = await openloreInit({ rootPath: ROOT, force: true });
 
       expect(result.created).toBe(true);
-      expect(mockWriteSpecGenConfig).toHaveBeenCalledOnce();
+      expect(mockWriteOpenLoreConfig).toHaveBeenCalledOnce();
     });
   });
 
   describe('path validation', () => {
     it('throws if openspecPath escapes project root', async () => {
       await expect(
-        specGenInit({ rootPath: ROOT, openspecPath: '../outside' })
+        openloreInit({ rootPath: ROOT, openspecPath: '../outside' })
       ).rejects.toThrow();
     });
 
     it('accepts relative openspecPath within root', async () => {
       await expect(
-        specGenInit({ rootPath: ROOT, openspecPath: './openspec' })
+        openloreInit({ rootPath: ROOT, openspecPath: './openspec' })
       ).resolves.toBeDefined();
     });
   });
@@ -165,7 +165,7 @@ describe('specGenInit', () => {
   describe('progress callbacks', () => {
     it('fires progress events', async () => {
       const events: string[] = [];
-      await specGenInit({
+      await openloreInit({
         rootPath: ROOT,
         onProgress: e => events.push(e.status),
       });
@@ -173,9 +173,9 @@ describe('specGenInit', () => {
     });
 
     it('fires skip event when config exists', async () => {
-      mockSpecGenConfigExists.mockResolvedValue(true);
+      mockOpenLoreConfigExists.mockResolvedValue(true);
       const events: string[] = [];
-      await specGenInit({
+      await openloreInit({
         rootPath: ROOT,
         onProgress: e => events.push(e.status),
       });

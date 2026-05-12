@@ -1,7 +1,7 @@
 /**
- * Programmatic API types for spec-gen
+ * Programmatic API types for openlore
  *
- * These types define the options and results for the spec-gen API functions.
+ * These types define the options and results for the openlore API functions.
  * They are designed for programmatic consumers (like OpenSpec CLI) and are
  * free of CLI-specific concerns (no process.exit, no console.log).
  */
@@ -49,7 +49,7 @@ export interface ProgressEvent {
 export interface BaseOptions {
   /** Project root path. Default: process.cwd() */
   rootPath?: string;
-  /** Path to spec-gen config file. Default: '.spec-gen/config.json' */
+  /** Path to openlore config file. Default: '.openlore/config.json' */
   configPath?: string;
   /** Progress callback for status updates */
   onProgress?: ProgressCallback;
@@ -90,7 +90,7 @@ export interface AnalyzeApiOptions extends BaseOptions {
   excludePatterns?: string[];
   /** Force re-analysis even if recent analysis exists */
   force?: boolean;
-  /** Output directory for analysis artifacts. Default: '.spec-gen/analysis/' */
+  /** Output directory for analysis artifacts. Default: '.openlore/analysis/' */
   outputPath?: string;
 }
 
@@ -130,7 +130,7 @@ export interface GenerateApiOptions extends BaseOptions {
   mapping?: boolean;
   /** Preview what would be generated without writing */
   dryRun?: boolean;
-  /** Path to analysis directory. Default: '.spec-gen/analysis/' */
+  /** Path to analysis directory. Default: '.openlore/analysis/' */
   analysisPath?: string;
   /** Force regeneration from scratch, ignoring any cached stage results on disk */
   force?: boolean;
@@ -250,7 +250,7 @@ export interface AuditApiOptions extends BaseOptions {
   maxUncovered?: number;
   /** Minimum fanIn to flag a hub as a gap. Default: 5 */
   hubThreshold?: number;
-  /** Save audit report to .spec-gen/analysis/audit-report.json. Default: true */
+  /** Save audit report to .openlore/analysis/audit-report.json. Default: true */
   save?: boolean;
 }
 

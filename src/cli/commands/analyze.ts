@@ -1,5 +1,5 @@
 /**
- * spec-gen analyze command
+ * openlore analyze command
  *
  * Runs static analysis on the codebase without LLM involvement.
  * Outputs repository map, dependency graph, and file significance scores.
@@ -23,12 +23,12 @@ import {
   OPENSPEC_DIR,
   OPENSPEC_SPECS_SUBDIR,
   OPENSPEC_DECISIONS_SUBDIR,
-  SPEC_GEN_ANALYSIS_REL_PATH,
-  SPEC_GEN_CONFIG_REL_PATH,
+  OPENLORE_ANALYSIS_REL_PATH,
+  OPENLORE_CONFIG_REL_PATH,
 } from '../../constants.js';
 import { computeProjectFingerprint } from '../../core/services/mcp-handlers/utils.js';
-import type { AnalyzeOptions, SpecGenConfig } from '../../types/index.js';
-import { readSpecGenConfig } from '../../core/services/config-manager.js';
+import type { AnalyzeOptions, OpenLoreConfig } from '../../types/index.js';
+import { readOpenLoreConfig } from '../../core/services/config-manager.js';
 import { RepositoryMapper, type RepositoryMap } from '../../core/analyzer/repository-mapper.js';
 import type { CloneGroup, CloneInstance } from '../../core/analyzer/duplicate-detector.js';
 import {
@@ -105,9 +105,9 @@ export async function runAnalysis(
 
   // Merge config patterns with caller-supplied patterns so all entry points
   // (CLI, MCP, …) automatically respect the project configuration.
-  const specGenConfig = await readSpecGenConfig(rootPath);
-  const configExclude = specGenConfig?.analysis.excludePatterns ?? [];
-  const configInclude = specGenConfig?.analysis.includePatterns ?? [];
+  const openloreConfig = await readOpenLoreConfig(rootPath);
+  const configExclude = openloreConfig?.analysis.excludePatterns ?? [];
+  const configInclude = openloreConfig?.analysis.includePatterns ?? [];
   const mergedExclude = [...new Set([...configExclude, ...options.exclude])];
   const mergedInclude = [...new Set([...configInclude, ...options.include])];
 
@@ -203,7 +203,7 @@ export const analyzeCommand = new Command('analyze')
   .option(
     '--output <path>',
     'Directory to write analysis results',
-    `${SPEC_GEN_ANALYSIS_REL_PATH}/`
+    `${OPENLORE_ANALYSIS_REL_PATH}/`
   )
   .option(
     '--max-files <n>',
@@ -243,35 +243,35 @@ export const analyzeCommand = new Command('analyze')
   )
   .option(
     '--ai-configs',
-    'Generate AI tool config files (.cursorrules, .clinerules/spec-gen.md, CLAUDE.md) if they do not already exist',
+    'Generate AI tool config files (.cursorrules, .clinerules/openlore.md, CLAUDE.md) if they do not already exist',
     false
   )
   .addHelpText(
     'after',
     `
 Examples:
-  $ spec-gen analyze                 Analyze with defaults
-  $ spec-gen analyze --max-files 1000
+  $ openlore analyze                 Analyze with defaults
+  $ openlore analyze --max-files 1000
                                      Analyze more files
-  $ spec-gen analyze --include "*.graphql" --include "*.prisma"
+  $ openlore analyze --include "*.graphql" --include "*.prisma"
                                      Include additional file types
-  $ spec-gen analyze --exclude "legacy/**"
+  $ openlore analyze --exclude "legacy/**"
                                      Exclude specific directories
-  $ spec-gen analyze --output ./my-analysis
+  $ openlore analyze --output ./my-analysis
                                      Custom output location
-  $ spec-gen analyze --force         Force re-analysis
-  $ spec-gen analyze --no-embed      Skip vector index build
-  $ spec-gen analyze --reindex-specs Re-index specs only (no full re-analysis)
+  $ openlore analyze --force         Force re-analysis
+  $ openlore analyze --no-embed      Skip vector index build
+  $ openlore analyze --reindex-specs Re-index specs only (no full re-analysis)
 
 Output files:
-  .spec-gen/analysis/
+  .openlore/analysis/
   ├── repo-structure.json    Repository structure and metadata
   ├── dependency-graph.json  Import/export relationships
   ├── llm-context.json       Optimized context for LLM
   ├── dependencies.mermaid   Visual dependency diagram
   └── SUMMARY.md             Human-readable analysis summary
 
-After analysis, run 'spec-gen generate' to create OpenSpec files.
+After analysis, run 'openlore generate' to create OpenSpec files.
 `
   )
   .action(async (options: Partial<ExtendedAnalyzeOptions>) => {
@@ -279,7 +279,7 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
     const rootPath = process.cwd();
 
     const opts: ExtendedAnalyzeOptions = {
-      output: options.output ?? `${SPEC_GEN_ANALYSIS_REL_PATH}/`,
+      output: options.output ?? `${OPENLORE_ANALYSIS_REL_PATH}/`,
       maxFiles: typeof options.maxFiles === 'string'
         ? parseInt(options.maxFiles, 10)
         : options.maxFiles ?? DEFAULT_MAX_FILES,
@@ -292,7 +292,7 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
       quiet: false,
       verbose: false,
       noColor: false,
-      config: SPEC_GEN_CONFIG_REL_PATH,
+      config: OPENLORE_CONFIG_REL_PATH,
     };
 
     if (isNaN(opts.maxFiles) || opts.maxFiles < 1) {
@@ -307,10 +307,10 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
       // ========================================================================
       logger.section('Analyzing Codebase');
 
-      // Check for spec-gen config
-      const specGenConfig = await readSpecGenConfig(rootPath);
-      if (!specGenConfig) {
-        logger.error('No spec-gen configuration found. Run "spec-gen init" first.');
+      // Check for openlore config
+      const openloreConfig = await readOpenLoreConfig(rootPath);
+      if (!openloreConfig) {
+        logger.error('No openlore configuration found. Run "openlore init" first.');
         process.exitCode = 1;
         return;
       }
@@ -319,11 +319,11 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
       if (!options.embed) {
         const embedConfigured =
           !!process.env.EMBED_BASE_URL ||
-          !!EmbeddingService.fromConfig(specGenConfig);
+          !!EmbeddingService.fromConfig(openloreConfig);
         if (embedConfigured) opts.embed = true;
       }
 
-      logger.info('Project', specGenConfig.projectType);
+      logger.info('Project', openloreConfig.projectType);
       logger.info('Output', opts.output);
       logger.info('Max files', opts.maxFiles);
       if (opts.include.length > 0) {
@@ -340,7 +340,7 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
       if (opts.reindexSpecs) {
         const outputPath = join(rootPath, opts.output);
         await mkdir(outputPath, { recursive: true });
-        await runSpecIndexing(rootPath, outputPath, specGenConfig);
+        await runSpecIndexing(rootPath, outputPath, openloreConfig);
         return;
       }
 
@@ -373,7 +373,7 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
 
             // If embed is requested, run the embed step (incremental: only re-embeds changed functions)
             if (opts.embed) {
-              await runEmbedStep(rootPath, outputPath, specGenConfig, opts.force ?? false, null);
+              await runEmbedStep(rootPath, outputPath, openloreConfig, opts.force ?? false, null);
             }
 
             // If --ai-configs is requested, generate them even from cached analysis
@@ -408,7 +408,7 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
               }
             }
 
-            logger.info('Next step', "Run 'spec-gen generate' to create OpenSpec files");
+            logger.info('Next step', "Run 'openlore generate' to create OpenSpec files");
             return;
           } catch (readErr) {
             logger.debug(`Could not read existing analysis summary: ${(readErr as Error).message}`);
@@ -618,7 +618,7 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
         logger.debug(`ARCHITECTURE.md generation skipped: ${(archErr as Error).message}`);
       }
 
-      // Generate .spec-gen/analysis/CODEBASE.md — agent-readable architecture digest
+      // Generate .openlore/analysis/CODEBASE.md — agent-readable architecture digest
       const digestWritten = await generateCodebaseDigest(
         artifacts.llmContext,
         depGraph,
@@ -687,9 +687,9 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
         console.log('  Agent setup (one-time):');
         console.log(`    Add to your CLAUDE.md or .clinerules:`);
         console.log('');
-        console.log(`    @.spec-gen/analysis/CODEBASE.md`);
+        console.log(`    @.openlore/analysis/CODEBASE.md`);
         console.log('');
-        console.log('    ## spec-gen MCP tools — when to use them');
+        console.log('    ## openlore MCP tools — when to use them');
         console.log('    | Situation                                       | Tool                              |');
         console.log('    |-------------------------------------------------|-----------------------------------|');
         console.log("    | Don't know which file/function handles a concept | search_code                      |");
@@ -716,7 +716,7 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
       // PHASE 5 (optional): BUILD VECTOR INDEX
       // ========================================================================
       if (opts.embed) {
-        await runEmbedStep(rootPath, outputPath, specGenConfig, opts.force ?? false, result.artifacts.llmContext);
+        await runEmbedStep(rootPath, outputPath, openloreConfig, opts.force ?? false, result.artifacts.llmContext);
       }
 
       // Duration
@@ -726,7 +726,7 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
 
       logger.success('Ready for generation!');
       logger.blank();
-      logger.info('Next step', "Run 'spec-gen generate' to create OpenSpec files");
+      logger.info('Next step', "Run 'openlore generate' to create OpenSpec files");
 
     } catch (error) {
       logger.error(`Analysis failed: ${(error as Error).message}`);
@@ -749,7 +749,7 @@ After analysis, run 'spec-gen generate' to create OpenSpec files.
 async function runEmbedStep(
   rootPath: string,
   outputPath: string,
-  specGenConfig: SpecGenConfig | null,
+  openloreConfig: OpenLoreConfig | null,
   force: boolean,
   llmContext: import('../../core/analyzer/artifact-generator.js').LLMContext | null,
 ): Promise<void> {
@@ -763,10 +763,10 @@ async function runEmbedStep(
     try {
       embedSvc = EmbeddingService.fromEnv();
     } catch {
-      const cfg = specGenConfig ?? await readSpecGenConfig(rootPath);
-      if (!cfg) throw new Error('No embedding config found. Set EMBED_BASE_URL and EMBED_MODEL, or add "embedding" to .spec-gen/config.json');
+      const cfg = openloreConfig ?? await readOpenLoreConfig(rootPath);
+      if (!cfg) throw new Error('No embedding config found. Set EMBED_BASE_URL and EMBED_MODEL, or add "embedding" to .openlore/config.json');
       const svcFromConfig = EmbeddingService.fromConfig(cfg);
-      if (!svcFromConfig) throw new Error('No embedding config found. Set EMBED_BASE_URL and EMBED_MODEL, or add "embedding" to .spec-gen/config.json');
+      if (!svcFromConfig) throw new Error('No embedding config found. Set EMBED_BASE_URL and EMBED_MODEL, or add "embedding" to .openlore/config.json');
       embedSvc = svcFromConfig;
     }
 
@@ -776,7 +776,7 @@ async function runEmbedStep(
         const raw = await readFile(join(outputPath, 'llm-context.json'), 'utf-8');
         llmContext = JSON.parse(raw);
       } catch {
-        console.log('    ⚠ Could not read llm-context.json — run spec-gen analyze --force');
+        console.log('    ⚠ Could not read llm-context.json — run openlore analyze --force');
         return;
       }
     }
@@ -809,7 +809,7 @@ async function runEmbedStep(
     }
 
     // Also index specs if they exist
-    await runSpecIndexing(rootPath, outputPath, specGenConfig);
+    await runSpecIndexing(rootPath, outputPath, openloreConfig);
   } catch (embedErr) {
     console.log(`    ✗ Vector index failed: ${(embedErr as Error).message}`);
   }
@@ -828,18 +828,18 @@ async function runEmbedStep(
 async function runSpecIndexing(
   rootPath: string,
   outputPath: string,
-  specGenConfig: SpecGenConfig | null
+  openloreConfig: OpenLoreConfig | null
 ): Promise<void> {
   const { join: pathJoin } = await import('node:path');
   const { SpecVectorIndex } = await import('../../core/analyzer/spec-vector-index.js');
-  const { readSpecGenConfig } = await import('../../core/services/config-manager.js');
+  const { readOpenLoreConfig } = await import('../../core/services/config-manager.js');
 
   // Resolve embedding service
   let embedSvc: InstanceType<typeof EmbeddingService>;
   try {
     embedSvc = EmbeddingService.fromEnv();
   } catch {
-    const cfg = specGenConfig ?? await readSpecGenConfig(rootPath);
+    const cfg = openloreConfig ?? await readOpenLoreConfig(rootPath);
     if (!cfg) return; // no embedding config — silently skip
     const svc = EmbeddingService.fromConfig(cfg);
     if (!svc) return;

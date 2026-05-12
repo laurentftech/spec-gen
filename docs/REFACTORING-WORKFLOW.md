@@ -1,14 +1,14 @@
-# Refactoring Workflow with spec-gen
+# Refactoring Workflow with openlore
 
-Workflow for using spec-gen to refactor an existing codebase — particularly
+Workflow for using openlore to refactor an existing codebase — particularly
 useful for vibe-coded projects with inconsistent naming, dead code, and poor
 normalization.
 
-> **MCP shortcut** — If you use Cline or Claude Code, `spec-gen mcp` exposes
+> **MCP shortcut** — If you use Cline or Claude Code, `openlore mcp` exposes
 > all analysis steps as tools the AI can call directly, without CLI commands or
 > `jq` pipes. Copy the files from `examples/cline-workflows/` into your project's
-> `.clinerules/workflows/` and Cline will expose `/spec-gen-analyze-codebase`,
-> `/spec-gen-plan-refactor`, and `/spec-gen-execute-refactor` slash commands
+> `.clinerules/workflows/` and Cline will expose `/openlore-analyze-codebase`,
+> `/openlore-plan-refactor`, and `/openlore-execute-refactor` slash commands
 > that drive the full loop.
 > The MCP equivalents are noted inline throughout this guide.
 
@@ -18,22 +18,22 @@ normalization.
 
 ```bash
 cd your-project
-spec-gen init        # detects project type, creates .spec-gen/config.json
-spec-gen analyze     # static analysis — no LLM, builds dependency graph
+openlore init        # detects project type, creates .openlore/config.json
+openlore analyze     # static analysis — no LLM, builds dependency graph
 ```
 
 **Outputs:**
-- `.spec-gen/config.json` — configuration
-- `.spec-gen/analysis/repo-structure.json` — file significance scores, domain detection
-- `.spec-gen/analysis/dependency-graph.json` — exports, imports, connectivity per file
-- `.spec-gen/analysis/refactor-priorities.json` — **static refactoring candidates** (see §2b)
+- `.openlore/config.json` — configuration
+- `.openlore/analysis/repo-structure.json` — file significance scores, domain detection
+- `.openlore/analysis/dependency-graph.json` — exports, imports, connectivity per file
+- `.openlore/analysis/refactor-priorities.json` — **static refactoring candidates** (see §2b)
 
 ---
 
 ## 1b. Read the Static Refactoring Report  *(no LLM required)*
 
 `analyze` runs a **pure static call graph analysis** (no LLM) and immediately
-produces `.spec-gen/analysis/refactor-priorities.json`. The console output
+produces `.openlore/analysis/refactor-priorities.json`. The console output
 shows a summary:
 
 ```
@@ -44,7 +44,7 @@ Refactoring Candidates  (7/266 functions):
   crawl_json_api_async  crawler.py   fanOut=14
   t                     i18n.py      fanIn=25
   ...
-  → .spec-gen/analysis/refactor-priorities.json
+  → .openlore/analysis/refactor-priorities.json
 ```
 
 **Issue types detected:**
@@ -68,7 +68,7 @@ Refactoring Candidates  (7/266 functions):
   be public API consumed externally, or re-exported from an index file
 
 **At this stage `requirements` is always empty** — the mapping from
-requirements to functions is only available after `spec-gen generate` has run
+requirements to functions is only available after `openlore generate` has run
 (see §4). Re-run `analyze` after a generate to get the enriched report.
 
 ---
@@ -76,7 +76,7 @@ requirements to functions is only available after `spec-gen generate` has run
 ## 2. Generate the Spec
 
 ```bash
-spec-gen generate -y
+openlore generate -y
 ```
 
 **What happens:**
@@ -91,7 +91,7 @@ spec-gen generate -y
 - `openspec/specs/{domain}/spec.md` — one spec per business domain
 - `openspec/specs/overview/spec.md` — system overview with domain table
 - `openspec/specs/architecture/spec.md` — layer map and data flow
-- `.spec-gen/analysis/mapping.json` — **requirement → function mapping** (see below)
+- `.openlore/analysis/mapping.json` — **requirement → function mapping** (see below)
 
 ---
 
@@ -104,7 +104,7 @@ a refactoring from a bad spec will normalize the code toward the wrong target.
 ### 3a. Automated validation
 
 ```bash
-spec-gen verify       # validates specs against source code
+openlore verify       # validates specs against source code
 ```
 
 Reports requirements with no matching code evidence, mismatched domain
@@ -132,14 +132,14 @@ Edit the spec files directly — they are plain Markdown. Corrections to make:
 # Remove a hallucinated requirement → delete it
 ```
 
-After manual corrections, re-run `spec-gen verify` to confirm the spec
+After manual corrections, re-run `openlore verify` to confirm the spec
 validates cleanly. **Only proceed to refactoring once the spec is trusted.**
 
 ---
 
 ## 4. Read the Mapping Artifact
 
-`.spec-gen/analysis/mapping.json` structure:
+`.openlore/analysis/mapping.json` structure:
 
 ```json
 {
@@ -191,7 +191,7 @@ After `generate` has produced `mapping.json`, re-run `analyze` to enrich the
 refactoring report with **requirement mappings**:
 
 ```bash
-spec-gen analyze
+openlore analyze
 ```
 
 The updated `refactor-priorities.json` now includes a `requirements` field per
@@ -235,7 +235,7 @@ The full report structure:
 *Via CLI:*
 ```bash
 # Extract top refactoring candidates with their requirements
-cat .spec-gen/analysis/refactor-priorities.json | \
+cat .openlore/analysis/refactor-priorities.json | \
   jq '[.priorities[] | {function, file, issues, requirements, priorityScore}] | .[0:10]'
 ```
 
@@ -264,7 +264,7 @@ These are candidates for deletion — but verify first:
 Filter by confidence and kind:
 ```bash
 # Quick look at orphans — function/class kinds only
-cat .spec-gen/analysis/mapping.json | \
+cat .openlore/analysis/mapping.json | \
   jq '.orphanFunctions | map(select(.kind == "function" or .kind == "class"))'
 ```
 
@@ -275,7 +275,7 @@ with actual function names in the mapping:
 
 ```bash
 # Find mismatches between spec requirement name and function name
-cat .spec-gen/analysis/mapping.json | \
+cat .openlore/analysis/mapping.json | \
   jq '.mappings[] | select(.functions | length > 0) | {req: .requirement, fn: .functions[0].name}'
 ```
 
@@ -290,7 +290,7 @@ directory signal misplaced code.
 
 ```bash
 # Check for cross-domain misplacements
-cat .spec-gen/analysis/mapping.json | \
+cat .openlore/analysis/mapping.json | \
   jq '.mappings[] | select(.functions | length > 0) | {domain: .domain, file: .functions[0].file}'
 ```
 
@@ -299,8 +299,8 @@ cat .spec-gen/analysis/mapping.json | \
 ## 6. Iterative Refactoring Loop
 
 ```
-spec-gen analyze          # re-analyze after changes (fast, no LLM)
-spec-gen generate -y      # regenerate specs + mapping
+openlore analyze          # re-analyze after changes (fast, no LLM)
+openlore generate -y      # regenerate specs + mapping
 ```
 
 After each refactoring batch:
@@ -309,7 +309,7 @@ After each refactoring batch:
 3. Re-run `analyze` again to enrich the refactoring report with the new mapping
 4. Check that `orphanCount` decreases and `mappedRequirements` increases
 5. Check that `withIssues` in `refactor-priorities.json` decreases
-6. Use `spec-gen drift` to verify specs still match the refactored code
+6. Use `openlore drift` to verify specs still match the refactored code
 
 ---
 
@@ -321,7 +321,7 @@ are directly readable by any AI.
 
 ### 7a. MCP-native workflow (Cline / Claude Code)
 
-With `spec-gen mcp` running, your AI agent can drive the entire analysis loop
+With `openlore mcp` running, your AI agent can drive the entire analysis loop
 without you running any CLI commands:
 
 ```
@@ -348,15 +348,15 @@ identify which files and functions need the most attention:
 
 ```bash
 # Top 10 by priority score, with their issues and requirements
-cat .spec-gen/analysis/refactor-priorities.json | \
+cat .openlore/analysis/refactor-priorities.json | \
   jq '[.priorities[:10][] | {function, file, fanIn, fanOut, issues, requirements, priorityScore}]'
 
 # Only SRP violations (too many requirements)
-cat .spec-gen/analysis/refactor-priorities.json | \
+cat .openlore/analysis/refactor-priorities.json | \
   jq '[.priorities[] | select(.issues | contains(["multi_requirement"]))]'
 
 # Only cyclic dependencies
-cat .spec-gen/analysis/refactor-priorities.json | \
+cat .openlore/analysis/refactor-priorities.json | \
   jq '.cycles'
 ```
 
@@ -381,7 +381,7 @@ Tasks:
 Generate the list of orphans and ask the AI to delete them:
 
 ```bash
-cat .spec-gen/analysis/mapping.json | \
+cat .openlore/analysis/mapping.json | \
   jq '[.orphanFunctions[] | select(.kind == "function" or .kind == "class") | {name, file}]'
 ```
 
@@ -396,7 +396,7 @@ Review each one and delete it if it is not part of the public API:
 ### 8c. Renaming pass with mapping as instructions
 
 ```bash
-cat .spec-gen/analysis/mapping.json | \
+cat .openlore/analysis/mapping.json | \
   jq '[.mappings[] | select(.functions | length > 0) | {spec: .requirement, actual: .functions[0].name, file: .functions[0].file}] | map(select(.spec != .actual))'
 ```
 
@@ -427,7 +427,7 @@ calling infrastructure directly): [paste file content]
   giving both lets the AI make precise targeted changes
 - **Verify `confidence: "heuristic"` matches manually** before giving them to
   an AI — false positives will cause wrong renames
-- **Use drift after each AI pass** — `spec-gen drift` confirms the refactored
+- **Use drift after each AI pass** — `openlore drift` confirms the refactored
   code still aligns with the specs
 
 ---
@@ -459,7 +459,7 @@ Use the mapping to know exactly which functions need coverage:
 
 ```bash
 # Functions with no heuristic matches = confirmed spec coverage
-cat .spec-gen/analysis/mapping.json | \
+cat .openlore/analysis/mapping.json | \
   jq '[.mappings[] | select(.functions | length > 0 and (.functions[] | .confidence == "llm")) | {fn: .functions[0].name, file: .functions[0].file, scenario: .requirement}]'
 ```
 
@@ -482,7 +482,7 @@ present after cleanup that has no test coverage is a double signal for deletion.
 Once the codebase is normalized, use drift detection to keep specs in sync:
 
 ```bash
-spec-gen drift            # compares current code against specs
+openlore drift            # compares current code against specs
 ```
 
 Reports files that changed after spec generation, grouped by domain, so you

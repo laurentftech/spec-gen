@@ -30,10 +30,10 @@ export interface WriteResult {
 // MERGE HELPERS
 // ============================================================================
 
-/** Extract scenario keys already present in a file via spec-gen: tags */
+/** Extract scenario keys already present in a file via openlore: tags */
 function extractExistingScenarioKeys(content: string): Set<string> {
   const keys = new Set<string>();
-  const tagRegex = /(?:\/\/|#)\s*spec-gen:\s*(\{[^\n]+\})/g;
+  const tagRegex = /(?:\/\/|#)\s*openlore:\s*(\{[^\n]+\})/g;
   let m: RegExpExecArray | null;
   while ((m = tagRegex.exec(content)) !== null) {
     try {
@@ -50,11 +50,11 @@ function extractExistingScenarioKeys(content: string): Set<string> {
 
 /**
  * Extract the "blocks" (one per scenario) from generated content.
- * Each block starts with a spec-gen: tag comment line.
+ * Each block starts with a openlore: tag comment line.
  */
 function splitIntoBlocks(content: string): string[] {
-  // Split on spec-gen: tag lines, keeping the delimiter
-  const parts = content.split(/(?=(?:\/\/|#)\s*spec-gen:\s*\{)/);
+  // Split on openlore: tag lines, keeping the delimiter
+  const parts = content.split(/(?=(?:\/\/|#)\s*openlore:\s*\{)/);
   // First part is the import header (before any tags)
   return parts;
 }
@@ -71,7 +71,7 @@ function buildMergedContent(
   const newBlocks: string[] = [];
 
   for (const block of scenarioBlocks) {
-    const tagMatch = block.match(/(?:\/\/|#)\s*spec-gen:\s*(\{[^\n]+\})/);
+    const tagMatch = block.match(/(?:\/\/|#)\s*openlore:\s*(\{[^\n]+\})/);
     if (!tagMatch) continue;
     try {
       const tag = JSON.parse(tagMatch[1]);
@@ -123,7 +123,7 @@ export async function writeTestFiles(opts: {
       if (firstScenario) {
         const preview = file.content
           .split('\n')
-          .filter((l) => l.trim() && !l.startsWith('import') && !l.includes('spec-gen:'))
+          .filter((l) => l.trim() && !l.startsWith('import') && !l.includes('openlore:'))
           .slice(0, 8)
           .map((l) => `      ${l}`)
           .join('\n');

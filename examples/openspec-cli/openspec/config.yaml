@@ -12,8 +12,8 @@ context: |
   - Adapter pattern for multi-tool AI support
   - Interactive-first with non-TTY fallback
 
-# Auto-detected by spec-gen
-spec-gen:
+# Auto-detected by openlore
+openlore:
   generatedAt: "2025-01-30T12:00:00Z"
   domains:
     - overview

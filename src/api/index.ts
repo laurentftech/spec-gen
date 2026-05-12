@@ -1,21 +1,21 @@
 /**
- * spec-gen Programmatic API
+ * openlore Programmatic API
  *
- * This is the public API surface for spec-gen. Consumers (like OpenSpec CLI)
- * can import these functions to use spec-gen as a library.
+ * This is the public API surface for openlore. Consumers (like OpenSpec CLI)
+ * can import these functions to use openlore as a library.
  *
  * @example
  * ```typescript
- * import { specGenRun, specGenDrift } from 'spec-gen';
+ * import { openloreRun, openloreDrift } from 'openlore';
  *
  * // Run the full pipeline
- * const result = await specGenRun({
+ * const result = await openloreRun({
  *   rootPath: '/path/to/project',
  *   onProgress: (event) => console.log(event.step),
  * });
  *
  * // Check for drift
- * const drift = await specGenDrift({ rootPath: '/path/to/project' });
+ * const drift = await openloreDrift({ rootPath: '/path/to/project' });
  * if (drift.hasDrift) {
  *   console.warn(`${drift.summary.total} drift issues found`);
  * }
@@ -23,15 +23,15 @@
  */
 
 // API functions
-export { specGenInit } from './init.js';
-export { specGenAnalyze } from './analyze.js';
-export { specGenGenerate } from './generate.js';
-export { specGenVerify } from './verify.js';
-export { specGenDrift } from './drift.js';
-export { specGenRun } from './run.js';
-export { specGenAudit } from './audit.js';
-export { specGenGetSpecRequirements } from './specs.js';
-export { specGenRecordDecision, specGenConsolidateDecisions, specGenSyncDecisions } from './decisions.js';
+export { openloreInit } from './init.js';
+export { openloreAnalyze } from './analyze.js';
+export { openloreGenerate } from './generate.js';
+export { openloreVerify } from './verify.js';
+export { openloreDrift } from './drift.js';
+export { openloreRun } from './run.js';
+export { openloreAudit } from './audit.js';
+export { openloreGetSpecRequirements } from './specs.js';
+export { openloreRecordDecision, openloreConsolidateDecisions, openloreSyncDecisions } from './decisions.js';
 
 // API option/result types
 export type {
@@ -53,7 +53,7 @@ export type {
 } from './types.js';
 
 // Re-export key core types that consumers will need
-export type { AuditReport, DriftResult, DriftSeverity, SpecGenConfig, PendingDecision, DecisionStore, DecisionStatus } from '../types/index.js';
+export type { AuditReport, DriftResult, DriftSeverity, OpenLoreConfig, PendingDecision, DecisionStore, DecisionStatus } from '../types/index.js';
 export type { RepositoryMap } from './types.js';
 export type { DependencyGraphResult } from '../core/analyzer/dependency-graph.js';
 export type { PipelineResult } from '../core/generator/spec-pipeline.js';

@@ -64,7 +64,7 @@ vi.mock('../../core/analyzer/artifact-generator.js', () => ({
 // HELPERS
 // ============================================================================
 
-const SPEC_GEN_CONFIG = (excludePatterns: string[], includePatterns: string[] = []) =>
+const OPENLORE_CONFIG = (excludePatterns: string[], includePatterns: string[] = []) =>
   JSON.stringify({
     version: '1.0.0',
     projectType: 'python',
@@ -90,8 +90,8 @@ describe('runAnalysis integration — excludePatterns', () => {
   let outputDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-integration-'));
-    outputDir = join(tmpDir, '.spec-gen', 'analysis');
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-integration-'));
+    outputDir = join(tmpDir, '.openlore', 'analysis');
     await mkdir(outputDir, { recursive: true });
   });
 
@@ -101,7 +101,7 @@ describe('runAnalysis integration — excludePatterns', () => {
 
   it('excludes files matching config excludePatterns from allFiles', async () => {
     // Config excludes static/** (where swagger lives)
-    await createFile(tmpDir, '.spec-gen/config.json', SPEC_GEN_CONFIG(['static/**', '.spec-gen/**']));
+    await createFile(tmpDir, '.openlore/config.json', OPENLORE_CONFIG(['static/**', '.openlore/**']));
 
     // Files that SHOULD be included
     await createFile(tmpDir, 'app/main.py', 'def main(): pass');
@@ -130,7 +130,7 @@ describe('runAnalysis integration — excludePatterns', () => {
   });
 
   it('caller-supplied exclude patterns also filter files', async () => {
-    await createFile(tmpDir, '.spec-gen/config.json', SPEC_GEN_CONFIG([]));
+    await createFile(tmpDir, '.openlore/config.json', OPENLORE_CONFIG([]));
 
     await createFile(tmpDir, 'app/main.py', 'def main(): pass');
     await createFile(tmpDir, 'legacy/old_module.py', 'pass');
@@ -150,7 +150,7 @@ describe('runAnalysis integration — excludePatterns', () => {
   });
 
   it('merges config and caller patterns — both sets of files excluded', async () => {
-    await createFile(tmpDir, '.spec-gen/config.json', SPEC_GEN_CONFIG(['static/**']));
+    await createFile(tmpDir, '.openlore/config.json', OPENLORE_CONFIG(['static/**']));
 
     await createFile(tmpDir, 'app/main.py', 'def main(): pass');
     await createFile(tmpDir, 'static/swagger/swagger-ui-bundle.js', '/* swagger */');
@@ -172,8 +172,8 @@ describe('runAnalysis integration — excludePatterns', () => {
   });
 
   it('includePatterns override gitignore exclusions', async () => {
-    await createFile(tmpDir, '.spec-gen/config.json',
-      SPEC_GEN_CONFIG([], ['*.graphql']));
+    await createFile(tmpDir, '.openlore/config.json',
+      OPENLORE_CONFIG([], ['*.graphql']));
 
     // schema.graphql gitignored — should be force-included
     await createFile(tmpDir, '.gitignore', '*.graphql');
@@ -191,7 +191,7 @@ describe('runAnalysis integration — excludePatterns', () => {
   });
 
   it('caller-supplied includePatterns also override gitignore exclusions', async () => {
-    await createFile(tmpDir, '.spec-gen/config.json', SPEC_GEN_CONFIG([]));
+    await createFile(tmpDir, '.openlore/config.json', OPENLORE_CONFIG([]));
 
     await createFile(tmpDir, '.gitignore', '*.proto');
     await createFile(tmpDir, 'app/main.py', 'def main(): pass');
@@ -213,11 +213,11 @@ describe('runAnalysis integration — excludePatterns', () => {
    *   src/api.py, src/models.py, src/utils.py  → analyzed   (3 files)
    *   static/swagger/swagger-ui-bundle.js       → excluded via excludePattern
    *   static/swagger/redoc.standalone.js        → same excluded dir
-   *   .spec-gen/config.json                     → always skipped (SKIP_DIRECTORIES)
+   *   .openlore/config.json                     → always skipped (SKIP_DIRECTORIES)
    *
    * Walker records 1 skip per skipped directory entry (not per file inside):
    *   static/  → 1 skip  (shouldSkipDirectory via excludePatterns)
-   *   .spec-gen/ → 1 skip (shouldSkipDirectory via SKIP_DIRECTORIES)
+   *   .openlore/ → 1 skip (shouldSkipDirectory via SKIP_DIRECTORIES)
    *
    * Expected metrics:
    *   allFiles.length    = 3
@@ -226,7 +226,7 @@ describe('runAnalysis integration — excludePatterns', () => {
    *   totalFiles         = 5   (analyzedFiles + skippedFiles)
    */
   it('metrics match manually-computed expected values', async () => {
-    await createFile(tmpDir, '.spec-gen/config.json', SPEC_GEN_CONFIG(['static/**']));
+    await createFile(tmpDir, '.openlore/config.json', OPENLORE_CONFIG(['static/**']));
     await createFile(tmpDir, 'src/api.py',    'def get(): pass');
     await createFile(tmpDir, 'src/models.py', 'class User: pass');
     await createFile(tmpDir, 'src/utils.py',  'def helper(): pass');
@@ -253,7 +253,7 @@ describe('runAnalysis integration — excludePatterns', () => {
     // analyzedFiles mirrors allFiles
     expect(repoMap.summary.analyzedFiles).toBe(3);
 
-    // 1 skip per skipped directory (static/ and .spec-gen/)
+    // 1 skip per skipped directory (static/ and .openlore/)
     expect(repoMap.summary.skippedFiles).toBe(2);
 
     // totalFiles = analyzedFiles + skippedFiles

@@ -1,9 +1,9 @@
 # BMAD Integration
 
-> One implementation of the [generic spec-gen agentic workflow pattern](./README.md).
+> One implementation of the [generic openlore agentic workflow pattern](./README.md).
 > Assets: [`examples/bmad/`](../../examples/bmad/)
 
-This guide explains how to connect [BMAD Method](https://docs.bmad-method.org) with spec-gen
+This guide explains how to connect [BMAD Method](https://docs.bmad-method.org) with openlore
 to enable safe, spec-driven development on brownfield codebases.
 
 ## Why
@@ -13,7 +13,7 @@ BMAD is designed for structured, spec-first development. On brownfield codebases
 context needed to plan and implement safely.
 
 The key principle: **structural reality must be known at architecture time, not at
-implementation time.** spec-gen provides that context via MCP at every phase of the
+implementation time.** openlore provides that context via MCP at every phase of the
 BMAD workflow.
 
 ## Full Workflow
@@ -22,7 +22,7 @@ BMAD workflow.
 ── ARCHITECTURE PHASE ──────────────────────────────────────────────────────────
 
   Brownfield Onboarding          ← bmad/tasks/onboarding.md (run once)
-       │  spec-gen analyze + generate
+       │  openlore analyze + generate
        ▼
   Architect Agent                ← bmad/agents/architect.md
        │  get_architecture_overview
@@ -59,7 +59,7 @@ BMAD workflow.
   Implementation + check_spec_drift
        │
        ▼
-  spec-gen generate               ← update specs post-sprint
+  openlore generate               ← update specs post-sprint
 ```
 
 ## Architecture (MCP layer)
@@ -69,7 +69,7 @@ BMAD Agents (Architect / PM / SM / Dev)
     │
     │  MCP calls
     ▼
-spec-gen MCP Server
+openlore MCP Server
     │
     ├── analyze_codebase          → build/refresh call graph
     ├── get_architecture_overview → domain clusters, hubs, entry points
@@ -92,12 +92,12 @@ Codebase (brownfield) + openspec/ (specs)
 
 - Node.js 20+
 - BMAD installed: `npx bmad-method install` (version 6+)
-- spec-gen MCP server built and running
+- openlore MCP server built and running
 
-### 1. Install spec-gen MCP server
+### 1. Install openlore MCP server
 
 ```bash
-npm install -g spec-gen
+npm install -g openlore
 ```
 
 Connect it in your IDE's MCP config (Claude Code, Cursor, Windsurf…):
@@ -105,8 +105,8 @@ Connect it in your IDE's MCP config (Claude Code, Cursor, Windsurf…):
 ```json
 {
   "mcpServers": {
-    "spec-gen": {
-      "command": "spec-gen",
+    "openlore": {
+      "command": "openlore",
       "args": ["mcp", "--watch-auto"]
     }
   }
@@ -121,29 +121,29 @@ npx bmad-method install
 
 This creates the `_bmad/` directory with agents, tasks, and config.
 
-### 3. Copy spec-gen BMAD assets into your project
+### 3. Copy openlore BMAD assets into your project
 
 ```bash
 # Tasks and templates
-cp -r /path/to/spec-gen/examples/bmad/tasks/    _bmad/spec-gen/tasks/
-cp -r /path/to/spec-gen/examples/bmad/templates/ _bmad/spec-gen/templates/
+cp -r /path/to/openlore/examples/bmad/tasks/    _bmad/openlore/tasks/
+cp -r /path/to/openlore/examples/bmad/templates/ _bmad/openlore/templates/
 
 # Architect sidecar (loaded automatically by the Architect agent)
 mkdir -p _bmad/_memory/architect-sidecar
-cp /path/to/spec-gen/examples/bmad/agents/architect.md \
-   _bmad/_memory/architect-sidecar/spec-gen.md
+cp /path/to/openlore/examples/bmad/agents/architect.md \
+   _bmad/_memory/architect-sidecar/openlore.md
 ```
 
 ### 4. Install the Architect agent customization
 
 ```bash
-cp /path/to/spec-gen/examples/bmad/setup/architect.customize.yaml \
+cp /path/to/openlore/examples/bmad/setup/architect.customize.yaml \
    _bmad/_config/customizations/architect.customize.yaml
 ```
 
 This customization does two things:
 - Sets `hasSidecar: true` on the Architect agent
-- Adds a `Load COMPLETE file` directive pointing to `spec-gen.md`
+- Adds a `Load COMPLETE file` directive pointing to `openlore.md`
 
 ### 5. Recompile BMAD agents
 
@@ -151,20 +151,20 @@ This customization does two things:
 npx bmad-method install
 ```
 
-The compiled Architect agent now automatically loads the spec-gen instructions
+The compiled Architect agent now automatically loads the openlore instructions
 at session start. **No manual step needed in the conversation.**
 
 ### 6. Index your codebase (run once, then after major changes)
 
 ```bash
-spec-gen analyze   # builds call graph + risk index (~2–5 min)
-spec-gen generate  # generates OpenSpec specs from the analysis
+openlore analyze   # builds call graph + risk index (~2–5 min)
+openlore generate  # generates OpenSpec specs from the analysis
 ```
 
 ### 7. Start your first architecture session
 
 Open the BMAD Architect agent in your IDE. It will automatically:
-1. Load the spec-gen sidecar instructions
+1. Load the openlore sidecar instructions
 2. Begin with Phase 0 — Structural Reality (MCP calls)
 3. Produce `docs/architecture.md` with a "Structural Reality" section
 
@@ -177,8 +177,8 @@ and stories have no `risk_context`. Install it the same way:
 
 ```bash
 mkdir -p _bmad/_memory/dev-sidecar
-cp /path/to/spec-gen/examples/bmad/agents/dev-brownfield.md \
-   _bmad/_memory/dev-sidecar/spec-gen-fallback.md
+cp /path/to/openlore/examples/bmad/agents/dev-brownfield.md \
+   _bmad/_memory/dev-sidecar/openlore-fallback.md
 ```
 
 Remove it once the Architect has annotated all stories.
@@ -244,7 +244,7 @@ Story → orient → analyze_impact (risk ≥ 70)
 
 ## Integration with OpenSpec
 
-spec-gen generates OpenSpec specifications (`openspec/`) from brownfield code.
+openlore generates OpenSpec specifications (`openspec/`) from brownfield code.
 Once generated, BMAD's architecture agent and PM agent can read these specs to understand
 the existing system before planning new stories.
 
@@ -263,7 +263,7 @@ during story implementation without leaving their context window.
 
 ---
 
-## spec-gen MCP Tools Used by BMAD Tasks
+## openlore MCP Tools Used by BMAD Tasks
 
 | Tool | Used in | Purpose |
 |---|---|---|
@@ -291,13 +291,13 @@ during story implementation without leaving their context window.
 The analysis cache is missing or stale. Run:
 
 ```bash
-spec-gen analyze
+openlore analyze
 ```
 
 Or via MCP:
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>analyze_codebase</tool_name>
   <arguments>{"directory": "$PROJECT_ROOT", "force": true}</arguments>
 </use_mcp_tool>
@@ -308,7 +308,7 @@ Or via MCP:
 The semantic index is missing. Run:
 
 ```bash
-spec-gen analyze --embed
+openlore analyze --embed
 ```
 
 ### `check_spec_drift` shows many `uncovered` files
@@ -316,7 +316,7 @@ spec-gen analyze --embed
 OpenSpec has not been generated yet. Run:
 
 ```bash
-spec-gen generate
+openlore generate
 ```
 
 ### Risk scores are unexpectedly high everywhere

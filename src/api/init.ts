@@ -1,20 +1,20 @@
 /**
- * spec-gen init — programmatic API
+ * openlore init — programmatic API
  *
- * Detects project type and creates spec-gen configuration.
+ * Detects project type and creates openlore configuration.
  * No side effects (no process.exit, no console.log).
  */
 
 import { resolve, relative } from 'node:path';
-import { SPEC_GEN_DIR, SPEC_GEN_CONFIG_REL_PATH, DEFAULT_OPENSPEC_PATH } from '../constants.js';
+import { OPENLORE_DIR, OPENLORE_CONFIG_REL_PATH, DEFAULT_OPENSPEC_PATH } from '../constants.js';
 import {
   detectProjectType,
   getProjectTypeName,
 } from '../core/services/project-detector.js';
 import {
   getDefaultConfig,
-  writeSpecGenConfig,
-  specGenConfigExists,
+  writeOpenLoreConfig,
+  openloreConfigExists,
   openspecDirExists,
   createOpenSpecStructure,
 } from '../core/services/config-manager.js';
@@ -30,15 +30,15 @@ function progress(onProgress: ProgressCallback | undefined, step: string, status
 }
 
 /**
- * Initialize spec-gen in a project directory.
+ * Initialize openlore in a project directory.
  *
- * Creates `.spec-gen/config.json`, the `openspec/` directory structure,
+ * Creates `.openlore/config.json`, the `openspec/` directory structure,
  * and updates `.gitignore`.
  *
  * @throws Error if openspec path is outside project root
  * @throws Error if config exists and force is false
  */
-export async function specGenInit(options: InitApiOptions = {}): Promise<InitResult> {
+export async function openloreInit(options: InitApiOptions = {}): Promise<InitResult> {
   const rootPath = options.rootPath ?? process.cwd();
   const openspecRelPath = options.openspecPath ?? DEFAULT_OPENSPEC_PATH;
   const openspecFullPath = resolve(rootPath, openspecRelPath);
@@ -58,11 +58,11 @@ export async function specGenInit(options: InitApiOptions = {}): Promise<InitRes
   progress(onProgress, 'Detecting project type', 'complete', projectType);
 
   // Check existing config
-  const configExists = await specGenConfigExists(rootPath);
+  const configExists = await openloreConfigExists(rootPath);
   if (configExists && !force) {
     progress(onProgress, 'Configuration exists', 'skip');
     return {
-      configPath: SPEC_GEN_CONFIG_REL_PATH,
+      configPath: OPENLORE_CONFIG_REL_PATH,
       openspecPath: openspecRelPath,
       projectType,
       created: false,
@@ -72,7 +72,7 @@ export async function specGenInit(options: InitApiOptions = {}): Promise<InitRes
   // Create config
   progress(onProgress, 'Creating configuration', 'start');
   const config = getDefaultConfig(detection.projectType, openspecRelPath);
-  await writeSpecGenConfig(rootPath, config);
+  await writeOpenLoreConfig(rootPath, config);
   progress(onProgress, 'Creating configuration', 'complete');
 
   // Create openspec directory
@@ -88,16 +88,16 @@ export async function specGenInit(options: InitApiOptions = {}): Promise<InitRes
   // Update .gitignore
   const hasGitignore = await gitignoreExists(rootPath);
   if (hasGitignore) {
-    const alreadyIgnored = await isInGitignore(rootPath, `${SPEC_GEN_DIR}/`);
+    const alreadyIgnored = await isInGitignore(rootPath, `${OPENLORE_DIR}/`);
     if (!alreadyIgnored) {
       progress(onProgress, 'Updating .gitignore', 'start');
-      await addToGitignore(rootPath, `${SPEC_GEN_DIR}/`, 'spec-gen analysis artifacts');
+      await addToGitignore(rootPath, `${OPENLORE_DIR}/`, 'openlore analysis artifacts');
       progress(onProgress, 'Updating .gitignore', 'complete');
     }
   }
 
   return {
-    configPath: SPEC_GEN_CONFIG_REL_PATH,
+    configPath: OPENLORE_CONFIG_REL_PATH,
     openspecPath: openspecRelPath,
     projectType,
     created: true,

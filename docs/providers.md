@@ -1,6 +1,6 @@
 ## LLM Providers
 
-spec-gen supports nine providers. The default is Anthropic Claude.
+openlore supports nine providers. The default is Anthropic Claude.
 
 | Provider | `provider` value | API key env var | Default model |
 |----------|-----------------|-----------------|---------------|
@@ -16,7 +16,7 @@ spec-gen supports nine providers. The default is Anthropic Claude.
 
 ### Selecting a provider
 
-Set `provider` (and optionally `model`) in the `generation` block of `.spec-gen/config.json`:
+Set `provider` (and optionally `model`) in the `generation` block of `.openlore/config.json`:
 
 ```json
 {
@@ -30,7 +30,7 @@ Set `provider` (and optionally `model`) in the `generation` block of `.spec-gen/
 
 Override the model for a single run:
 ```bash
-spec-gen generate --model claude-opus-4-20250514
+openlore generate --model claude-opus-4-20250514
 ```
 
 ### OpenAI-compatible servers (Ollama, Mistral, Groq, LM Studio, vLLM...)
@@ -58,7 +58,7 @@ export OPENAI_COMPAT_API_KEY=ollama                       # any non-empty value 
 
 **Self-signed certificates** (internal servers, VPN endpoints):
 ```bash
-spec-gen generate --insecure
+openlore generate --insecure
 ```
 Or in `config.json`:
 ```json
@@ -105,7 +105,7 @@ endpoint from your Copilot credentials.
    ```
    By default it listens on `http://localhost:4141`.
 
-2. Configure spec-gen:
+2. Configure openlore:
    ```json
    {
      "generation": {
@@ -150,7 +150,7 @@ To redirect the built-in Anthropic or OpenAI provider to a proxy or self-hosted 
 
 ```bash
 # CLI (one-off)
-spec-gen generate --api-base https://my-proxy.corp.net/v1
+openlore generate --api-base https://my-proxy.corp.net/v1
 
 # Environment variable
 export ANTHROPIC_API_BASE=https://my-proxy.corp.net/v1

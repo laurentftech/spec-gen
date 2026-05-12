@@ -15,7 +15,7 @@
  *   - Request-id correlation across concurrent calls
  *
  * Prerequisites (same as RIG-17):
- *   spec-gen analyze          # build analysis artifacts (no --embed needed)
+ *   openlore analyze          # build analysis artifacts (no --embed needed)
  *   npm run test:integration  # run this file
  *
  * The suite auto-skips when the analysis cache is missing.
@@ -30,10 +30,10 @@ import { join, resolve } from 'node:path';
 // CONFIG
 // ============================================================================
 
-/** Root of the spec-gen repo — used as the test project directory */
+/** Root of the openlore repo — used as the test project directory */
 const REPO_ROOT  = resolve(import.meta.dirname, '../../../');
 const MCP_BIN    = join(REPO_ROOT, 'dist/cli/index.js');
-const CACHE_FILE = join(REPO_ROOT, '.spec-gen/analysis/llm-context.json');
+const CACHE_FILE = join(REPO_ROOT, '.openlore/analysis/llm-context.json');
 
 // ============================================================================
 // MCP STDIO CLIENT
@@ -138,7 +138,7 @@ class McpClient {
       clientInfo:      { name: 'mcp-e2e-test', version: '1.0.0' },
     }) as { result?: { serverInfo?: { name: string } } };
 
-    expect(resp.result?.serverInfo?.name).toBe('spec-gen');
+    expect(resp.result?.serverInfo?.name).toBe('openlore');
 
     // Send the required `initialized` notification (no response expected)
     await this.send({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} });
@@ -165,14 +165,14 @@ function spawnServer(): McpClient {
 // SUITE
 // ============================================================================
 
-describe('RIG-19 — MCP e2e integration on real spec-gen codebase', () => {
+describe('RIG-19 — MCP e2e integration on real openlore codebase', () => {
   let client: McpClient;
   let cacheReady = false;
 
   beforeAll(async () => {
     cacheReady = existsSync(CACHE_FILE);
     if (!cacheReady) {
-      console.warn(`  ⚠ No analysis cache at ${CACHE_FILE} — run "spec-gen analyze" first`);
+      console.warn(`  ⚠ No analysis cache at ${CACHE_FILE} — run "openlore analyze" first`);
       return;
     }
     client = spawnServer();
@@ -255,7 +255,7 @@ describe('RIG-19 — MCP e2e integration on real spec-gen codebase', () => {
     // Entry points present
     expect(data.entryPoints.length).toBeGreaterThan(0);
 
-    // Known hub: 'validateDirectory' is the highest fan-in function in spec-gen (called by all MCP handlers)
+    // Known hub: 'validateDirectory' is the highest fan-in function in openlore (called by all MCP handlers)
     const validateDir = data.hubFunctions.find(h => h.name === 'validateDirectory');
     expect(validateDir, '"validateDirectory" (highest fan-in hub) not found in hub list').toBeDefined();
   });
@@ -301,10 +301,10 @@ describe('RIG-19 — MCP e2e integration on real spec-gen codebase', () => {
   it('get_subgraph returns connected subgraph for a known entry point', async () => {
     if (skip('get_subgraph')) return;
 
-    // specGenRun has fanOut=22 — downstream subgraph must be large
+    // openloreRun has fanOut=22 — downstream subgraph must be large
     const resp = await client.callTool('get_subgraph', {
       directory:    REPO_ROOT,
-      functionName: 'specGenRun',
+      functionName: 'openloreRun',
       depth:        1,
       direction:    'downstream',
       format:       'json',
@@ -318,8 +318,8 @@ describe('RIG-19 — MCP e2e integration on real spec-gen codebase', () => {
     };
 
     expect(data.seeds.length).toBeGreaterThan(0);
-    expect(data.seeds[0].name).toBe('specGenRun');
-    // downstream depth-1 from specGenRun must contain many nodes
+    expect(data.seeds[0].name).toBe('openloreRun');
+    // downstream depth-1 from openloreRun must contain many nodes
     expect(data.stats.nodes).toBeGreaterThan(5);
     expect(data.stats.edges).toBeGreaterThan(5);
     expect(data.nodes.length).toBe(data.stats.nodes);
@@ -638,11 +638,11 @@ describe('RIG-19 — MCP e2e integration on real spec-gen codebase', () => {
     if (skip('RIG-21')) return;
 
     // analyze_impact returns downstreamCriticalPath with depth field on each node.
-    // specGenRun has 24 depth-1 callees; their callees add 47 more at depth-2 —
+    // openloreRun has 24 depth-1 callees; their callees add 47 more at depth-2 —
     // exactly the files that the old single-hop expansion missed.
     const resp = await client.callTool('analyze_impact', {
       directory: REPO_ROOT,
-      symbol:    'specGenRun',
+      symbol:    'openloreRun',
       depth:     2,
     });
     const data = client.parseToolResult(resp) as {
@@ -876,7 +876,7 @@ describe('RIG-19 — MCP e2e integration on real spec-gen codebase', () => {
     expect(data.count).toBe(data.domains.length);
     expect(data.count).toBeGreaterThan(5);
 
-    // Known domains that must exist after spec-gen runs on itself
+    // Known domains that must exist after openlore runs on itself
     for (const required of ['analyzer', 'api', 'cli', 'llm']) {
       expect(data.domains, `Missing expected spec domain "${required}"`).toContain(required);
     }
@@ -936,16 +936,16 @@ describe('RIG-19 — MCP e2e integration on real spec-gen codebase', () => {
   // --------------------------------------------------------------------------
   // trace_execution_path — point-to-point call graph path finder
   //
-  // Uses a known 4-hop path in spec-gen itself:
-  //   specGenRun → run → runStage3 → astChunkContent → detectLanguage
+  // Uses a known 4-hop path in openlore itself:
+  //   openloreRun → run → runStage3 → astChunkContent → detectLanguage
   // --------------------------------------------------------------------------
 
-  it('trace_execution_path finds known 4-hop path from specGenRun to detectLanguage', async () => {
+  it('trace_execution_path finds known 4-hop path from openloreRun to detectLanguage', async () => {
     if (skip('trace_execution_path')) return;
 
     const resp = await client.callTool('trace_execution_path', {
       directory:      REPO_ROOT,
-      entryFunction:  'specGenRun',
+      entryFunction:  'openloreRun',
       targetFunction: 'detectLanguage',
       maxDepth:       6,
       maxPaths:       10,
@@ -963,7 +963,7 @@ describe('RIG-19 — MCP e2e integration on real spec-gen codebase', () => {
       }>;
     };
 
-    expect(data.entryFunction).toBe('specGenRun');
+    expect(data.entryFunction).toBe('openloreRun');
     expect(data.targetFunction).toBe('detectLanguage');
     expect(data.pathsFound).toBeGreaterThan(0);
     expect(data.maxDepth).toBe(6);
@@ -991,7 +991,7 @@ describe('RIG-19 — MCP e2e integration on real spec-gen codebase', () => {
         expect(typeof step.file).toBe('string');
       }
       // First step is always the entry, last is always the target
-      expect(path.steps[0].name).toBe('specGenRun');
+      expect(path.steps[0].name).toBe('openloreRun');
       expect(path.steps[path.steps.length - 1].name).toBe('detectLanguage');
     }
   });

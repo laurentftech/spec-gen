@@ -1,5 +1,5 @@
 /**
- * spec-gen audit — programmatic API
+ * openlore audit — programmatic API
  *
  * Compares current codebase state to the spec snapshot to report coverage gaps.
  * No LLM required.
@@ -7,11 +7,11 @@
 
 import { join } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
-import { readSpecGenConfig } from '../core/services/config-manager.js';
+import { readOpenLoreConfig } from '../core/services/config-manager.js';
 import { SpecSnapshotGenerator } from '../core/analyzer/spec-snapshot-generator.js';
 import {
-  SPEC_GEN_DIR,
-  SPEC_GEN_ANALYSIS_SUBDIR,
+  OPENLORE_DIR,
+  OPENLORE_ANALYSIS_SUBDIR,
   ARTIFACT_LLM_CONTEXT,
   ARTIFACT_MAPPING,
   ARTIFACT_AUDIT_REPORT,
@@ -67,16 +67,16 @@ function toAuditFunction(node: FunctionNode, isHub: boolean): AuditUncoveredFunc
 // PUBLIC API
 // ============================================================================
 
-export async function specGenAudit(options: AuditApiOptions = {}): Promise<AuditReport> {
+export async function openloreAudit(options: AuditApiOptions = {}): Promise<AuditReport> {
   const rootPath = options.rootPath ?? process.cwd();
   const maxUncovered = options.maxUncovered ?? DEFAULT_MAX_UNCOVERED;
   const hubThreshold = options.hubThreshold ?? DEFAULT_HUB_THRESHOLD;
   const shouldSave = options.save ?? true;
-  const analysisDir = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+  const analysisDir = join(rootPath, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
 
   // Load (or refresh) snapshot
-  const specGenConfig = await readSpecGenConfig(rootPath);
-  const openspecRelPath = specGenConfig?.openspecPath ?? OPENSPEC_DIR;
+  const openloreConfig = await readOpenLoreConfig(rootPath);
+  const openspecRelPath = openloreConfig?.openspecPath ?? OPENSPEC_DIR;
   const snapshotGen = new SpecSnapshotGenerator(rootPath, openspecRelPath);
   const snapshot = await snapshotGen.generate().catch(() => null);
 

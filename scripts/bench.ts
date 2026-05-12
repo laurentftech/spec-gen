@@ -1,8 +1,8 @@
 /**
- * EdgeStore performance benchmark against the spec-gen repo's own call graph.
+ * EdgeStore performance benchmark against the openlore repo's own call graph.
  * Run: npm run bench
  *
- * Requires: spec-gen analyze has been run at least once (call-graph.db must exist).
+ * Requires: openlore analyze has been run at least once (call-graph.db must exist).
  */
 
 import { EdgeStore } from '../src/core/services/edge-store.js';
@@ -17,11 +17,11 @@ const targetDir = process.argv[2]
   ? resolve(process.argv[2])
   : join(__dirname, '..');
 
-const DB_PATH = join(targetDir, '.spec-gen', 'analysis', 'call-graph.db');
+const DB_PATH = join(targetDir, '.openlore', 'analysis', 'call-graph.db');
 
 if (!existsSync(DB_PATH)) {
   console.error(`call-graph.db not found at ${DB_PATH}`);
-  console.error(`Run: spec-gen analyze ${targetDir} --force`);
+  console.error(`Run: openlore analyze ${targetDir} --force`);
   process.exit(1);
 }
 
@@ -75,7 +75,7 @@ const hub = hubs[0];          // highest fan-in node
 const entry = entries[0];     // highest fan-out entry point
 const midHub = hubs[Math.min(2, hubs.length - 1)];
 
-console.log(`\nEdgeStore benchmark — spec-gen call graph`);
+console.log(`\nEdgeStore benchmark — openlore call graph`);
 console.log(`  Nodes: ${nodeCount}  Hub: ${hub.name} (fanIn=${hub.fanIn})  Entry: ${entry.name} (fanOut=${entry.fanOut})\n`);
 
 console.log(`  ${'Operation'.padEnd(40)} │ ${'min'.padStart(7)} │ ${'p50'.padStart(7)} │ ${'p95'.padStart(7)} │ ${'max'.padStart(7)}`);

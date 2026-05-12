@@ -1,5 +1,5 @@
 {
-  "name": "spec-gen-cli",
+  "name": "openlore",
   "version": "1.3.6",
   "description": "Reverse-engineer OpenSpec specifications from existing codebases",
   "type": "module",
@@ -15,7 +15,7 @@
     }
   },
   "bin": {
-    "spec-gen": "dist/cli/index.js"
+    "openlore": "dist/cli/index.js"
   },
   "engines": {
     "node": ">=22.5.0"
@@ -52,12 +52,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/clay-good/spec-gen"
+    "url": "https://github.com/clay-good/openlore"
   },
   "bugs": {
-    "url": "https://github.com/clay-good/spec-gen/issues"
+    "url": "https://github.com/clay-good/openlore/issues"
   },
-  "homepage": "https://github.com/clay-good/spec-gen#readme",
+  "homepage": "https://github.com/clay-good/openlore#readme",
   "publishConfig": {
     "access": "public"
   },

@@ -1,14 +1,14 @@
 /**
  * RIG-17 — End-to-end pipeline test on a real repository
  *
- * Uses the spec-gen codebase itself as the fixture.  The test opens the
- * vector index produced by `spec-gen analyze --embed` (already on disk) and
+ * Uses the openlore codebase itself as the fixture.  The test opens the
+ * vector index produced by `openlore analyze --embed` (already on disk) and
  * verifies that business-level queries return the correct source files and
  * that indexed functions carry non-empty docstrings when the source has them.
  *
  * Prerequisites:
  *   npm run embed:up          # start the embedding server
- *   spec-gen analyze --embed  # (re)build the index
+ *   openlore analyze --embed  # (re)build the index
  *   npm run test:integration
  *
  * The test is skipped automatically when either the embedding server or the
@@ -28,9 +28,9 @@ import { EmbeddingService } from './embedding-service.js';
 const EMBED_BASE_URL = process.env.EMBED_BASE_URL ?? 'http://localhost:8765/v1';
 const EMBED_MODEL    = process.env.EMBED_MODEL    ?? 'all-MiniLM-L6-v2';
 
-/** Root of the spec-gen repo (two levels up from src/core/analyzer/) */
+/** Root of the openlore repo (two levels up from src/core/analyzer/) */
 const REPO_ROOT  = resolve(import.meta.dirname, '../../../');
-const INDEX_DIR  = join(REPO_ROOT, '.spec-gen/analysis');
+const INDEX_DIR  = join(REPO_ROOT, '.openlore/analysis');
 
 // ============================================================================
 // HELPERS
@@ -48,7 +48,7 @@ async function isServerUp(baseUrl: string): Promise<boolean> {
 }
 
 // ============================================================================
-// KNOWN QUERIES — business concepts that must map to specific spec-gen files
+// KNOWN QUERIES — business concepts that must map to specific openlore files
 //
 // Each entry states what a developer would ask and which file(s) must appear
 // in the top-5 results.  Derived from manual inspection of the codebase.
@@ -191,7 +191,7 @@ const KNOWN_QUERIES: Array<{
 // TESTS
 // ============================================================================
 
-describe('RIG-17 — e2e pipeline on real spec-gen codebase', () => {
+describe('RIG-17 — e2e pipeline on real openlore codebase', () => {
   let serverAvailable = false;
   let indexExists = false;
   let embedSvc: EmbeddingService;
@@ -206,7 +206,7 @@ describe('RIG-17 — e2e pipeline on real spec-gen codebase', () => {
 
   function skipIfNotReady(label: string): boolean {
     if (!indexExists) {
-      console.warn(`  ⚠ [${label}] No index at ${INDEX_DIR} — run "spec-gen analyze --embed" first`);
+      console.warn(`  ⚠ [${label}] No index at ${INDEX_DIR} — run "openlore analyze --embed" first`);
       return true;
     }
     if (!serverAvailable) {
@@ -222,7 +222,7 @@ describe('RIG-17 — e2e pipeline on real spec-gen codebase', () => {
 
   it('index exists on disk', () => {
     if (!indexExists) {
-      console.warn(`  ⚠ No index at ${INDEX_DIR} — run "spec-gen analyze --embed" first`);
+      console.warn(`  ⚠ No index at ${INDEX_DIR} — run "openlore analyze --embed" first`);
       return;
     }
     expect(VectorIndex.exists(INDEX_DIR)).toBe(true);
@@ -252,7 +252,7 @@ describe('RIG-17 — e2e pipeline on real spec-gen codebase', () => {
     const table = await db.openTable('functions');
     const rows = await table.query().toArray() as Array<{ id: string; text: string }>;
 
-    // Functions known to have docstrings in spec-gen source
+    // Functions known to have docstrings in openlore source
     const knownDocstringFns = [
       'VectorIndex.build',
       'VectorIndex.search',

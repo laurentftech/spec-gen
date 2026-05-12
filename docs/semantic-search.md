@@ -1,10 +1,10 @@
 ## Semantic Search & GraphRAG
 
-`spec-gen analyze` builds a vector index over all functions in the call graph, enabling natural-language search via the `search_code`, `orient`, and `suggest_insertion_points` MCP tools, and the search bar in the viewer.
+`openlore analyze` builds a vector index over all functions in the call graph, enabling natural-language search via the `search_code`, `orient`, and `suggest_insertion_points` MCP tools, and the search bar in the viewer.
 
 ### GraphRAG retrieval expansion
 
-Semantic search is only the starting point. spec-gen combines three retrieval layers into every search result — this is what makes it genuinely useful for AI agents navigating unfamiliar codebases:
+Semantic search is only the starting point. openlore combines three retrieval layers into every search result — this is what makes it genuinely useful for AI agents navigating unfamiliar codebases:
 
 1. **Semantic seed** — dense vector search (or BM25 keyword fallback) finds the top-N functions closest in meaning to the query.
 2. **Call-graph expansion** — BFS up to depth 2 follows callee edges from every seed function, pulling in the files those functions depend on. During `generate`, this ensures the LLM sees the full call neighbourhood, not just the most obvious files.
@@ -14,7 +14,7 @@ The result: a single `orient` or `search_code` call returns not just "functions 
 
 ### Embedding configuration
 
-Provide an OpenAI-compatible embedding endpoint (Ollama, OpenAI, Mistral, etc.) via environment variables or `.spec-gen/config.json`:
+Provide an OpenAI-compatible embedding endpoint (Ollama, OpenAI, Mistral, etc.) via environment variables or `.openlore/config.json`:
 
 **Environment variables:**
 ```bash
@@ -23,10 +23,10 @@ EMBED_MODEL=text-embedding-3-small
 EMBED_API_KEY=sk-...         # optional for local servers
 
 # Then run (embedding is automatic when configured):
-spec-gen analyze
+openlore analyze
 ```
 
-**Config file (`.spec-gen/config.json`):**
+**Config file (`.openlore/config.json`):**
 ```json
 {
   "embedding": {
@@ -39,5 +39,5 @@ spec-gen analyze
 
 - `batchSize`: Number of texts to embed per API call (default: 64)
 
-The index is stored in `.spec-gen/analysis/vector-index/` and is automatically used by the viewer's search bar and the `search_code` / `suggest_insertion_points` MCP tools.
+The index is stored in `.openlore/analysis/vector-index/` and is automatically used by the viewer's search bar and the `search_code` / `suggest_insertion_points` MCP tools.
 

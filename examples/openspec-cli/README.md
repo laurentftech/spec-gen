@@ -1,6 +1,6 @@
 # Example: OpenSpec CLI Specifications
 
-This example demonstrates spec-gen output by reverse-engineering the OpenSpec CLI tool itself.
+This example demonstrates openlore output by reverse-engineering the OpenSpec CLI tool itself.
 
 ## Source Project
 

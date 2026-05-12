@@ -8,7 +8,7 @@ flowchart TD
     subgraph ARCH ["🏛️  Architecture Phase (once per project, then per planning cycle)"]
         ONBOARD["**Onboarding**
         analyze_codebase
-        spec-gen generate"]
+        openlore generate"]
 
         ONBOARD --> ARCH_ANALYSIS
 
@@ -115,9 +115,9 @@ flowchart TD
 
         DRIFT_RESULT{Drift?}
         DRIFT_RESULT -- "gap / stale" --> FIX_DRIFT["Fix drift
-        spec-gen generate --domains"] --> STORY_DONE
+        openlore generate --domains"] --> STORY_DONE
         DRIFT_RESULT -- "uncovered (new files)" --> NOTE_UNCOVERED["Note for post-sprint
-        spec-gen generate"] --> STORY_DONE
+        openlore generate"] --> STORY_DONE
         DRIFT_RESULT -- None --> STORY_DONE
 
         STORY_DONE["✅ Story Done
@@ -128,7 +128,7 @@ flowchart TD
     %% ── POST-SPRINT ──────────────────────────────────────────────────────────
     subgraph POST ["🔄  Post-Sprint"]
         SPRINT_END["All stories Done"] --> SPEC_REFRESH
-        SPEC_REFRESH["spec-gen generate
+        SPEC_REFRESH["openlore generate
         refresh all specs"] --> CYCLE_CHECK
         CYCLE_CHECK{Major structural\nchange?}
         CYCLE_CHECK -- Yes --> ONBOARD
@@ -160,7 +160,7 @@ flowchart TD
 
 | Symbol | Meaning |
 |---|---|
-| 🟩 Green nodes | spec-gen tool calls |
+| 🟩 Green nodes | openlore tool calls |
 | 🟨 Yellow diamonds | decision points |
 | 🔴 Red nodes | blocked states — must resolve before proceeding |
 | ✅ Green border | terminal states per phase |
@@ -170,5 +170,5 @@ flowchart TD
 1. **risk_context flows top-down** — Architect fills it, Dev reads it. Never the reverse.
 2. **riskScore ≥ 70 is a hard stop** at any phase — planning or implementation.
 3. **check_spec_drift is the exit gate** of every story — no exceptions.
-4. **spec-gen generate is a post-sprint batch** — not per-story, to avoid churn.
+4. **openlore generate is a post-sprint batch** — not per-story, to avoid churn.
 5. **Onboarding re-runs only on major structural change** — otherwise the cache is valid.

@@ -2,33 +2,33 @@
 
 | Command | Description | API Key |
 |---------|-------------|---------|
-| `spec-gen init` | Initialize configuration | No |
-| `spec-gen analyze` | Run static analysis | No |
-| `spec-gen generate` | Generate specs from analysis | Yes |
-| `spec-gen generate --adr` | Also generate Architecture Decision Records | Yes |
-| `spec-gen verify` | Verify spec accuracy | Yes |
-| `spec-gen drift` | Detect spec drift (static) | No |
-| `spec-gen drift --use-llm` | Detect spec drift (LLM-enhanced) | Yes |
-| `spec-gen drift --suggest-tests` | After drift, list test files covering affected domains | No |
-| `spec-gen audit` | Report spec coverage gaps: uncovered functions, hub gaps, stale domains | No |
-| `spec-gen test` | Generate spec-driven tests (Vitest / Playwright / pytest / GTest / Catch2) | No |
-| `spec-gen test --coverage` | Report which spec scenarios have corresponding tests | No |
-| `spec-gen digest` | Plain-English summary of all specs for human review | No |
-| `spec-gen decisions` | Manage architectural decisions: list, approve, reject, sync to specs and ADRs | No |
-| `spec-gen decisions --install-hook` | Install the pre-commit hook that gates commits until decisions are reviewed | No |
-| `spec-gen run` | Full pipeline: init, analyze, generate | Yes |
-| `spec-gen view` | Launch interactive graph & spec viewer in the browser | No |
-| `spec-gen setup` | Install workflow skills into the project (Vibe, Cline, GSD, BMAD) | No |
-| `spec-gen mcp` | Start MCP server (stdio, for Cline / Claude Code) | No |
-| `spec-gen doctor` | Check environment and configuration for common issues | No |
-| `spec-gen refresh-stories` | Refresh story files with latest structural context after each commit | No |
+| `openlore init` | Initialize configuration | No |
+| `openlore analyze` | Run static analysis | No |
+| `openlore generate` | Generate specs from analysis | Yes |
+| `openlore generate --adr` | Also generate Architecture Decision Records | Yes |
+| `openlore verify` | Verify spec accuracy | Yes |
+| `openlore drift` | Detect spec drift (static) | No |
+| `openlore drift --use-llm` | Detect spec drift (LLM-enhanced) | Yes |
+| `openlore drift --suggest-tests` | After drift, list test files covering affected domains | No |
+| `openlore audit` | Report spec coverage gaps: uncovered functions, hub gaps, stale domains | No |
+| `openlore test` | Generate spec-driven tests (Vitest / Playwright / pytest / GTest / Catch2) | No |
+| `openlore test --coverage` | Report which spec scenarios have corresponding tests | No |
+| `openlore digest` | Plain-English summary of all specs for human review | No |
+| `openlore decisions` | Manage architectural decisions: list, approve, reject, sync to specs and ADRs | No |
+| `openlore decisions --install-hook` | Install the pre-commit hook that gates commits until decisions are reviewed | No |
+| `openlore run` | Full pipeline: init, analyze, generate | Yes |
+| `openlore view` | Launch interactive graph & spec viewer in the browser | No |
+| `openlore setup` | Install workflow skills into the project (Vibe, Cline, GSD, BMAD) | No |
+| `openlore mcp` | Start MCP server (stdio, for Cline / Claude Code) | No |
+| `openlore doctor` | Check environment and configuration for common issues | No |
+| `openlore refresh-stories` | Refresh story files with latest structural context after each commit | No |
 
 ### Global Options
 
 ```bash
 --api-base <url>       # Custom LLM API base URL (proxy / self-hosted)
 --insecure             # Disable SSL certificate verification
---config <path>        # Config file path (default: .spec-gen/config.json)
+--config <path>        # Config file path (default: .openlore/config.json)
 -q, --quiet            # Errors only
 -v, --verbose          # Debug output
 --no-color             # Plain text output (enables timestamps)
@@ -42,7 +42,7 @@ Generate-specific options:
 ### Drift Options
 
 ```bash
-spec-gen drift [options]
+openlore drift [options]
   --base <ref>           # Git ref to compare against (default: auto-detect)
   --files <paths>        # Specific files to check (comma-separated)
   --domains <list>       # Only check specific domains
@@ -59,7 +59,7 @@ spec-gen drift [options]
 ### Generate Options
 
 ```bash
-spec-gen generate [options]
+openlore generate [options]
   --model <name>         # LLM model to use
   --dry-run              # Preview without writing
   --domains <list>       # Only generate specific domains
@@ -76,7 +76,7 @@ spec-gen generate [options]
 ### Run Options
 
 ```bash
-spec-gen run [options]
+openlore run [options]
   --force                # Reinitialize even if config exists
   --reanalyze            # Force fresh analysis even if recent exists
   --model <name>         # LLM model to use for generation
@@ -89,14 +89,14 @@ spec-gen run [options]
 ### Analyze Options
 
 ```bash
-spec-gen analyze [options]
-  --output <path>        # Output directory (default: .spec-gen/analysis/)
+openlore analyze [options]
+  --output <path>        # Output directory (default: .openlore/analysis/)
   --max-files <n>        # Max files (default: 500)
   --include <glob>       # Additional include patterns
   --exclude <glob>       # Additional exclude patterns
   --force                # Force re-analysis (bypass 1-hour cache)
-  --ai-configs           # Generate AI tool config files (CLAUDE.md, .cursorrules, .clinerules/spec-gen.md,
-                         #   .github/copilot-instructions.md, .windsurf/rules.md, .vibe/skills/spec-gen.md)
+  --ai-configs           # Generate AI tool config files (CLAUDE.md, .cursorrules, .clinerules/openlore.md,
+                         #   .github/copilot-instructions.md, .windsurf/rules.md, .vibe/skills/openlore.md)
                          #   Safe to re-run — skips files that already exist, marks pre-existing ones.
   --no-embed             # Skip building the semantic vector index (index is built by default when embedding is configured)
   --reindex-specs        # Re-index OpenSpec specs into the vector index without re-running full analysis
@@ -105,24 +105,24 @@ spec-gen analyze [options]
 ### Setup Options
 
 ```bash
-spec-gen setup [options]
+openlore setup [options]
   --tools <list>   Comma-separated tools to install: vibe, cline, claude, opencode, gsd, bmad, omoa (default: interactive prompt)
-  --force          Overwrite existing files (use after upgrading spec-gen)
+  --force          Overwrite existing files (use after upgrading openlore)
   --dir <path>     Project root directory (default: current directory)
 ```
 
-Installs workflow skills from the spec-gen package into the project. Skills are static assets — identical across projects — so this command only needs to be run once at project onboarding and again after upgrading spec-gen.
+Installs workflow skills from the openlore package into the project. Skills are static assets — identical across projects — so this command only needs to be run once at project onboarding and again after upgrading openlore.
 
 Files installed:
 
 | Tool | Destination | Content |
 |------|-------------|---------|
-| `vibe` | `.vibe/skills/spec-gen-{name}/SKILL.md` | 8 skills |
-| `cline` | `.clinerules/workflows/spec-gen-{name}.md` | 7 workflows |
-| `claude` | `.claude/skills/spec-gen-{name}/SKILL.md` + decisions pre-commit hook | 8 skills + commit gate |
-| `opencode` | `.opencode/skills/spec-gen-{name}/SKILL.md` + `.opencode/plugins/agent-guard.ts` | 8 skills + guard plugin |
-| `gsd` | `.claude/commands/gsd/spec-gen-{name}.md` | 2 commands |
-| `bmad` | `_bmad/spec-gen/{agents,tasks}/` | 2 agents, 4 tasks |
+| `vibe` | `.vibe/skills/openlore-{name}/SKILL.md` | 8 skills |
+| `cline` | `.clinerules/workflows/openlore-{name}.md` | 7 workflows |
+| `claude` | `.claude/skills/openlore-{name}/SKILL.md` + decisions pre-commit hook | 8 skills + commit gate |
+| `opencode` | `.opencode/skills/openlore-{name}/SKILL.md` + `.opencode/plugins/agent-guard.ts` | 8 skills + guard plugin |
+| `gsd` | `.claude/commands/gsd/openlore-{name}.md` | 2 commands |
+| `bmad` | `_bmad/openlore/{agents,tasks}/` | 2 agents, 4 tasks |
 | `omoa` | `.opencode/plugins/` + `.opencode/prompts/` | 4 SDD plugins + Sisyphus prompt (oh-my-openagent) |
 
 The `omoa` option is **auto-detected and pre-checked** in the interactive prompt when oh-my-openagent is found in the project or user config.
@@ -130,14 +130,14 @@ The `omoa` option is **auto-detected and pre-checked** in the interactive prompt
 Never overwrites existing files. Combine with `analyze --ai-configs` for a complete agent setup:
 
 ```bash
-spec-gen analyze --ai-configs   # project-specific context files
-spec-gen setup                   # workflow skills
+openlore analyze --ai-configs   # project-specific context files
+openlore setup                   # workflow skills
 ```
 
 ### Decisions Options
 
 ```bash
-spec-gen decisions [options]
+openlore decisions [options]
   --list                 # List decisions, optionally filtered by --status
   --status <status>      # Filter by status: draft, consolidated, verified, approved, synced, phantom
                          # Note: synced/rejected/phantom are purged from store after --sync
@@ -151,13 +151,13 @@ spec-gen decisions [options]
                          #   drafts_pending_consolidation | no_decisions_recorded
   --consolidate          # Manually trigger LLM consolidation + diff verification of drafts
   --json                 # Machine-readable output
-  --uninstall-hook       # Remove decisions pre-commit hook (install via: spec-gen setup --tools claude)
+  --uninstall-hook       # Remove decisions pre-commit hook (install via: openlore setup --tools claude)
 ```
 
 ### Verify Options
 
 ```bash
-spec-gen verify [options]
+openlore verify [options]
   --samples <n>          # Files to verify (default: 5)
   --threshold <0-1>      # Minimum score to pass (default: 0.7)
   --files <paths>        # Specific files to verify
@@ -168,11 +168,11 @@ spec-gen verify [options]
 
 ### Doctor
 
-`spec-gen doctor` runs a self-diagnostic and surfaces actionable fixes when something is misconfigured or missing:
+`openlore doctor` runs a self-diagnostic and surfaces actionable fixes when something is misconfigured or missing:
 
 ```bash
-spec-gen doctor          # Run all checks
-spec-gen doctor --json   # JSON output for scripting
+openlore doctor          # Run all checks
+openlore doctor --json   # JSON output for scripting
 ```
 
 Checks performed:
@@ -181,11 +181,11 @@ Checks performed:
 |-------|------------------|
 | Node.js version | ≥ 20 required |
 | Git repository | `.git` directory and `git` binary on PATH |
-| spec-gen config | `.spec-gen/config.json` exists and is parseable |
+| openlore config | `.openlore/config.json` exists and is parseable |
 | Analysis artifacts | `repo-structure.json` freshness (warns if >24h old) |
 | OpenSpec directory | `openspec/specs/` exists |
 | LLM provider | API key or `claude` CLI detected |
 | Disk space | Warns < 500 MB, fails < 200 MB |
 
-Run `spec-gen doctor` whenever setup instructions aren't working — it tells you exactly what to fix and how.
+Run `openlore doctor` whenever setup instructions aren't working — it tells you exactly what to fix and how.
 

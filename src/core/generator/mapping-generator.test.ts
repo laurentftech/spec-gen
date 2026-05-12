@@ -109,7 +109,7 @@ describe('MappingGenerator — similarity matching', () => {
 
   beforeEach(async () => {
     tmpDir = await createTempDir();
-    await mkdir(join(tmpDir, '.spec-gen', 'analysis'), { recursive: true });
+    await mkdir(join(tmpDir, '.openlore', 'analysis'), { recursive: true });
     generator = new MappingGenerator(tmpDir);
   });
 
@@ -230,7 +230,7 @@ describe('MappingGenerator — LLM-provided functionName', () => {
 
   beforeEach(async () => {
     tmpDir = await createTempDir();
-    await mkdir(join(tmpDir, '.spec-gen', 'analysis'), { recursive: true });
+    await mkdir(join(tmpDir, '.openlore', 'analysis'), { recursive: true });
     generator = new MappingGenerator(tmpDir);
   });
 
@@ -315,7 +315,7 @@ describe('MappingGenerator — orphan detection', () => {
 
   beforeEach(async () => {
     tmpDir = await createTempDir();
-    await mkdir(join(tmpDir, '.spec-gen', 'analysis'), { recursive: true });
+    await mkdir(join(tmpDir, '.openlore', 'analysis'), { recursive: true });
     generator = new MappingGenerator(tmpDir);
   });
 
@@ -387,7 +387,7 @@ describe('MappingGenerator — stats', () => {
 
   beforeEach(async () => {
     tmpDir = await createTempDir();
-    await mkdir(join(tmpDir, '.spec-gen', 'analysis'), { recursive: true });
+    await mkdir(join(tmpDir, '.openlore', 'analysis'), { recursive: true });
     generator = new MappingGenerator(tmpDir);
   });
 
@@ -495,7 +495,7 @@ describe('MappingGenerator — output', () => {
 
   beforeEach(async () => {
     tmpDir = await createTempDir();
-    await mkdir(join(tmpDir, '.spec-gen', 'analysis'), { recursive: true });
+    await mkdir(join(tmpDir, '.openlore', 'analysis'), { recursive: true });
     generator = new MappingGenerator(tmpDir);
   });
 
@@ -503,13 +503,13 @@ describe('MappingGenerator — output', () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  it('writes mapping.json to .spec-gen/analysis/', async () => {
+  it('writes mapping.json to .openlore/analysis/', async () => {
     const pipeline = makePipeline([]);
     const graph = makeDepGraph();
 
     await generator.generate(pipeline, graph);
 
-    const content = await readFile(join(tmpDir, '.spec-gen', 'analysis', 'mapping.json'), 'utf-8');
+    const content = await readFile(join(tmpDir, '.openlore', 'analysis', 'mapping.json'), 'utf-8');
     const parsed = JSON.parse(content);
     expect(parsed).toHaveProperty('mappings');
     expect(parsed).toHaveProperty('orphanFunctions');
@@ -611,7 +611,7 @@ describe('MappingGenerator — semantic search tier', () => {
 
   beforeEach(async () => {
     tmpDir = await createTempDir();
-    await mkdir(join(tmpDir, '.spec-gen', 'analysis'), { recursive: true });
+    await mkdir(join(tmpDir, '.openlore', 'analysis'), { recursive: true });
   });
 
   afterEach(async () => {

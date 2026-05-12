@@ -1,5 +1,5 @@
 /**
- * spec-gen verify command
+ * openlore verify command
  *
  * Tests generated spec accuracy against actual source code.
  * Samples files and validates that specs accurately describe behavior.
@@ -10,19 +10,19 @@ import { join } from 'node:path';
 import { logger } from '../../utils/logger.js';
 import { fileExists, formatDuration, parseList, readJsonFile, resolveLLMProvider } from '../../utils/command-helpers.js';
 import {
-  SPEC_GEN_DIR,
-  SPEC_GEN_ANALYSIS_SUBDIR,
-  SPEC_GEN_LOGS_SUBDIR,
-  SPEC_GEN_VERIFICATION_SUBDIR,
-  SPEC_GEN_OUTPUTS_SUBDIR,
-  SPEC_GEN_CONFIG_REL_PATH,
+  OPENLORE_DIR,
+  OPENLORE_ANALYSIS_SUBDIR,
+  OPENLORE_LOGS_SUBDIR,
+  OPENLORE_VERIFICATION_SUBDIR,
+  OPENLORE_OUTPUTS_SUBDIR,
+  OPENLORE_CONFIG_REL_PATH,
   OPENSPEC_DIR,
   OPENSPEC_SPECS_SUBDIR,
   ARTIFACT_DEPENDENCY_GRAPH,
   ARTIFACT_GENERATION_REPORT,
 } from '../../constants.js';
 import type { VerifyOptions } from '../../types/index.js';
-import { readSpecGenConfig } from '../../core/services/config-manager.js';
+import { readOpenLoreConfig } from '../../core/services/config-manager.js';
 import { createLLMService, type LLMService } from '../../core/services/llm-service.js';
 import {
   SpecVerificationEngine,
@@ -84,7 +84,7 @@ async function loadDependencyGraph(analysisPath: string): Promise<DependencyGrap
 async function loadGenerationReport(rootPath: string): Promise<GenerationReport | null> {
   try {
     return await readJsonFile<GenerationReport>(
-      join(rootPath, SPEC_GEN_DIR, SPEC_GEN_OUTPUTS_SUBDIR, ARTIFACT_GENERATION_REPORT),
+      join(rootPath, OPENLORE_DIR, OPENLORE_OUTPUTS_SUBDIR, ARTIFACT_GENERATION_REPORT),
       ARTIFACT_GENERATION_REPORT,
     );
   } catch {
@@ -207,7 +207,7 @@ function displaySummary(report: VerificationReport, _threshold: number): void {
   console.log(`📝 Recommendation: ${recommendationIcon} ${recommendationText}`);
   console.log(`   ${recommendationDetail}`);
   console.log('');
-  console.log(`   Full report: ${SPEC_GEN_DIR}/${SPEC_GEN_VERIFICATION_SUBDIR}/REPORT.md`);
+  console.log(`   Full report: ${OPENLORE_DIR}/${OPENLORE_VERIFICATION_SUBDIR}/REPORT.md`);
   console.log('');
 }
 
@@ -251,13 +251,13 @@ export const verifyCommand = new Command('verify')
     'after',
     `
 Examples:
-  $ spec-gen verify                  Verify with defaults (5 samples, 0.7 threshold)
-  $ spec-gen verify --samples 10     Sample more files for higher confidence
-  $ spec-gen verify --threshold 0.8  Require higher accuracy
-  $ spec-gen verify --verbose        Show detailed comparisons
-  $ spec-gen verify --domains user,order
+  $ openlore verify                  Verify with defaults (5 samples, 0.7 threshold)
+  $ openlore verify --samples 10     Sample more files for higher confidence
+  $ openlore verify --threshold 0.8  Require higher accuracy
+  $ openlore verify --verbose        Show detailed comparisons
+  $ openlore verify --domains user,order
                                      Only verify specific domains
-  $ spec-gen verify --json           Output JSON for automation
+  $ openlore verify --json           Output JSON for automation
 
 Verification process:
   1. Loads generated specs from openspec/specs/
@@ -295,7 +295,7 @@ A score >= threshold indicates specs are production-ready.
       json: options.json ?? false,
       quiet: false,
       noColor: false,
-      config: SPEC_GEN_CONFIG_REL_PATH,
+      config: OPENLORE_CONFIG_REL_PATH,
     };
 
     if (isNaN(opts.samples) || opts.samples < 1) {
@@ -319,27 +319,27 @@ A score >= threshold indicates specs are production-ready.
         logger.section('Verifying Specifications');
       }
 
-      // Load spec-gen config
-      const specGenConfig = await readSpecGenConfig(rootPath);
-      if (!specGenConfig) {
-        logger.error('No spec-gen configuration found. Run "spec-gen init" first.');
+      // Load openlore config
+      const openloreConfig = await readOpenLoreConfig(rootPath);
+      if (!openloreConfig) {
+        logger.error('No openlore configuration found. Run "openlore init" first.');
         process.exitCode = 1;
         return;
       }
 
       // Determine openspec path
-      const openspecPath = join(rootPath, specGenConfig.openspecPath ?? OPENSPEC_DIR);
+      const openspecPath = join(rootPath, openloreConfig.openspecPath ?? OPENSPEC_DIR);
       const specsPath = join(openspecPath, OPENSPEC_SPECS_SUBDIR);
 
       // Check if specs exist
       if (!(await fileExists(specsPath))) {
-        logger.error('No specs found. Run "spec-gen generate" first.');
+        logger.error('No specs found. Run "openlore generate" first.');
         process.exitCode = 1;
         return;
       }
 
       if (!opts.json) {
-        logger.discovery(`Loading generated specs from ${specGenConfig.openspecPath}/specs/`);
+        logger.discovery(`Loading generated specs from ${openloreConfig.openspecPath}/specs/`);
       }
 
       // Load generation report to get context files
@@ -347,11 +347,11 @@ A score >= threshold indicates specs are production-ready.
       const generationContext = generationReport?.filesWritten ?? [];
 
       // Load dependency graph
-      const analysisPath = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+      const analysisPath = join(rootPath, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
       const depGraph = await loadDependencyGraph(analysisPath);
 
       if (!depGraph) {
-        logger.error('No analysis found. Run "spec-gen analyze" first.');
+        logger.error('No analysis found. Run "openlore analyze" first.');
         process.exitCode = 1;
         return;
       }
@@ -364,7 +364,7 @@ A score >= threshold indicates specs are production-ready.
       // ========================================================================
       // PHASE 2: CHECK LLM API
       // ========================================================================
-      const resolved = resolveLLMProvider(specGenConfig);
+      const resolved = resolveLLMProvider(openloreConfig);
       if (!resolved) {
         logger.error('No LLM API key found.');
         logger.discovery('Set ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENAI_COMPAT_API_KEY + OPENAI_COMPAT_BASE_URL.');
@@ -376,13 +376,13 @@ A score >= threshold indicates specs are production-ready.
       try {
         llm = createLLMService({
           provider: resolved.provider,
-          model: specGenConfig.generation?.model,
+          model: openloreConfig.generation?.model,
           openaiCompatBaseUrl: resolved.openaiCompatBaseUrl,
-          apiBase: globalOpts.apiBase ?? specGenConfig.llm?.apiBase,
-          sslVerify: globalOpts.insecure != null ? !globalOpts.insecure : specGenConfig.llm?.sslVerify ?? true,
-          timeout: globalOpts.timeout ?? specGenConfig.generation?.timeout,
+          apiBase: globalOpts.apiBase ?? openloreConfig.llm?.apiBase,
+          sslVerify: globalOpts.insecure != null ? !globalOpts.insecure : openloreConfig.llm?.sslVerify ?? true,
+          timeout: globalOpts.timeout ?? openloreConfig.generation?.timeout,
           enableLogging: true,
-          logDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_LOGS_SUBDIR),
+          logDir: join(rootPath, OPENLORE_DIR, OPENLORE_LOGS_SUBDIR),
         });
       } catch (error) {
         logger.error(`Failed to create LLM service: ${(error as Error).message}`);
@@ -393,7 +393,7 @@ A score >= threshold indicates specs are production-ready.
       // ========================================================================
       // PHASE 3: RUN VERIFICATION
       // ========================================================================
-      const verificationDir = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_VERIFICATION_SUBDIR);
+      const verificationDir = join(rootPath, OPENLORE_DIR, OPENLORE_VERIFICATION_SUBDIR);
 
       const engine = new SpecVerificationEngine(llm, {
         rootPath,
@@ -436,7 +436,7 @@ A score >= threshold indicates specs are production-ready.
       // Run verification
       let report: VerificationReport;
       try {
-        report = await engine.verify(depGraph, specGenConfig.version);
+        report = await engine.verify(depGraph, openloreConfig.version);
       } catch (error) {
         logger.error(`Verification failed: ${(error as Error).message}`);
         process.exitCode = 1;

@@ -15,7 +15,7 @@ Thumbs.db
 *~
 #*#
 .claude
-.spec-gen/
+.openlore/
 .mcp.json
 .cursor/
 
@@ -186,7 +186,7 @@ ARCHITECTURE.md
 openspec/
 .opencode/
 .cursorrules
-.clinerules/spec-gen.md
+.clinerules/openlore.md
 .windsurf/rules.md
 .github/copilot-instructions.md
-.spec-gen/decisions/
+.openlore/decisions/

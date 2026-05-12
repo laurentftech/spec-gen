@@ -255,7 +255,7 @@ describe('isGitRepository', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-git-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-git-'));
   });
   afterEach(async () => { await rm(tmpDir, { recursive: true, force: true }); });
 
@@ -277,7 +277,7 @@ describe('getCurrentBranch', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-branch-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-branch-'));
     await initRepo(tmpDir);
     await writeFile(join(tmpDir, 'a.ts'), 'const x = 1;', 'utf-8');
     await commit(tmpDir);
@@ -305,7 +305,7 @@ describe('resolveBaseRef', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-ref-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-ref-'));
     await initRepo(tmpDir);
     await writeFile(join(tmpDir, 'a.ts'), 'v1', 'utf-8');
     await commit(tmpDir, 'initial');
@@ -347,7 +347,7 @@ describe('getFileDiff', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-diff-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-diff-'));
     await initRepo(tmpDir);
     await writeFile(join(tmpDir, 'service.ts'), 'export const v = 1;', 'utf-8');
     await commit(tmpDir, 'initial');
@@ -388,7 +388,7 @@ describe('getChangedFiles', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-changed-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-changed-'));
     await initRepo(tmpDir);
     await writeFile(join(tmpDir, 'a.ts'), 'const a = 1;', 'utf-8');
     await commit(tmpDir, 'initial');

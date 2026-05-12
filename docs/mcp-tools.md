@@ -1,6 +1,6 @@
 ## MCP Server
 
-`spec-gen mcp` starts spec-gen as a [Model Context Protocol](https://modelcontextprotocol.io/) server over stdio, exposing static analysis as tools that any MCP-compatible AI agent (Cline, Roo Code, Kilocode, Claude Code, Cursor...) can call directly -- no API key required.
+`openlore mcp` starts openlore as a [Model Context Protocol](https://modelcontextprotocol.io/) server over stdio, exposing static analysis as tools that any MCP-compatible AI agent (Cline, Roo Code, Kilocode, Claude Code, Cursor...) can call directly -- no API key required.
 
 ### Setup
 
@@ -9,8 +9,8 @@
 ```json
 {
   "mcpServers": {
-    "spec-gen": {
-      "command": "spec-gen",
+    "openlore": {
+      "command": "openlore",
       "args": ["mcp"]
     }
   }
@@ -22,9 +22,9 @@ or for local development:
 ```json
 {
   "mcpServers": {
-    "spec-gen": {
+    "openlore": {
       "command": "node",
-      "args": ["/absolute/path/to/spec-gen/dist/cli/index.js", "mcp"]
+      "args": ["/absolute/path/to/openlore/dist/cli/index.js", "mcp"]
     }
   }
 }
@@ -41,15 +41,15 @@ Add `--watch-auto` to your MCP config args:
 ```json
 {
   "mcpServers": {
-    "spec-gen": {
-      "command": "spec-gen",
+    "openlore": {
+      "command": "openlore",
       "args": ["mcp", "--watch-auto"]
     }
   }
 }
 ```
 
-The watcher starts automatically on the first tool call — no hardcoded path needed. It re-extracts signatures for any changed source file and patches `llm-context.json` within ~500 ms of a save. If an embedding server is reachable, it also re-embeds changed functions into the vector index automatically. The call graph is not rebuilt on every change; it stays current via the [post-commit hook](#cicd-integration) (`spec-gen analyze --force`).
+The watcher starts automatically on the first tool call — no hardcoded path needed. It re-extracts signatures for any changed source file and patches `llm-context.json` within ~500 ms of a save. If an embedding server is reachable, it also re-embeds changed functions into the vector index automatically. The call graph is not rebuilt on every change; it stays current via the [post-commit hook](#cicd-integration) (`openlore analyze --force`).
 
 | Option | Default | Description |
 |---|---|---|
@@ -63,24 +63,24 @@ For editors with MCP support, after adding the `mcpServers` block to your settin
 
 ```bash
 mkdir -p .clinerules/workflows
-curl -sL https://raw.githubusercontent.com/clay-good/spec-gen/main/examples/cline-workflows/spec-gen-analyze-codebase.md -o .clinerules/workflows/spec-gen-analyze-codebase.md
-curl -sL https://raw.githubusercontent.com/clay-good/spec-gen/main/examples/cline-workflows/spec-gen-check-spec-drift.md -o .clinerules/workflows/spec-gen-check-spec-drift.md
-curl -sL https://raw.githubusercontent.com/clay-good/spec-gen/main/examples/cline-workflows/spec-gen-plan-refactor.md -o .clinerules/workflows/spec-gen-plan-refactor.md
-curl -sL https://raw.githubusercontent.com/clay-good/spec-gen/main/examples/cline-workflows/spec-gen-execute-refactor.md -o .clinerules/workflows/spec-gen-execute-refactor.md
-curl -sL https://raw.githubusercontent.com/clay-good/spec-gen/main/examples/cline-workflows/spec-gen-implement-feature.md -o .clinerules/workflows/spec-gen-implement-feature.md
-curl -sL https://raw.githubusercontent.com/clay-good/spec-gen/main/examples/cline-workflows/spec-gen-refactor-codebase.md -o .clinerules/workflows/spec-gen-refactor-codebase.md
+curl -sL https://raw.githubusercontent.com/clay-good/openlore/main/examples/cline-workflows/openlore-analyze-codebase.md -o .clinerules/workflows/openlore-analyze-codebase.md
+curl -sL https://raw.githubusercontent.com/clay-good/openlore/main/examples/cline-workflows/openlore-check-spec-drift.md -o .clinerules/workflows/openlore-check-spec-drift.md
+curl -sL https://raw.githubusercontent.com/clay-good/openlore/main/examples/cline-workflows/openlore-plan-refactor.md -o .clinerules/workflows/openlore-plan-refactor.md
+curl -sL https://raw.githubusercontent.com/clay-good/openlore/main/examples/cline-workflows/openlore-execute-refactor.md -o .clinerules/workflows/openlore-execute-refactor.md
+curl -sL https://raw.githubusercontent.com/clay-good/openlore/main/examples/cline-workflows/openlore-implement-feature.md -o .clinerules/workflows/openlore-implement-feature.md
+curl -sL https://raw.githubusercontent.com/clay-good/openlore/main/examples/cline-workflows/openlore-refactor-codebase.md -o .clinerules/workflows/openlore-refactor-codebase.md
 ```
 
 Available commands:
 
 | Command | What it does |
 |---------|-------------|
-| `/spec-gen-analyze-codebase` | Runs `analyze_codebase`, summarises the results (project type, file count, top 3 refactor issues, detected domains), shows the call graph highlights, and suggests next steps. |
-| `/spec-gen-check-spec-drift` | Runs `check_spec_drift`, presents issues by severity (gap / stale / uncovered / orphaned-spec), shows per-kind remediation commands, and optionally drills into affected file signatures. |
-| `/spec-gen-plan-refactor` | Runs static analysis, picks the highest-priority target with coverage gate, assesses impact and call graph, then writes a detailed plan to `.spec-gen/refactor-plan.md`. No code changes. |
-| `/spec-gen-execute-refactor` | Reads `.spec-gen/refactor-plan.md`, establishes a green baseline, and applies each planned change one at a time -- with diff verification and test run after every step. Optional final step covers dead-code detection and naming alignment (requires `spec-gen generate`). |
-| `/spec-gen-implement-feature` | Plans and implements a new feature with full architectural context: architecture overview, OpenSpec requirements, insertion points, implementation, and drift check. |
-| `/spec-gen-refactor-codebase` | Convenience redirect that runs `/spec-gen-plan-refactor` followed by `/spec-gen-execute-refactor`. |
+| `/openlore-analyze-codebase` | Runs `analyze_codebase`, summarises the results (project type, file count, top 3 refactor issues, detected domains), shows the call graph highlights, and suggests next steps. |
+| `/openlore-check-spec-drift` | Runs `check_spec_drift`, presents issues by severity (gap / stale / uncovered / orphaned-spec), shows per-kind remediation commands, and optionally drills into affected file signatures. |
+| `/openlore-plan-refactor` | Runs static analysis, picks the highest-priority target with coverage gate, assesses impact and call graph, then writes a detailed plan to `.openlore/refactor-plan.md`. No code changes. |
+| `/openlore-execute-refactor` | Reads `.openlore/refactor-plan.md`, establishes a green baseline, and applies each planned change one at a time -- with diff verification and test run after every step. Optional final step covers dead-code detection and naming alignment (requires `openlore generate`). |
+| `/openlore-implement-feature` | Plans and implements a new feature with full architectural context: architecture overview, OpenSpec requirements, insertion points, implementation, and drift check. |
+| `/openlore-refactor-codebase` | Convenience redirect that runs `/openlore-plan-refactor` followed by `/openlore-execute-refactor`. |
 
 All six commands ask which directory to use, call the MCP tools directly, and guide you through the results without leaving the editor. They work in any editor that supports the `.clinerules/workflows/` convention.
 
@@ -90,11 +90,11 @@ For Claude Code, copy the skill files to `.claude/skills/` in your project:
 
 ```bash
 mkdir -p .claude/skills
-curl -sL https://raw.githubusercontent.com/clay-good/spec-gen/main/skills/claude-spec-gen.md -o .claude/skills/claude-spec-gen.md
-curl -sL https://raw.githubusercontent.com/clay-good/spec-gen/main/skills/openspec-skill.md -o .claude/skills/openspec-skill.md
+curl -sL https://raw.githubusercontent.com/clay-good/openlore/main/skills/claude-openlore.md -o .claude/skills/claude-openlore.md
+curl -sL https://raw.githubusercontent.com/clay-good/openlore/main/skills/openspec-skill.md -o .claude/skills/openspec-skill.md
 ```
 
-**Spec-Gen Skill** (`claude-spec-gen.md`) — Code archaeology skill that guides Claude through:
+**OpenLore Skill** (`claude-openlore.md`) — Code archaeology skill that guides Claude through:
 - Project type detection and domain identification
 - Entity extraction, service analysis, API extraction
 - Architecture synthesis and OpenSpec spec generation
@@ -157,10 +157,10 @@ Most tools run on **pure static analysis** — no LLM quota consumed. Exceptions
 | Tool | Description | Requires prior analysis |
 |------|-------------|:---:|
 | `get_spec` | Read the full content of an OpenSpec domain spec by domain name. | Yes (generate) |
-| `get_mapping` | Requirement->function mapping produced by `spec-gen generate`. Shows which functions implement which spec requirements, confidence level, and orphan functions with no spec coverage. | Yes (generate) |
+| `get_mapping` | Requirement->function mapping produced by `openlore generate`. Shows which functions implement which spec requirements, confidence level, and orphan functions with no spec coverage. | Yes (generate) |
 | `get_decisions` | List or search Architecture Decision Records (ADRs) stored in `openspec/decisions/`. Optional keyword query. | Yes (generate) |
 | `check_spec_drift` | Detect code changes not reflected in OpenSpec specs. Compares git-changed files against spec coverage maps. Issues: gap / stale / uncovered / orphaned-spec / adr-gap. | Yes (generate) |
-| `search_specs` | Semantic search over OpenSpec specifications to find requirements, design notes, and architecture decisions by meaning. Also searches ADR files (`openspec/decisions/adr-*.md`) indexed under domain `decisions`. Returns linked source files for graph highlighting. Use this when asked "which spec covers X?" or "where should we implement Z?" or "what decisions were made about Y?". Requires a spec index built with `spec-gen analyze` or `--reindex-specs`. | Yes (generate) |
+| `search_specs` | Semantic search over OpenSpec specifications to find requirements, design notes, and architecture decisions by meaning. Also searches ADR files (`openspec/decisions/adr-*.md`) indexed under domain `decisions`. Returns linked source files for graph highlighting. Use this when asked "which spec covers X?" or "where should we implement Z?" or "what decisions were made about Y?". Requires a spec index built with `openlore analyze` or `--reindex-specs`. | Yes (generate) |
 | `list_spec_domains` | List all OpenSpec domains available in this project. Use this to discover what domains exist before doing a targeted `search_specs` call. | Yes (generate) |
 | `audit_spec_coverage` | Parity audit: uncovered functions (in call graph, no spec), hub gaps (high fan-in + no spec), orphan requirements (spec with no implementation found), and stale domains (source changed after spec). Run before starting a feature to understand coverage health. No LLM required. | Yes (analyze) |
 
@@ -453,7 +453,7 @@ dryRun     boolean   Preview changes without writing files (default: false)
 1. audit_spec_coverage({ directory })
    # Before writing code: surfaces stale domains, uncovered hub functions,
    # orphan requirements. 0 LLM calls, ~200ms.
-2. If staleDomains includes your target: spec-gen generate --domains $DOMAIN
+2. If staleDomains includes your target: openlore generate --domains $DOMAIN
 3. If hubGaps includes a function you'll touch: flag it in your risk check
 ```
 
@@ -467,8 +467,8 @@ dryRun     boolean   Preview changes without writing files (default: false)
    # If blocked, check "reason":
    #   "verified"              → present decisions to user, approve/reject, then sync
    #   "approved_not_synced"   → run sync_decisions, then retry commit
-   #   "drafts_pending_consolidation" → run spec-gen decisions --consolidate --gate
-   #   "no_decisions_recorded" → run spec-gen decisions --consolidate --gate
+   #   "drafts_pending_consolidation" → run openlore decisions --consolidate --gate
+   #   "no_decisions_recorded" → run openlore decisions --consolidate --gate
 4. list_decisions({ directory, status: "verified" })
    # Review the consolidated + verified decisions
 5. approve_decision({ directory, ids: ["<id>"] })
@@ -481,11 +481,11 @@ dryRun     boolean   Preview changes without writing files (default: false)
 
 ## Semantic Search & GraphRAG
 
-`spec-gen analyze` builds a vector index over all functions in the call graph, enabling natural-language search via the `search_code`, `orient`, and `suggest_insertion_points` MCP tools, and the search bar in the viewer.
+`openlore analyze` builds a vector index over all functions in the call graph, enabling natural-language search via the `search_code`, `orient`, and `suggest_insertion_points` MCP tools, and the search bar in the viewer.
 
 ### GraphRAG retrieval expansion
 
-Semantic search is only the starting point. spec-gen combines three retrieval layers into every search result — this is what makes it genuinely useful for AI agents navigating unfamiliar codebases:
+Semantic search is only the starting point. openlore combines three retrieval layers into every search result — this is what makes it genuinely useful for AI agents navigating unfamiliar codebases:
 
 1. **Semantic seed** — dense vector search (or BM25 keyword fallback) finds the top-N functions closest in meaning to the query.
 2. **Call-graph expansion** — BFS up to depth 2 follows callee edges from every seed function, pulling in the files those functions depend on. During `generate`, this ensures the LLM sees the full call neighbourhood, not just the most obvious files.
@@ -495,7 +495,7 @@ The result: a single `orient` or `search_code` call returns not just "functions 
 
 ### Embedding configuration
 
-Provide an OpenAI-compatible embedding endpoint (Ollama, OpenAI, Mistral, etc.) via environment variables or `.spec-gen/config.json`:
+Provide an OpenAI-compatible embedding endpoint (Ollama, OpenAI, Mistral, etc.) via environment variables or `.openlore/config.json`:
 
 **Environment variables:**
 ```bash
@@ -504,10 +504,10 @@ EMBED_MODEL=text-embedding-3-small
 EMBED_API_KEY=sk-...         # optional for local servers
 
 # Then run (embedding is automatic when configured):
-spec-gen analyze
+openlore analyze
 ```
 
-**Config file (`.spec-gen/config.json`):**
+**Config file (`.openlore/config.json`):**
 ```json
 {
   "embedding": {
@@ -520,5 +520,5 @@ spec-gen analyze
 
 - `batchSize`: Number of texts to embed per API call (default: 64)
 
-The index is stored in `.spec-gen/analysis/vector-index/` and is automatically used by the viewer's search bar and the `search_code` / `suggest_insertion_points` MCP tools.
+The index is stored in `.openlore/analysis/vector-index/` and is automatically used by the viewer's search bar and the `search_code` / `suggest_insertion_points` MCP tools.
 

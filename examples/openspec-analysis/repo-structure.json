@@ -234,11 +234,11 @@
       "name": "users",
       "suggestedSpecPath": "openspec/specs/users/spec.md",
       "files": [
-        "Users/user/Documents/spec-gen-dev/examples/openspec-analysis/llm-context.json",
-        "Users/user/Documents/spec-gen-dev/examples/openspec-analysis/SUMMARY.md",
-        "Users/user/Documents/spec-gen-dev/examples/openspec-analysis/dependency-graph.json",
-        "Users/user/Documents/spec-gen-dev/examples/openspec-analysis/repo-structure.json",
-        "Users/user/Documents/spec-gen-dev/examples/openspec-analysis/dependencies.mermaid"
+        "Users/user/Documents/openlore-dev/examples/openspec-analysis/llm-context.json",
+        "Users/user/Documents/openlore-dev/examples/openspec-analysis/SUMMARY.md",
+        "Users/user/Documents/openlore-dev/examples/openspec-analysis/dependency-graph.json",
+        "Users/user/Documents/openlore-dev/examples/openspec-analysis/repo-structure.json",
+        "Users/user/Documents/openlore-dev/examples/openspec-analysis/dependencies.mermaid"
       ],
       "entities": [
         "LlmContextJson",
@@ -247,7 +247,7 @@
         "RepoStructureJson",
         "DependenciesMermaid"
       ],
-      "keyFile": "Users/user/Documents/spec-gen-dev/examples/openspec-analysis/llm-context.json"
+      "keyFile": "Users/user/Documents/openlore-dev/examples/openspec-analysis/llm-context.json"
     },
     {
       "name": "ui",
@@ -618,11 +618,11 @@
       "name": "openspec-analysis",
       "suggestedSpecPath": "openspec/specs/openspec-analysis/spec.md",
       "files": [
-        "Users/user/Documents/spec-gen-dev/examples/openspec-analysis/llm-context.json",
-        "Users/user/Documents/spec-gen-dev/examples/openspec-analysis/SUMMARY.md",
-        "Users/user/Documents/spec-gen-dev/examples/openspec-analysis/dependency-graph.json",
-        "Users/user/Documents/spec-gen-dev/examples/openspec-analysis/repo-structure.json",
-        "Users/user/Documents/spec-gen-dev/examples/openspec-analysis/dependencies.mermaid"
+        "Users/user/Documents/openlore-dev/examples/openspec-analysis/llm-context.json",
+        "Users/user/Documents/openlore-dev/examples/openspec-analysis/SUMMARY.md",
+        "Users/user/Documents/openlore-dev/examples/openspec-analysis/dependency-graph.json",
+        "Users/user/Documents/openlore-dev/examples/openspec-analysis/repo-structure.json",
+        "Users/user/Documents/openlore-dev/examples/openspec-analysis/dependencies.mermaid"
       ],
       "entities": [
         "LlmContextJson",
@@ -631,7 +631,7 @@
         "RepoStructureJson",
         "DependenciesMermaid"
       ],
-      "keyFile": "Users/user/Documents/spec-gen-dev/examples/openspec-analysis/llm-context.json"
+      "keyFile": "Users/user/Documents/openlore-dev/examples/openspec-analysis/llm-context.json"
     },
     {
       "name": "adapters",

@@ -2,7 +2,7 @@
  * Mapping Generator
  *
  * Builds a requirement→function mapping artifact from pipeline results and
- * the dependency graph. Written to .spec-gen/analysis/mapping.json.
+ * the dependency graph. Written to .openlore/analysis/mapping.json.
  *
  * Enables refactoring workflows: dead code detection, naming normalization.
  */
@@ -14,8 +14,8 @@ import {
   SIMILARITY_TOKEN_OVERLAP_WEIGHT,
   HEURISTIC_MATCH_MIN_SCORE,
   MAX_HEURISTIC_MATCHES_PER_OP,
-  SPEC_GEN_DIR,
-  SPEC_GEN_ANALYSIS_SUBDIR,
+  OPENLORE_DIR,
+  OPENLORE_ANALYSIS_SUBDIR,
   OPENSPEC_DIR,
   ARTIFACT_MAPPING,
 } from '../../constants.js';
@@ -315,7 +315,7 @@ export class MappingGenerator {
   }
 
   private async write(artifact: MappingArtifact): Promise<void> {
-    const outPath = join(this.rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_MAPPING);
+    const outPath = join(this.rootPath, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_MAPPING);
     await writeFile(outPath, JSON.stringify(artifact, null, 2), 'utf-8');
   }
 
@@ -323,7 +323,7 @@ export class MappingGenerator {
   static async load(rootPath: string): Promise<MappingArtifact | null> {
     try {
       const content = await readFile(
-        join(rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_MAPPING),
+        join(rootPath, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_MAPPING),
         'utf-8'
       );
       return JSON.parse(content) as MappingArtifact;

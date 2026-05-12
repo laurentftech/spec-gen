@@ -12,7 +12,7 @@
  * resolves all batches sequentially to avoid overloading the server.
  */
 
-import type { SpecGenConfig } from '../../types/index.js';
+import type { OpenLoreConfig } from '../../types/index.js';
 
 // ============================================================================
 // TYPES
@@ -76,10 +76,10 @@ export class EmbeddingService {
   }
 
   /**
-   * Build an EmbeddingService from a SpecGenConfig.
+   * Build an EmbeddingService from a OpenLoreConfig.
    * Returns null if no embedding config is present.
    */
-  static fromConfig(cfg: SpecGenConfig): EmbeddingService | null {
+  static fromConfig(cfg: OpenLoreConfig): EmbeddingService | null {
     if (!cfg.embedding?.baseUrl || !cfg.embedding?.model) return null;
     return new EmbeddingService({
       baseUrl: cfg.embedding.baseUrl,

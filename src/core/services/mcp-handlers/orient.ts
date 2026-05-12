@@ -17,7 +17,7 @@
 import { join } from 'node:path';
 import { readFile, stat } from 'node:fs/promises';
 import { validateDirectory, loadMappingIndex, specsForFile, functionsForDomain, readCachedContext } from './utils.js';
-import { readSpecGenConfig } from '../config-manager.js';
+import { readOpenLoreConfig } from '../config-manager.js';
 import type { RagManifest } from '../../generator/rag-manifest-generator.js';
 import { OPENSPEC_DIR, ARTIFACT_RAG_MANIFEST } from '../../../constants.js';
 import {
@@ -149,7 +149,7 @@ export async function handleOrient(
   limit = 5,
 ): Promise<unknown> {
   const absDir = await validateDirectory(directory);
-  const outputDir = join(absDir, '.spec-gen', 'analysis');
+  const outputDir = join(absDir, '.openlore', 'analysis');
 
   const { VectorIndex } = await import('../../analyzer/vector-index.js');
   const { EmbeddingService } = await import('../../analyzer/embedding-service.js');
@@ -160,8 +160,8 @@ export async function handleOrient(
 
   if (!hasCodeIndex) {
     return {
-      error: 'No analysis found. Run "spec-gen analyze --embed" first.',
-      hint: 'With BM25 fallback, "spec-gen analyze" alone (no --embed) is also sufficient.',
+      error: 'No analysis found. Run "openlore analyze --embed" first.',
+      hint: 'With BM25 fallback, "openlore analyze" alone (no --embed) is also sufficient.',
     };
   }
 
@@ -171,7 +171,7 @@ export async function handleOrient(
   try {
     embedSvc = EmbeddingService.fromEnv();
   } catch {
-    const cfg = await readSpecGenConfig(absDir);
+    const cfg = await readOpenLoreConfig(absDir);
     const svcFromConfig = cfg ? EmbeddingService.fromConfig(cfg) : null;
     if (svcFromConfig) {
       embedSvc = svcFromConfig;
@@ -310,7 +310,7 @@ export async function handleOrient(
   let inlineSpecs: InlineSpec[] | undefined;
   if (specDomains.length > 0) {
     try {
-      const cfg = await readSpecGenConfig(absDir);
+      const cfg = await readOpenLoreConfig(absDir);
       const openspecRelPath = cfg?.openspecPath ?? OPENSPEC_DIR;
       const manifestPath = join(absDir, openspecRelPath, ARTIFACT_RAG_MANIFEST);
       const manifestCache = await loadManifestCached(manifestPath, absDir);
@@ -423,7 +423,7 @@ export async function handleOrient(
     task,
     searchMode,
     ...(searchMode === 'bm25_fallback'
-      ? { note: 'Embedding server unavailable — results use keyword matching. Run "spec-gen analyze --embed" for semantic search.' }
+      ? { note: 'Embedding server unavailable — results use keyword matching. Run "openlore analyze --embed" for semantic search.' }
       : {}),
     relevantFiles,
     relevantFunctions,

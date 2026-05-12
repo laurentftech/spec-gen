@@ -243,7 +243,7 @@ ${decision.proposedRequirement ?? decision.title}
 
 ${decision.consequences}
 
-> Recorded by spec-gen decisions on ${(decision.syncedAt ?? new Date().toISOString()).slice(0, 10)}
+> Recorded by openlore decisions on ${(decision.syncedAt ?? new Date().toISOString()).slice(0, 10)}
 > Decision ID: ${decision.id}
 `;
 

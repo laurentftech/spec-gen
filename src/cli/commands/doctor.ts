@@ -1,5 +1,5 @@
 /**
- * spec-gen doctor command
+ * openlore doctor command
  *
  * Self-diagnostic tool that checks all prerequisites and surfaces actionable
  * fixes when something is misconfigured or missing.
@@ -11,17 +11,17 @@ import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { logger } from '../../utils/logger.js';
-import { readSpecGenConfig } from '../../core/services/config-manager.js';
+import { readOpenLoreConfig } from '../../core/services/config-manager.js';
 import { createLLMService, ProviderName } from '../../core/services/llm-service.js';
 import {
   MIN_NODE_MAJOR_VERSION,
   ANALYSIS_AGE_WARNING_HOURS,
   MIN_DISK_SPACE_FAIL_MB,
   MIN_DISK_SPACE_WARN_MB,
-  SPEC_GEN_DIR,
-  SPEC_GEN_ANALYSIS_SUBDIR,
-  SPEC_GEN_CONFIG_FILENAME,
-  SPEC_GEN_CONFIG_REL_PATH,
+  OPENLORE_DIR,
+  OPENLORE_ANALYSIS_SUBDIR,
+  OPENLORE_CONFIG_FILENAME,
+  OPENLORE_CONFIG_REL_PATH,
   OPENSPEC_DIR,
   OPENSPEC_SPECS_SUBDIR,
   ARTIFACT_REPO_STRUCTURE,
@@ -91,35 +91,35 @@ async function checkGit(rootPath: string): Promise<CheckResult> {
 }
 
 async function checkConfig(rootPath: string): Promise<CheckResult> {
-  const configPath = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_CONFIG_FILENAME);
+  const configPath = join(rootPath, OPENLORE_DIR, OPENLORE_CONFIG_FILENAME);
   try {
     await access(configPath);
-    const config = await readSpecGenConfig(rootPath);
+    const config = await readOpenLoreConfig(rootPath);
     if (!config) {
       return {
-        name: 'spec-gen config',
+        name: 'openlore config',
         status: 'fail',
-        detail: `${SPEC_GEN_CONFIG_REL_PATH} exists but could not be parsed`,
-        fix: `Delete ${SPEC_GEN_CONFIG_REL_PATH} and run 'spec-gen init'`,
+        detail: `${OPENLORE_CONFIG_REL_PATH} exists but could not be parsed`,
+        fix: `Delete ${OPENLORE_CONFIG_REL_PATH} and run 'openlore init'`,
       };
     }
     return {
-      name: 'spec-gen config',
+      name: 'openlore config',
       status: 'ok',
-      detail: `${SPEC_GEN_CONFIG_REL_PATH} (project: ${config.projectType})`,
+      detail: `${OPENLORE_CONFIG_REL_PATH} (project: ${config.projectType})`,
     };
   } catch {
     return {
-      name: 'spec-gen config',
+      name: 'openlore config',
       status: 'warn',
-      detail: `${SPEC_GEN_CONFIG_REL_PATH} not found`,
-      fix: "Run 'spec-gen init' to create the configuration",
+      detail: `${OPENLORE_CONFIG_REL_PATH} not found`,
+      fix: "Run 'openlore init' to create the configuration",
     };
   }
 }
 
 async function checkAnalysis(rootPath: string): Promise<CheckResult> {
-  const analysisPath = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_REPO_STRUCTURE);
+  const analysisPath = join(rootPath, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_REPO_STRUCTURE);
   try {
     const s = await stat(analysisPath);
     const ageHours = (Date.now() - s.mtime.getTime()) / 3_600_000;
@@ -129,14 +129,14 @@ async function checkAnalysis(rootPath: string): Promise<CheckResult> {
       name: 'Analysis artifacts',
       status,
       detail: `repo-structure.json exists (${ageLabel})`,
-      fix: status === 'warn' ? "Run 'spec-gen analyze' to refresh stale analysis" : undefined,
+      fix: status === 'warn' ? "Run 'openlore analyze' to refresh stale analysis" : undefined,
     };
   } catch {
     return {
       name: 'Analysis artifacts',
       status: 'warn',
-      detail: 'No analysis found — run spec-gen analyze first',
-      fix: "Run 'spec-gen analyze'",
+      detail: 'No analysis found — run openlore analyze first',
+      fix: "Run 'openlore analyze'",
     };
   }
 }
@@ -151,7 +151,7 @@ async function checkOpenSpecDir(rootPath: string): Promise<CheckResult> {
       name: 'OpenSpec directory',
       status: 'warn',
       detail: 'openspec/specs/ not found',
-      fix: "Run 'spec-gen init' then 'spec-gen generate'",
+      fix: "Run 'openlore init' then 'openlore generate'",
     };
   }
 }
@@ -167,7 +167,7 @@ const DOCTOR_TIMEOUT_MS = 10_000;
 
 async function checkLLMConnection(rootPath: string): Promise<CheckResult> {
   let config;
-  try { config = await readSpecGenConfig(rootPath); } catch { /* no config */ }
+  try { config = await readOpenLoreConfig(rootPath); } catch { /* no config */ }
 
   const gen = config?.generation;
 
@@ -261,7 +261,7 @@ async function checkLLMConnection(rootPath: string): Promise<CheckResult> {
 
 async function checkEmbeddingConnection(rootPath: string): Promise<CheckResult | null> {
   let config;
-  try { config = await readSpecGenConfig(rootPath); } catch { /* no config */ }
+  try { config = await readOpenLoreConfig(rootPath); } catch { /* no config */ }
 
   const emb = config?.embedding;
 
@@ -383,13 +383,13 @@ export const doctorCommand = new Command('doctor')
     'after',
     `
 Examples:
-  $ spec-gen doctor           Run all checks
-  $ spec-gen doctor --json    Output results as JSON
+  $ openlore doctor           Run all checks
+  $ openlore doctor --json    Output results as JSON
 
 Checks performed:
   • Node.js version (>=${MIN_NODE_MAJOR_VERSION} required)
   • Git repository detection
-  • spec-gen configuration (${SPEC_GEN_CONFIG_REL_PATH})
+  • openlore configuration (${OPENLORE_CONFIG_REL_PATH})
   • Analysis artifacts freshness
   • OpenSpec directory presence
   • LLM connection (live request with 10s timeout)
@@ -403,7 +403,7 @@ Checks performed:
     const useColor = process.stdout.isTTY && !options.json;
 
     if (!options.json) {
-      logger.section('spec-gen doctor');
+      logger.section('openlore doctor');
       console.log('');
     }
 

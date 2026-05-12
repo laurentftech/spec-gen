@@ -1,5 +1,5 @@
 /**
- * Tests for spec-gen run command (full pipeline)
+ * Tests for openlore run command (full pipeline)
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -25,7 +25,7 @@ describe('run command', () => {
   describe('command configuration', () => {
     it('should have correct name and description', () => {
       expect(runCommand.name()).toBe('run');
-      expect(runCommand.description()).toContain('full spec-gen pipeline');
+      expect(runCommand.description()).toContain('full openlore pipeline');
     });
 
     it('should have --force option', () => {
@@ -308,7 +308,7 @@ describe('run command', () => {
 
     it('should include version in banner', () => {
       const version = '1.0.0';
-      const banner = `  spec-gen v${version}`;
+      const banner = `  openlore v${version}`;
       expect(banner).toContain('v1.0.0');
     });
   });

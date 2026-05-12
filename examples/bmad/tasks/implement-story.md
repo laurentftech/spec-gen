@@ -42,7 +42,7 @@ Run the full orientation in Step 2 before proceeding.
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>orient</tool_name>
   <arguments>{
     "directory": "$PROJECT_ROOT",
@@ -58,7 +58,7 @@ If orient returns `"error": "no cache"` → run `analyze_codebase` first, then r
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>analyze_impact</tool_name>
   <arguments>{
     "directory": "$PROJECT_ROOT",
@@ -79,7 +79,7 @@ Run a parity audit to check if the domain you're about to touch has spec gaps.
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>audit_spec_coverage</tool_name>
   <arguments>{"directory": "$PROJECT_ROOT"}</arguments>
 </use_mcp_tool>
@@ -87,7 +87,7 @@ Run a parity audit to check if the domain you're about to touch has spec gaps.
 
 From the result, check:
 - `staleDomains` — if the target domain appears here, its spec is outdated.
-  Recommend running `spec-gen generate --domains $DOMAIN` before implementing.
+  Recommend running `openlore generate --domains $DOMAIN` before implementing.
 - `hubGaps` — uncovered hub functions. If the feature touches one of these,
   add it to the adversarial check in Step 4b (high blast radius + no spec = risk).
 
@@ -107,10 +107,10 @@ ls $PROJECT_ROOT/openspec/specs/ 2>/dev/null | wc -l
 > No OpenSpec specs exist yet for this project. `search_specs` will return empty
 > results and `check_spec_drift` (Step 7) will flag all files as uncovered.
 >
-> The Architect agent should have run `spec-gen generate` during onboarding.
+> The Architect agent should have run `openlore generate` during onboarding.
 > If it hasn't been run yet, note it in the Dev Agent Record and proceed with
 > structural analysis only. The spec baseline can be created post-sprint with
-> `spec-gen generate $PROJECT_ROOT`.
+> `openlore generate $PROJECT_ROOT`.
 
 Skip `search_specs` and go to Step 4.
 
@@ -118,7 +118,7 @@ Skip `search_specs` and go to Step 4.
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>search_specs</tool_name>
   <arguments>{
     "directory": "$PROJECT_ROOT",
@@ -139,7 +139,7 @@ Use the `insertion_points` from `risk_context` if present. Otherwise:
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>suggest_insertion_points</tool_name>
   <arguments>{
     "directory": "$PROJECT_ROOT",
@@ -153,7 +153,7 @@ Read the skeleton of the target file:
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>get_function_skeleton</tool_name>
   <arguments>{
     "directory": "$PROJECT_ROOT",
@@ -217,7 +217,7 @@ Only run once tests are green.
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>check_spec_drift</tool_name>
   <arguments>{"directory": "$PROJECT_ROOT"}</arguments>
 </use_mcp_tool>
@@ -225,8 +225,8 @@ Only run once tests are green.
 
 | Drift type | Resolution |
 |---|---|
-| `uncovered` on new files | Propose `spec-gen generate` post-sprint |
-| `gap` on existing domain | Run `spec-gen generate --domains $DOMAIN` |
+| `uncovered` on new files | Propose `openlore generate` post-sprint |
+| `gap` on existing domain | Run `openlore generate --domains $DOMAIN` |
 | `stale` | Fix the reference |
 | No drift | ✅ |
 

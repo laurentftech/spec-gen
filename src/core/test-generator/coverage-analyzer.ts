@@ -4,13 +4,13 @@
  * Determines which OpenSpec scenarios are covered by existing test files.
  *
  * Mode A — Tag-based (default, fast):
- *   Scans test files for // spec-gen: {JSON} or # spec-gen: {JSON} tags.
+ *   Scans test files for // openlore: {JSON} or # openlore: {JSON} tags.
  *   O(files) — no LLM required.
  *
  * Mode B — Retroactive discovery (--discover, slower):
  *   Extracts describe()/it()/test()/TEST_CASE() titles from test files and
  *   uses LLM semantic comparison to link existing tests to uncovered scenarios.
- *   Useful for teams that already have tests but haven't run spec-gen test yet.
+ *   Useful for teams that already have tests but haven't run openlore test yet.
  */
 
 import { readFile, readdir } from 'node:fs/promises';
@@ -53,7 +53,7 @@ async function walkTestFiles(dir: string, rootPath: string): Promise<string[]> {
     }
     for (const entry of entries) {
       // Skip common non-test directories
-      if (['node_modules', '.git', 'dist', 'build', '.spec-gen'].includes(entry)) continue;
+      if (['node_modules', '.git', 'dist', 'build', '.openlore'].includes(entry)) continue;
 
       const fullPath = join(current, entry);
       // Check if it looks like a test file
@@ -84,7 +84,7 @@ async function walkTestFiles(dir: string, rootPath: string): Promise<string[]> {
 // TAG-BASED COVERAGE (Mode A)
 // ============================================================================
 
-const TAG_REGEX = /(?:\/\/|#)\s*spec-gen:\s*(\{[^\n]+\})/g;
+const TAG_REGEX = /(?:\/\/|#)\s*openlore:\s*(\{[^\n]+\})/g;
 
 async function scanTagsInFile(
   absPath: string,

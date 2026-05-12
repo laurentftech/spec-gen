@@ -1,5 +1,5 @@
 /**
- * Progress indicators for spec-gen CLI
+ * Progress indicators for openlore CLI
  * Uses ora for spinners with meaningful status messages
  */
 
@@ -276,21 +276,21 @@ export function showNextSteps(options: {
   console.log('Next steps:');
 
   if (options.analyzed && !options.generated) {
-    console.log('1. spec-gen generate     # Generate specs from analysis');
+    console.log('1. openlore generate     # Generate specs from analysis');
     console.log('2. openspec list --specs # Review generated specs');
   } else if (options.generated && !options.verified) {
     console.log('1. openspec list --specs   # Review generated specs');
     console.log('2. openspec validate --all # Validate structure');
-    console.log('3. spec-gen verify         # Test accuracy');
+    console.log('3. openlore verify         # Test accuracy');
     console.log('4. openspec change <name>  # Start spec-driven development');
   } else if (options.verified) {
     console.log('1. openspec list --specs   # Review specs');
     console.log('2. openspec change <name>  # Start spec-driven development');
-    console.log('3. spec-gen generate       # Re-generate if needed');
+    console.log('3. openlore generate       # Re-generate if needed');
   } else {
-    console.log('1. spec-gen                # Run full pipeline');
-    console.log('2. spec-gen analyze        # Analyze codebase');
-    console.log('3. spec-gen --help         # See all options');
+    console.log('1. openlore                # Run full pipeline');
+    console.log('2. openlore analyze        # Analyze codebase');
+    console.log('3. openlore --help         # See all options');
   }
 
   console.log('');

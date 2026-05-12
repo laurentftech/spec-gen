@@ -1,7 +1,7 @@
 /**
- * spec-gen MCP Server
+ * openlore MCP Server
  *
- * Exposes spec-gen's static analysis capabilities as Model Context Protocol
+ * Exposes openlore's static analysis capabilities as Model Context Protocol
  * tools, usable from Cline, Claude Code, or any MCP-compatible AI agent.
  *
  * Transport: stdio (standard for editor-embedded MCP servers)
@@ -9,9 +9,9 @@
  * Configuration for Cline / Claude Code:
  *   {
  *     "mcpServers": {
- *       "spec-gen": {
+ *       "openlore": {
  *         "command": "node",
- *         "args": ["/path/to/spec-gen/dist/cli/index.js", "mcp"]
+ *         "args": ["/path/to/openlore/dist/cli/index.js", "mcp"]
  *       }
  *     }
  *   }
@@ -131,7 +131,7 @@ export const TOOL_DEFINITIONS = [
       'Given a natural-language task description, returns in ONE call: relevant functions, source files, ' +
       'spec domains that cover them, depth-1 call neighbours, top insertion point candidates, ' +
       'and matching spec sections. Falls back to keyword search if the embedding server is down. ' +
-      'Requires "spec-gen analyze" to have been run at least once.',
+      'Requires "openlore analyze" to have been run at least once.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -346,10 +346,10 @@ export const TOOL_DEFINITIONS = [
   {
     name: 'get_mapping',
     description:
-      'Return the requirement → function mapping produced by spec-gen generate. ' +
+      'Return the requirement → function mapping produced by openlore generate. ' +
       'Shows which functions implement which spec requirements, confidence level ' +
       '(llm / heuristic), and orphan functions not covered by any requirement. ' +
-      'Requires spec-gen generate to have been run at least once.',
+      'Requires openlore generate to have been run at least once.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -375,7 +375,7 @@ export const TOOL_DEFINITIONS = [
       'USE THIS WHEN: you\'ve modified code and want to know if the specs are still aligned, ' +
       'or when asked "is the code in sync with the spec?", "what changed since the last spec run?". ' +
       'Compares git-changed files against spec coverage — impossible to replicate by reading files. ' +
-      'Requires spec-gen generate to have been run at least once. No LLM required.',
+      'Requires openlore generate to have been run at least once. No LLM required.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -576,7 +576,7 @@ export const TOOL_DEFINITIONS = [
       '"where should I add rate limiting?", "where\'s the best place to add email validation?". ' +
       'Combines semantic search + call graph to return ranked candidates with strategy. ' +
       'Call this before writing any code; then use get_subgraph on the top candidates. ' +
-      'Requires "spec-gen analyze --embed".',
+      'Requires "openlore analyze --embed".',
     inputSchema: {
       type: 'object',
       properties: {
@@ -609,7 +609,7 @@ export const TOOL_DEFINITIONS = [
       '"where is rate limiting implemented?", "which function validates tokens?", ' +
       '"what handles authentication?". Beats grep when the function name is unknown. ' +
       'Falls back to keyword search automatically if the embedding server is down. ' +
-      'Requires "spec-gen analyze --embed" to have been run at least once.',
+      'Requires "openlore analyze --embed" to have been run at least once.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -656,7 +656,7 @@ export const TOOL_DEFINITIONS = [
       'USE THIS WHEN: asked "which spec covers X?", "what does the spec say about Y?", ' +
       '"which requirement describes Z?". Searches specs by meaning and returns linked source files. ' +
       'Use spec-first: check what the spec says before reading or writing code. ' +
-      'Requires "spec-gen analyze --embed" or "spec-gen analyze --reindex-specs".',
+      'Requires "openlore analyze --embed" or "openlore analyze --reindex-specs".',
     inputSchema: {
       type: 'object',
       properties: {
@@ -692,7 +692,7 @@ export const TOOL_DEFINITIONS = [
       'cross-boosts results that are linked through mapping.json — so a function that implements a ' +
       'matching requirement ranks higher than one found by code search alone. ' +
       'Returns results with type "code", "spec", or "both" and a mappingBoost score. ' +
-      'Requires "spec-gen analyze --embed" and a prior "spec-gen generate" run.',
+      'Requires "openlore analyze --embed" and a prior "openlore generate" run.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -748,7 +748,7 @@ export const TOOL_DEFINITIONS = [
     description:
       'Return the exact source code of a named function in a file. ' +
       'Use this after search_code or get_function_skeleton to read the full implementation. ' +
-      'Requires a prior "spec-gen analyze" run for precise byte-range extraction; ' +
+      'Requires a prior "openlore analyze" run for precise byte-range extraction; ' +
       'falls back to a brace-depth scan when the call graph is unavailable.',
     inputSchema: {
       type: 'object',
@@ -772,7 +772,7 @@ export const TOOL_DEFINITIONS = [
       'Return the file-level import dependencies for a given source file. ' +
       'Answers "what does this file import?" and "what files import this file?". ' +
       'Useful for planning refactors, understanding coupling, or scoping the blast radius ' +
-      'of a change. Reads the dependency-graph.json produced by "spec-gen analyze".',
+      'of a change. Reads the dependency-graph.json produced by "openlore analyze".',
     inputSchema: {
       type: 'object',
       properties: {
@@ -866,7 +866,7 @@ export const TOOL_DEFINITIONS = [
       'List or search Architecture Decision Records (ADRs) stored in openspec/decisions/. ' +
       'Use this when you need to understand why an architectural decision was made, ' +
       'or to check whether a pattern is already documented. ' +
-      'ADRs are generated by "spec-gen generate --adrs".',
+      'ADRs are generated by "openlore generate --adrs".',
     inputSchema: {
       type: 'object',
       properties: {
@@ -992,7 +992,7 @@ export const TOOL_DEFINITIONS = [
       'orphan requirements (spec requirements with no mapped implementation), ' +
       'and stale domains (source files changed after spec was last written). ' +
       'Use this before starting a new feature to understand what needs specs, ' +
-      'or to audit coverage health. Requires "spec-gen analyze" to have been run.',
+      'or to audit coverage health. Requires "openlore analyze" to have been run.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1017,7 +1017,7 @@ export const TOOL_DEFINITIONS = [
       'A THEN clause pattern engine emits real assertions for common patterns ' +
       '(HTTP status codes, property presence, error messages) without any LLM call. ' +
       'Pass useLlm:true to enrich unmatched clauses using mapped function source. ' +
-      'Each generated test is tagged with a parseable spec-gen: metadata comment ' +
+      'Each generated test is tagged with a parseable openlore: metadata comment ' +
       'that enables spec coverage tracking via get_test_coverage. ' +
       'Defaults to dryRun:true — set dryRun:false to write files to disk.',
     inputSchema: {
@@ -1053,7 +1053,7 @@ export const TOOL_DEFINITIONS = [
     name: 'get_test_coverage',
     description:
       'Report which OpenSpec scenarios have corresponding test coverage. ' +
-      'Scans test files for // spec-gen: {JSON} or # spec-gen: {JSON} metadata tags ' +
+      'Scans test files for // openlore: {JSON} or # openlore: {JSON} metadata tags ' +
       '(added automatically by generate_tests). ' +
       'Returns coverage percentage by domain, a list of uncovered scenarios, ' +
       'and flags domains where spec drift was detected. ' +
@@ -1287,7 +1287,7 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
     : TOOL_DEFINITIONS;
 
   const server = new Server(
-    { name: 'spec-gen', version: '1.0.0' },
+    { name: 'openlore', version: '1.0.0' },
     { capabilities: { tools: {} } }
   );
 
@@ -1527,7 +1527,7 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
 // ============================================================================
 
 export const mcpCommand = new Command('mcp')
-  .description('Start spec-gen as an MCP server (stdio transport, for Cline/Claude Code)')
+  .description('Start openlore as an MCP server (stdio transport, for Cline/Claude Code)')
   .option('--watch <directory>', 'Watch a project directory and incrementally re-index signatures on file changes')
   .option('--watch-auto', 'Auto-detect the project directory from the first tool call and start watching', true)
   .option('--watch-debounce <ms>', 'Debounce delay in ms before re-indexing after a file change (default: 400)', '400')

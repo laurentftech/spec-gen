@@ -1,20 +1,20 @@
 # Example: OpenSpec CLI Analysis
 
-This directory contains the output of running `spec-gen analyze` against the OpenSpec CLI codebase itself.
+This directory contains the output of running `openlore analyze` against the OpenSpec CLI codebase itself.
 
 ## How This Was Generated
 
 ```bash
 cd /path/to/OpenSpec-main
-spec-gen init
-spec-gen analyze
+openlore init
+openlore analyze
 ```
 
 ## Output Files
 
 | File | Description |
 |------|-------------|
-| `config.json` | spec-gen configuration for the project |
+| `config.json` | openlore configuration for the project |
 | `SUMMARY.md` | Human-readable analysis summary |
 | `repo-structure.json` | Complete file metadata and significance scores |
 | `dependency-graph.json` | Import/export relationships between files |
@@ -53,7 +53,7 @@ To generate full specifications, run:
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
-spec-gen generate
+openlore generate
 ```
 
 This will create OpenSpec-format specifications in `openspec/specs/`.

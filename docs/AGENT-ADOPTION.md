@@ -1,7 +1,7 @@
 # Agent Adoption — Feuille de route
 
 Diagnostic et propositions pour améliorer l'utilisation effective des outils
-spec-gen par les agents de coding (Claude Code, Cline, Cursor).
+openlore par les agents de coding (Claude Code, Cline, Cursor).
 
 Constat : les deux agents observés (Claude Code + Cline) ont accès aux fichiers
 et n'utilisent les outils MCP que de façon marginale. Le problème n'est pas
@@ -52,11 +52,11 @@ Outils qui perdent face à la lecture directe :
 que les agents lisent passivement via `CLAUDE.md` ou `.clinerules` — sans
 décision, sans friction.
 
-**Contenu de `.spec-gen/CODEBASE.md` :**
+**Contenu de `.openlore/CODEBASE.md` :**
 
 ```markdown
 # Architecture — [nom du projet]
-> Généré par spec-gen analyze le [date]
+> Généré par openlore analyze le [date]
 
 ## Points d'entrée
 - `src/api/server.ts` — `startServer()` — serveur HTTP principal (fanIn: 0, fanOut: 12)
@@ -91,8 +91,8 @@ décision, sans friction.
 - Fichier : `src/core/analyzer/codebase-digest.ts`
 - Appelé depuis `src/cli/commands/analyze.ts` après l'analyse complète
 - Format Markdown, ~100 lignes max (au-delà c'est du bruit)
-- Mis à jour à chaque `spec-gen analyze`
-- Documenté dans le README : "ajouter `.spec-gen/CODEBASE.md` à votre CLAUDE.md"
+- Mis à jour à chaque `openlore analyze`
+- Documenté dans le README : "ajouter `.openlore/CODEBASE.md` à votre CLAUDE.md"
 
 ---
 
@@ -211,18 +211,18 @@ fichiers ne donne pas] — [limitation à connaître]`.
 ### ~~#F — Documenter le workflow d'adoption dans README et CLAUDE.md (moyen)~~ ✅
 
 Le vrai problème est que les utilisateurs ne savent pas quoi mettre dans leur
-`CLAUDE.md` pour que les agents utilisent spec-gen correctement.
+`CLAUDE.md` pour que les agents utilisent openlore correctement.
 
 **Ajouter au README une section "Agent setup" :**
 
 ```markdown
 ## Setting up your AI agent
 
-After running `spec-gen analyze`, add this to your project's `CLAUDE.md`:
+After running `openlore analyze`, add this to your project's `CLAUDE.md`:
 
 \`\`\`markdown
-## Codebase analysis (spec-gen)
-Read `.spec-gen/CODEBASE.md` for architecture context before starting any task.
+## Codebase analysis (openlore)
+Read `.openlore/CODEBASE.md` for architecture context before starting any task.
 
 When you need to:
 - Find where a concept is implemented → use `search_code` MCP tool

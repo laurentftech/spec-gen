@@ -1,6 +1,6 @@
 # Améliorations RIG — Feuille de route
 
-Analyse des lacunes de spec-gen pour en faire un RIG (Retrieval-Indexed Generation)
+Analyse des lacunes de openlore pour en faire un RIG (Retrieval-Indexed Generation)
 pleinement efficace.
 
 ---
@@ -25,7 +25,7 @@ retrieval distinctes** :
   par domaine, puis graph expansion pour couvrir les dépendances indirectes.
   Lent, exhaustif.
 
-spec-gen n'est pas un RAG classique (`code → vector DB → LLM`) mais un **GraphRAG** :
+openlore n'est pas un RAG classique (`code → vector DB → LLM`) mais un **GraphRAG** :
 
 ```
 graph retrieval
@@ -98,7 +98,7 @@ C'est le standard de tous les code RAG modernes (Sourcegraph Cody, Cursor, Aider
 
 ## Phase 2 — Intelligence (valeur métier)
 
-### ~~#4 — Pas de liaison bidirectionnelle code ↔ spec (critique pour spec-gen)~~ ✅
+### ~~#4 — Pas de liaison bidirectionnelle code ↔ spec (critique pour openlore)~~ ✅
 
 Les deux index (fonctions et specs) sont des silos. `mapping.json` lie
 requirements → fichiers source, mais cette liaison n'est pas exploitée lors des
@@ -153,7 +153,7 @@ forts que BM25 pour du code.
 ### #8 — Boucle retrieve → generate → retrieve (moyen)
 
 Pattern RAG itératif. Utile pour raffiner une génération ambiguë, mais pas
-prioritaire : le problème principal de spec-gen est structurel (comprendre une
+prioritaire : le problème principal de openlore est structurel (comprendre une
 architecture), pas conversationnel. À envisager pour les cas où une spec générée
 contient des zones d'incertitude élevée.
 
@@ -246,7 +246,7 @@ mis en cache.
 
 **Fichiers :** `src/core/services/mcp-handlers/`, `src/cli/commands/mcp.ts`
 
-`spec-gen generate --adrs` produit des Architecture Decision Records dans
+`openlore generate --adrs` produit des Architecture Decision Records dans
 `openspec/decisions/`, mais aucun outil MCP ne permet de les lire ni de les
 chercher. Un agent qui veut comprendre pourquoi une décision d'architecture a été
 prise n'a pas accès à cette information.
@@ -301,7 +301,7 @@ troncature silencieuse, mauvais chemin de fichier) n'apparaissent que sur du vra
 code avec toutes ses irrégularités.
 
 **Objectif :** Fixture permanente pointant sur un petit dépôt open source connu
-(ex. le propre codebase de spec-gen, ou un projet tiers fixé à un commit précis).
+(ex. le propre codebase de openlore, ou un projet tiers fixé à un commit précis).
 Le test doit au minimum :
 - Construire l'index complet (call graph + embeddings)
 - Vérifier que des requêtes métier connues retournent les bons fichiers
@@ -474,7 +474,7 @@ l'erreur, sans lire chaque fichier de la chaîne manuellement.
 | 1 | Vector index non utilisé dans la génération | 1 | **Critique** | ✅ |
 | 2 | Corps de fonctions absents de l'index | 1 | **Élevé** | ✅ |
 | 3 | Chunking faible (lignes vides vs AST) | 1 | **Moyen** | ✅ |
-| 4 | Liaison code↔spec non exploitée | 2 | **Critique pour spec-gen** | ✅ |
+| 4 | Liaison code↔spec non exploitée | 2 | **Critique pour openlore** | ✅ |
 | 5 | Pas de stratégie retrieval différenciée MCP/génération | 2 | **Élevé** | ✅ |
 | 6 | Pas de cache d'embeddings | 3 | **Moyen** | ✅ |
 | 7 | Pas de retrieval hybride (dense+sparse) | 3 | **Moyen** | ✅ |

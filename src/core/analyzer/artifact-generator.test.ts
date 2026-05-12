@@ -191,7 +191,7 @@ describe('AnalysisArtifactGenerator', () => {
 
   beforeEach(async () => {
     tempDir = await createTempDir();
-    outputDir = join(tempDir, '.spec-gen', 'analysis');
+    outputDir = join(tempDir, '.openlore', 'analysis');
   });
 
   afterEach(async () => {
@@ -665,7 +665,7 @@ describe('AnalysisArtifactGenerator', () => {
     });
 
     it('should create output directory if it does not exist', async () => {
-      const nestedOutputDir = join(tempDir, 'nested', 'deeply', '.spec-gen', 'analysis');
+      const nestedOutputDir = join(tempDir, 'nested', 'deeply', '.openlore', 'analysis');
 
       const repoMap = createMockRepoMap();
       const depGraph = createMockDepGraph();

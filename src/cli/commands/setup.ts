@@ -1,18 +1,18 @@
 /**
- * spec-gen setup command
+ * openlore setup command
  *
  * Installs workflow skills and agent integration files into the current project.
  * Unlike `analyze --ai-configs` (which generates project-specific context files),
  * `setup` copies static workflow assets that are the same for every project:
  *
- *   - Mistral Vibe skills  -> .vibe/skills/spec-gen-{name}/SKILL.md      (8 skills)
- *   - Cline workflows      -> .clinerules/workflows/spec-gen-{name}.md
- *   - Claude Code skills   -> .claude/skills/spec-gen-{name}/SKILL.md    (8 skills)
- *   - OpenCode skills      -> .opencode/skills/spec-gen-{name}/SKILL.md  (8 skills)
- *   - GSD commands         -> .claude/commands/gsd/spec-gen-{name}.md
+ *   - Mistral Vibe skills  -> .vibe/skills/openlore-{name}/SKILL.md      (8 skills)
+ *   - Cline workflows      -> .clinerules/workflows/openlore-{name}.md
+ *   - Claude Code skills   -> .claude/skills/openlore-{name}/SKILL.md    (8 skills)
+ *   - OpenCode skills      -> .opencode/skills/openlore-{name}/SKILL.md  (8 skills)
+ *   - GSD commands         -> .claude/commands/gsd/openlore-{name}.md
  *
  * Files are never overwritten — existing files are skipped silently.
- * Assets are read from the `examples/` directory shipped with the spec-gen package.
+ * Assets are read from the `examples/` directory shipped with the openlore package.
  */
 
 import { Command } from 'commander';
@@ -49,7 +49,7 @@ interface SetupResult {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-/** Root of the spec-gen package (dist/cli/commands -> ../../.. -> package root) */
+/** Root of the openlore package (dist/cli/commands -> ../../.. -> package root) */
 const PACKAGE_ROOT = join(__dirname, '../../..');
 
 async function fileExists(p: string): Promise<boolean> {
@@ -121,29 +121,29 @@ function buildManifest(projectRoot: string): Record<ToolName, SkillEntry[]> {
   const ex = join(PACKAGE_ROOT, 'examples');
 
   const VIBE_SKILLS = [
-    'spec-gen-analyze-codebase',
-    'spec-gen-brainstorm',
-    'spec-gen-debug',
-    'spec-gen-execute-refactor',
-    'spec-gen-generate',
-    'spec-gen-implement-story',
-    'spec-gen-plan-refactor',
-    'spec-gen-write-tests',
+    'openlore-analyze-codebase',
+    'openlore-brainstorm',
+    'openlore-debug',
+    'openlore-execute-refactor',
+    'openlore-generate',
+    'openlore-implement-story',
+    'openlore-plan-refactor',
+    'openlore-write-tests',
   ];
 
   const OPENCODE_SKILLS = VIBE_SKILLS; // same skill names, different source + dest
 
   const CLINE_WORKFLOWS = [
-    'spec-gen-analyze-codebase.md',
-    'spec-gen-check-spec-drift.md',
-    'spec-gen-execute-refactor.md',
-    'spec-gen-implement-feature.md',
-    'spec-gen-plan-refactor.md',
-    'spec-gen-refactor-codebase.md',
-    'spec-gen-write-tests.md',
+    'openlore-analyze-codebase.md',
+    'openlore-check-spec-drift.md',
+    'openlore-execute-refactor.md',
+    'openlore-implement-feature.md',
+    'openlore-plan-refactor.md',
+    'openlore-refactor-codebase.md',
+    'openlore-write-tests.md',
   ];
 
-  const GSD_COMMANDS = ['spec-gen-orient.md', 'spec-gen-drift.md'];
+  const GSD_COMMANDS = ['openlore-orient.md', 'openlore-drift.md'];
 
   const BMAD_AGENTS = ['architect.md', 'dev-brownfield.md'];
   const BMAD_TASKS = ['implement-story.md', 'onboarding.md', 'refactor.md', 'sprint-planning.md'];
@@ -164,11 +164,11 @@ function buildManifest(projectRoot: string): Record<ToolName, SkillEntry[]> {
     bmad: [
       ...BMAD_AGENTS.map((file) => ({
         src: join(ex, 'bmad', 'agents', file),
-        dest: join(projectRoot, '_bmad', 'spec-gen', 'agents', file),
+        dest: join(projectRoot, '_bmad', 'openlore', 'agents', file),
       })),
       ...BMAD_TASKS.map((file) => ({
         src: join(ex, 'bmad', 'tasks', file),
-        dest: join(projectRoot, '_bmad', 'spec-gen', 'tasks', file),
+        dest: join(projectRoot, '_bmad', 'openlore', 'tasks', file),
       })),
     ],
     claude: OPENCODE_SKILLS.map((name) => ({
@@ -192,35 +192,35 @@ function buildManifest(projectRoot: string): Record<ToolName, SkillEntry[]> {
         dest: join(projectRoot, '.opencode', 'plugins', 'anti-laziness.ts'),
       },
       {
-        src: join(ex, 'opencode', 'plugins', 'spec-gen-enforcer.ts'),
-        dest: join(projectRoot, '.opencode', 'plugins', 'spec-gen-enforcer.ts'),
+        src: join(ex, 'opencode', 'plugins', 'openlore-enforcer.ts'),
+        dest: join(projectRoot, '.opencode', 'plugins', 'openlore-enforcer.ts'),
       },
       {
-        src: join(ex, 'opencode', 'plugins', 'spec-gen-decision-extractor.ts'),
-        dest: join(projectRoot, '.opencode', 'plugins', 'spec-gen-decision-extractor.ts'),
+        src: join(ex, 'opencode', 'plugins', 'openlore-decision-extractor.ts'),
+        dest: join(projectRoot, '.opencode', 'plugins', 'openlore-decision-extractor.ts'),
       },
       {
-        src: join(ex, 'opencode', 'plugins', 'lib', 'spec-gen-decision-extractor-helpers.ts'),
+        src: join(ex, 'opencode', 'plugins', 'lib', 'openlore-decision-extractor-helpers.ts'),
         dest: join(
           projectRoot,
           '.opencode',
           'plugins',
           'lib',
-          'spec-gen-decision-extractor-helpers.ts'
+          'openlore-decision-extractor-helpers.ts'
         ),
       },
       {
-        src: join(ex, 'opencode', 'plugins', 'spec-gen-context-injector.ts'),
-        dest: join(projectRoot, '.opencode', 'plugins', 'spec-gen-context-injector.ts'),
+        src: join(ex, 'opencode', 'plugins', 'openlore-context-injector.ts'),
+        dest: join(projectRoot, '.opencode', 'plugins', 'openlore-context-injector.ts'),
       },
       {
-        src: join(ex, 'opencode', 'plugins', 'lib', 'spec-gen-context-injector-helpers.ts'),
+        src: join(ex, 'opencode', 'plugins', 'lib', 'openlore-context-injector-helpers.ts'),
         dest: join(
           projectRoot,
           '.opencode',
           'plugins',
           'lib',
-          'spec-gen-context-injector-helpers.ts'
+          'openlore-context-injector-helpers.ts'
         ),
       },
       // Sisyphus SDD system prompt
@@ -247,7 +247,7 @@ async function runSetup(
   for (const tool of tools) {
     for (const entry of manifest[tool]) {
       if (!(await fileExists(entry.src))) {
-        logger.warning(`setup: source not found — ${entry.src} (re-install spec-gen to fix)`);
+        logger.warning(`setup: source not found — ${entry.src} (re-install openlore to fix)`);
         continue;
       }
       const status = await copyFile(entry.src, entry.dest, force);
@@ -268,7 +268,7 @@ async function runSetup(
 export const setupCommand = new Command('setup')
   .description(
     'Install workflow skills and agent integration files into this project.\n' +
-      'Copies static assets from the spec-gen package — safe to re-run (skips existing files).'
+      'Copies static assets from the openlore package — safe to re-run (skips existing files).'
   )
   .option(
     '--tools <list>',
@@ -276,7 +276,7 @@ export const setupCommand = new Command('setup')
   )
   .option(
     '--force',
-    'Overwrite existing files (use after upgrading spec-gen to pull in updated skills)',
+    'Overwrite existing files (use after upgrading openlore to pull in updated skills)',
     false
   )
   .option('--dir <path>', 'Project root directory', process.cwd())
@@ -309,23 +309,23 @@ export const setupCommand = new Command('setup')
             value: 'claude' as ToolName,
           },
           {
-            name: 'Cline / Roo   (.clinerules/workflows/spec-gen-{name}.md — 7 workflows)',
+            name: 'Cline / Roo   (.clinerules/workflows/openlore-{name}.md — 7 workflows)',
             value: 'cline' as ToolName,
           },
           {
-            name: 'Mistral Vibe  (.vibe/skills/spec-gen-{name}/SKILL.md — 8 skills)',
+            name: 'Mistral Vibe  (.vibe/skills/openlore-{name}/SKILL.md — 8 skills)',
             value: 'vibe' as ToolName,
           },
           {
-            name: 'OpenCode      (.opencode/skills/spec-gen-{name}/SKILL.md — 8 skills + agent-guard plugin)',
+            name: 'OpenCode      (.opencode/skills/openlore-{name}/SKILL.md — 8 skills + agent-guard plugin)',
             value: 'opencode' as ToolName,
           },
           {
-            name: 'GSD           (.claude/commands/gsd/spec-gen-{name}.md — 2 commands)',
+            name: 'GSD           (.claude/commands/gsd/openlore-{name}.md — 2 commands)',
             value: 'gsd' as ToolName,
           },
           {
-            name: 'BMAD          (_bmad/spec-gen/{agents,tasks}/ — 2 agents, 4 tasks)',
+            name: 'BMAD          (_bmad/openlore/{agents,tasks}/ — 2 agents, 4 tasks)',
             value: 'bmad' as ToolName,
           },
           {
@@ -344,7 +344,7 @@ export const setupCommand = new Command('setup')
       logger.error(
         'setup requires an interactive terminal.\n' +
           'Use --tools to specify which to install.\n' +
-          'Example: spec-gen setup --tools claude,cline,omoa'
+          'Example: openlore setup --tools claude,cline,omoa'
       );
       process.exit(1);
     }
@@ -393,7 +393,7 @@ export const setupCommand = new Command('setup')
         console.log(`  ${marker} ${e.rel}`);
       }
       if (entries.length === 0) {
-        logger.warning('  (no source files found — check spec-gen installation)');
+        logger.warning('  (no source files found — check openlore installation)');
       } else {
         console.log(`  ${created} created, ${updated} updated, ${skipped} already up-to-date`);
       }
@@ -403,7 +403,7 @@ export const setupCommand = new Command('setup')
     if (totalChanged > 0) {
       logger.success(`${totalChanged} file(s) installed.`);
       console.log(
-        'Run `spec-gen analyze --ai-configs` to also generate project-specific context files (CLAUDE.md, .cursorrules, etc.).'
+        'Run `openlore analyze --ai-configs` to also generate project-specific context files (CLAUDE.md, .cursorrules, etc.).'
       );
     } else {
       console.log(

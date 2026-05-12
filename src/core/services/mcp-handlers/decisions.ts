@@ -19,7 +19,7 @@ import {
 } from '../../decisions/store.js';
 import { syncApprovedDecisions } from '../../decisions/syncer.js';
 import { buildSpecMap, matchFileToDomains } from '../../../core/drift/spec-mapper.js';
-import { readSpecGenConfig } from '../config-manager.js';
+import { readOpenLoreConfig } from '../config-manager.js';
 import { join } from 'node:path';
 import { OPENSPEC_DIR } from '../../../constants.js';
 import type { PendingDecision, DecisionScope } from '../../../types/index.js';
@@ -27,7 +27,7 @@ import type { PendingDecision, DecisionScope } from '../../../types/index.js';
 function spawnConsolidateBackground(rootPath: string): void {
   // Resolve binary: prefer local build over global install (same order as pre-commit hook)
   const localDist = join(rootPath, 'dist', 'cli', 'index.js');
-  const localBin = join(rootPath, 'node_modules', '.bin', 'spec-gen');
+  const localBin = join(rootPath, 'node_modules', '.bin', 'openlore');
 
   import('node:fs').then(({ existsSync }) => {
     let cmd: string;
@@ -37,7 +37,7 @@ function spawnConsolidateBackground(rootPath: string): void {
     } else if (existsSync(localDist)) {
       cmd = process.execPath; args = [localDist, 'decisions', '--consolidate'];
     } else {
-      cmd = 'spec-gen'; args = ['decisions', '--consolidate'];
+      cmd = 'openlore'; args = ['decisions', '--consolidate'];
     }
     const child = spawn(cmd, args, {
       cwd: rootPath,
@@ -73,8 +73,8 @@ export async function handleRecordDecision(
     let inferredDomains: string[] = [];
     if (affectedFiles?.length) {
       try {
-        const specGenConfig = await readSpecGenConfig(rootPath);
-        const openspecPath = join(rootPath, specGenConfig?.openspecPath ?? OPENSPEC_DIR);
+        const openloreConfig = await readOpenLoreConfig(rootPath);
+        const openspecPath = join(rootPath, openloreConfig?.openspecPath ?? OPENSPEC_DIR);
         const specMap = await buildSpecMap({ rootPath, openspecPath });
         const domainSet = new Set<string>();
         for (const file of affectedFiles) {
@@ -255,10 +255,10 @@ export async function handleSyncDecisions(
 ): Promise<unknown> {
   try {
     const rootPath = await validateDirectory(directory);
-    const specGenConfig = await readSpecGenConfig(rootPath);
-    if (!specGenConfig) return { error: 'No spec-gen configuration found. Run spec-gen init first.' };
+    const openloreConfig = await readOpenLoreConfig(rootPath);
+    if (!openloreConfig) return { error: 'No openlore configuration found. Run openlore init first.' };
 
-    const openspecPath = join(rootPath, specGenConfig.openspecPath ?? OPENSPEC_DIR);
+    const openspecPath = join(rootPath, openloreConfig.openspecPath ?? OPENSPEC_DIR);
     const specMap = await buildSpecMap({ rootPath, openspecPath });
 
     let store = await loadDecisionStore(rootPath);

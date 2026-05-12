@@ -9,7 +9,7 @@
  * Table name: "functions"
  *
  * Usage:
- *   // Build (after spec-gen analyze --embed)
+ *   // Build (after openlore analyze --embed)
  *   await VectorIndex.build(outputDir, nodes, signatures, hubIds, entryPointIds, embedSvc);
  *
  *   // Search
@@ -402,7 +402,7 @@ export class VectorIndex {
     const { limit = 10, language, minFanIn, hybrid = true } = opts;
 
     if (!VectorIndex.exists(outputDir)) {
-      throw new Error('Vector index not found. Run "spec-gen analyze --embed" first.');
+      throw new Error('Vector index not found. Run "openlore analyze --embed" first.');
     }
 
     const dbPath = join(outputDir, DB_FOLDER);

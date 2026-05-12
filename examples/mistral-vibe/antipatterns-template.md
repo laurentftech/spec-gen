@@ -1,9 +1,9 @@
 # Project Antipatterns
 
 Failure patterns discovered post-merge. Automatically checked by agents during
-brainstorm and implementation via `spec-gen-brainstorm` and `spec-gen-implement-story`.
+brainstorm and implementation via `openlore-brainstorm` and `openlore-implement-story`.
 
-To add an entry: run `/spec-gen-debug` — Step 9 evaluates whether the bug
+To add an entry: run `/openlore-debug` — Step 9 evaluates whether the bug
 qualifies as a cross-cutting antipattern and appends here if so.
 
 ---

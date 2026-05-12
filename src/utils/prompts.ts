@@ -1,5 +1,5 @@
 /**
- * Interactive prompts for spec-gen CLI
+ * Interactive prompts for openlore CLI
  * Uses @inquirer/prompts (same as OpenSpec)
  */
 

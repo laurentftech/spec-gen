@@ -47,7 +47,7 @@ describe('generateCodebaseDigest', () => {
     expect(result).toBe(true);
     const content = await readFile(join(tmpDir, 'CODEBASE.md'), 'utf-8');
     expect(content).toContain('# Codebase — architecture digest');
-    expect(content).toContain('spec-gen MCP workflow');
+    expect(content).toContain('openlore MCP workflow');
   });
 
   it('includes Overview section when call graph is present', async () => {

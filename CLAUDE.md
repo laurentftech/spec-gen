@@ -1,7 +1,7 @@
-@.spec-gen/analysis/CODEBASE.md
+@.openlore/analysis/CODEBASE.md
 @openspec/specs/overview/spec.md
 
-# spec-gen MCP tools — when to use them
+# openlore MCP tools — when to use them
 
 | Situation | Tool |
 |-----------|------|
@@ -17,7 +17,7 @@
 
 For all other cases (reading a file, grepping, listing files) use native tools directly.
 
-<!-- spec-gen-decisions-instructions -->
+<!-- openlore-decisions-instructions -->
 ## Architectural decisions
 
 When making a significant design choice, call `record_decision` **before** writing the code.
@@ -50,20 +50,20 @@ Present each decision to the user:
 > 1. **[id]** Title — rationale
 Do you approve? (yes/no)"
 For each approval call `approve_decision`, for rejections call `reject_decision`.
-Then run `spec-gen decisions --sync` and retry `git commit`.
+Then run `openlore decisions --sync` and retry `git commit`.
 
 **`reason: "approved_not_synced"` — decisions approved but not written to specs:**
-Run `spec-gen decisions --sync` then retry `git commit`. Do not skip this step.
+Run `openlore decisions --sync` then retry `git commit`. Do not skip this step.
 
 **`reason: "drafts_pending_consolidation"` — drafts were recorded but not yet consolidated:**
 Present to the user:
 > "N decision draft(s) were recorded but never consolidated. Run consolidation now? (~10-30s)"
-If yes: run `spec-gen decisions --consolidate --gate` and handle the result.
+If yes: run `openlore decisions --consolidate --gate` and handle the result.
 If no: retry with `git commit --no-verify` to skip the gate.
 
 **`reason: "no_decisions_recorded"` — source files staged but nothing recorded:**
 Present to the user:
 > "Source files are staged but no architectural decisions were recorded. Run fallback extraction to check for undocumented decisions? (~10-30s)"
-If yes: run `spec-gen decisions --consolidate --gate` and handle the result.
+If yes: run `openlore decisions --consolidate --gate` and handle the result.
 If no: retry with `git commit --no-verify` to skip the gate.
-<!-- end-spec-gen-decisions-instructions -->
+<!-- end-openlore-decisions-instructions -->

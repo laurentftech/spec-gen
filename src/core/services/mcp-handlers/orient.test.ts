@@ -23,7 +23,7 @@ vi.mock('./utils.js', () => ({
 }));
 
 vi.mock('../config-manager.js', () => ({
-  readSpecGenConfig: vi.fn(async () => null),
+  readOpenLoreConfig: vi.fn(async () => null),
 }));
 
 vi.mock('./semantic.js', () => ({
@@ -71,7 +71,7 @@ import { VectorIndex } from '../../analyzer/vector-index.js';
 import { EmbeddingService } from '../../analyzer/embedding-service.js';
 import { SpecVectorIndex } from '../../analyzer/spec-vector-index.js';
 import { loadMappingIndex, specsForFile, functionsForDomain, readCachedContext } from './utils.js';
-import { readSpecGenConfig } from '../config-manager.js';
+import { readOpenLoreConfig } from '../config-manager.js';
 import { loadDecisionStore } from '../../decisions/store.js';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -110,7 +110,7 @@ describe('handleOrient', () => {
     vi.mocked(readCachedContext).mockResolvedValue(null);
     vi.mocked(specsForFile).mockReturnValue([]);
     vi.mocked(functionsForDomain).mockReturnValue([]);
-    vi.mocked(readSpecGenConfig).mockResolvedValue(null);
+    vi.mocked(readOpenLoreConfig).mockResolvedValue(null);
     vi.mocked(EmbeddingService.fromEnv).mockImplementation(() => { throw new Error('no env'); });
     vi.mocked(EmbeddingService.fromConfig).mockReturnValue(null);
     vi.mocked(loadDecisionStore).mockResolvedValue({
@@ -175,7 +175,7 @@ describe('handleOrient', () => {
 
   it('uses embed service from config when env service is unavailable', async () => {
     vi.mocked(EmbeddingService.fromConfig).mockReturnValue({ model: 'config-model' } as never);
-    vi.mocked(readSpecGenConfig).mockResolvedValue({ version: '1.0' } as never); // non-null cfg
+    vi.mocked(readOpenLoreConfig).mockResolvedValue({ version: '1.0' } as never); // non-null cfg
     vi.mocked(VectorIndex.exists).mockReturnValue(true);
     vi.mocked(VectorIndex.search).mockResolvedValue([makeSearchResult()]);
 

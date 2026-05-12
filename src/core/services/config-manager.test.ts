@@ -8,9 +8,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   getDefaultConfig,
-  readSpecGenConfig,
-  writeSpecGenConfig,
-  specGenConfigExists,
+  readOpenLoreConfig,
+  writeOpenLoreConfig,
+  openloreConfigExists,
   readOpenSpecConfig,
   writeOpenSpecConfig,
   openspecDirExists,
@@ -23,7 +23,7 @@ describe('config-manager', () => {
   let testDir: string;
 
   beforeEach(async () => {
-    testDir = join(tmpdir(), `spec-gen-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    testDir = join(tmpdir(), `openlore-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     await mkdir(testDir, { recursive: true });
   });
 
@@ -55,42 +55,42 @@ describe('config-manager', () => {
     });
   });
 
-  describe('specGenConfigExists', () => {
+  describe('openloreConfigExists', () => {
     it('should return false when config does not exist', async () => {
-      const result = await specGenConfigExists(testDir);
+      const result = await openloreConfigExists(testDir);
       expect(result).toBe(false);
     });
 
     it('should return true when config exists', async () => {
-      await mkdir(join(testDir, '.spec-gen'), { recursive: true });
-      await writeFile(join(testDir, '.spec-gen', 'config.json'), '{}');
+      await mkdir(join(testDir, '.openlore'), { recursive: true });
+      await writeFile(join(testDir, '.openlore', 'config.json'), '{}');
 
-      const result = await specGenConfigExists(testDir);
+      const result = await openloreConfigExists(testDir);
       expect(result).toBe(true);
     });
   });
 
-  describe('writeSpecGenConfig and readSpecGenConfig', () => {
+  describe('writeOpenLoreConfig and readOpenLoreConfig', () => {
     it('should write and read config correctly', async () => {
       const config = getDefaultConfig('rust', './docs/specs');
 
-      await writeSpecGenConfig(testDir, config);
-      const readConfig = await readSpecGenConfig(testDir);
+      await writeOpenLoreConfig(testDir, config);
+      const readConfig = await readOpenLoreConfig(testDir);
 
       expect(readConfig).toEqual(config);
     });
 
-    it('should create .spec-gen directory if it does not exist', async () => {
+    it('should create .openlore directory if it does not exist', async () => {
       const config = getDefaultConfig('go', './openspec');
 
-      await writeSpecGenConfig(testDir, config);
+      await writeOpenLoreConfig(testDir, config);
 
-      const content = await readFile(join(testDir, '.spec-gen', 'config.json'), 'utf-8');
+      const content = await readFile(join(testDir, '.openlore', 'config.json'), 'utf-8');
       expect(JSON.parse(content)).toEqual(config);
     });
 
     it('should return null when config does not exist', async () => {
-      const result = await readSpecGenConfig(testDir);
+      const result = await readOpenLoreConfig(testDir);
       expect(result).toBe(null);
     });
   });
@@ -159,66 +159,66 @@ describe('config-manager', () => {
 
   describe('mergeOpenSpecConfig', () => {
     it('should create new config when existing is null', () => {
-      const specGenMeta = {
+      const openloreMeta = {
         generatedAt: '2025-01-30T12:00:00Z',
         domains: ['auth', 'api'],
         confidence: 0.85,
       };
 
-      const result = mergeOpenSpecConfig(null, specGenMeta);
+      const result = mergeOpenSpecConfig(null, openloreMeta);
 
       expect(result.schema).toBe('spec-driven');
       expect(result.context).toBe('');
-      expect(result['spec-gen']).toEqual(specGenMeta);
+      expect(result['openlore']).toEqual(openloreMeta);
     });
 
-    it('should preserve existing config and merge spec-gen metadata', () => {
+    it('should preserve existing config and merge openlore metadata', () => {
       const existing = {
         schema: 'custom-schema',
         context: 'Existing context',
         customField: 'value',
       };
-      const specGenMeta = {
+      const openloreMeta = {
         generatedAt: '2025-01-30T12:00:00Z',
         domains: ['auth'],
       };
 
-      const result = mergeOpenSpecConfig(existing, specGenMeta);
+      const result = mergeOpenSpecConfig(existing, openloreMeta);
 
       expect(result.schema).toBe('custom-schema');
       expect(result.context).toBe('Existing context');
       expect(result.customField).toBe('value');
-      expect(result['spec-gen']).toEqual(specGenMeta);
+      expect(result['openlore']).toEqual(openloreMeta);
     });
 
-    it('should merge spec-gen metadata with existing spec-gen data', () => {
+    it('should merge openlore metadata with existing openlore data', () => {
       const existing = {
         schema: 'spec-driven',
-        'spec-gen': {
+        'openlore': {
           generatedAt: '2025-01-29T12:00:00Z',
           sourceProject: 'Original',
         },
       };
-      const specGenMeta = {
+      const openloreMeta = {
         generatedAt: '2025-01-30T12:00:00Z',
         domains: ['api'],
       };
 
-      const result = mergeOpenSpecConfig(existing, specGenMeta);
+      const result = mergeOpenSpecConfig(existing, openloreMeta);
 
-      expect(result['spec-gen']?.generatedAt).toBe('2025-01-30T12:00:00Z');
-      expect(result['spec-gen']?.sourceProject).toBe('Original');
-      expect(result['spec-gen']?.domains).toEqual(['api']);
+      expect(result['openlore']?.generatedAt).toBe('2025-01-30T12:00:00Z');
+      expect(result['openlore']?.sourceProject).toBe('Original');
+      expect(result['openlore']?.domains).toEqual(['api']);
     });
   });
 
-  describe('readSpecGenConfig — malformed JSON', () => {
+  describe('readOpenLoreConfig — malformed JSON', () => {
     it('returns null when config.json contains invalid JSON', async () => {
-      const configDir = join(testDir, '.spec-gen');
+      const configDir = join(testDir, '.openlore');
       await mkdir(configDir, { recursive: true });
       await writeFile(join(configDir, 'config.json'), '{ invalid json !!!', 'utf-8');
 
-      const result = await readSpecGenConfig(testDir);
+      const result = await readOpenLoreConfig(testDir);
       expect(result).toBeNull();
     });
   });

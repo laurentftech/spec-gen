@@ -1,9 +1,9 @@
 /**
- * Tests for specGenRun programmatic API
+ * Tests for openloreRun programmatic API
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { specGenRun } from './run.js';
+import { openloreRun } from './run.js';
 
 // ============================================================================
 // MOCKS
@@ -28,9 +28,9 @@ vi.mock('../core/services/project-detector.js', () => ({
 
 vi.mock('../core/services/config-manager.js', () => ({
   getDefaultConfig: vi.fn(),
-  readSpecGenConfig: vi.fn(),
-  writeSpecGenConfig: vi.fn(),
-  specGenConfigExists: vi.fn(),
+  readOpenLoreConfig: vi.fn(),
+  writeOpenLoreConfig: vi.fn(),
+  openloreConfigExists: vi.fn(),
   openspecDirExists: vi.fn(),
   createOpenSpecStructure: vi.fn(),
 }));
@@ -109,7 +109,7 @@ vi.mock('../core/services/mcp-handlers/utils.js', () => ({
 import { access, stat, readFile } from 'node:fs/promises';
 import { isCacheFresh } from '../core/services/mcp-handlers/utils.js';
 import { detectProjectType, getProjectTypeName } from '../core/services/project-detector.js';
-import { getDefaultConfig, readSpecGenConfig, writeSpecGenConfig, specGenConfigExists, openspecDirExists, createOpenSpecStructure } from '../core/services/config-manager.js';
+import { getDefaultConfig, readOpenLoreConfig, writeOpenLoreConfig, openloreConfigExists, openspecDirExists, createOpenSpecStructure } from '../core/services/config-manager.js';
 import { gitignoreExists, isInGitignore, addToGitignore } from '../core/services/gitignore-manager.js';
 import { createLLMService } from '../core/services/llm-service.js';
 import { RepositoryMapper } from '../core/analyzer/repository-mapper.js';
@@ -125,9 +125,9 @@ const mockReadFile = vi.mocked(readFile);
 const mockDetectProjectType = vi.mocked(detectProjectType);
 const mockGetProjectTypeName = vi.mocked(getProjectTypeName);
 const mockGetDefaultConfig = vi.mocked(getDefaultConfig);
-const mockReadSpecGenConfig = vi.mocked(readSpecGenConfig);
-const mockWriteSpecGenConfig = vi.mocked(writeSpecGenConfig);
-const mockSpecGenConfigExists = vi.mocked(specGenConfigExists);
+const mockReadOpenLoreConfig = vi.mocked(readOpenLoreConfig);
+const mockWriteOpenLoreConfig = vi.mocked(writeOpenLoreConfig);
+const mockOpenLoreConfigExists = vi.mocked(openloreConfigExists);
 const mockOpenspecDirExists = vi.mocked(openspecDirExists);
 const mockCreateOpenSpecStructure = vi.mocked(createOpenSpecStructure);
 const mockGitignoreExists = vi.mocked(gitignoreExists);
@@ -158,7 +158,7 @@ const MOCK_PIPELINE_RESULT = {
   metadata: { totalTokens: 200, estimatedCost: 0.02, duration: 2000, completedStages: [], skippedStages: [] },
 };
 const MOCK_WRITE_REPORT = {
-  timestamp: new Date().toISOString(), openspecVersion: '1.0.0', specGenVersion: '1.0.0',
+  timestamp: new Date().toISOString(), openspecVersion: '1.0.0', openloreVersion: '1.0.0',
   filesWritten: ['openspec/auth/spec.md'], filesSkipped: [], filesBackedUp: [], filesMerged: [],
   configUpdated: true, validationErrors: [], warnings: [], nextSteps: [],
 };
@@ -179,10 +179,10 @@ function setupMocks({ configExists = false, analysisRecent = false } = {}) {
   // Init mocks
   mockDetectProjectType.mockResolvedValue({ projectType: 'nodejs' } as Awaited<ReturnType<typeof detectProjectType>>);
   mockGetProjectTypeName.mockReturnValue('nodejs');
-  mockSpecGenConfigExists.mockResolvedValue(configExists);
+  mockOpenLoreConfigExists.mockResolvedValue(configExists);
   mockGetDefaultConfig.mockReturnValue(MOCK_CONFIG as ReturnType<typeof getDefaultConfig>);
-  mockReadSpecGenConfig.mockResolvedValue(MOCK_CONFIG as ReturnType<typeof readSpecGenConfig> extends Promise<infer T> ? T : never);
-  mockWriteSpecGenConfig.mockResolvedValue(undefined);
+  mockReadOpenLoreConfig.mockResolvedValue(MOCK_CONFIG as ReturnType<typeof readOpenLoreConfig> extends Promise<infer T> ? T : never);
+  mockWriteOpenLoreConfig.mockResolvedValue(undefined);
   mockOpenspecDirExists.mockResolvedValue(false);
   mockCreateOpenSpecStructure.mockResolvedValue(undefined);
   mockGitignoreExists.mockResolvedValue(false);
@@ -231,7 +231,7 @@ function setupMocks({ configExists = false, analysisRecent = false } = {}) {
 // TESTS
 // ============================================================================
 
-describe('specGenRun', () => {
+describe('openloreRun', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -248,26 +248,26 @@ describe('specGenRun', () => {
   describe('Step 1 — Initialization', () => {
     it('creates config when none exists', async () => {
       setupMocks({ configExists: false, analysisRecent: true });
-      const result = await specGenRun({ rootPath: ROOT });
+      const result = await openloreRun({ rootPath: ROOT });
 
       expect(result.init.created).toBe(true);
-      expect(mockWriteSpecGenConfig).toHaveBeenCalled();
+      expect(mockWriteOpenLoreConfig).toHaveBeenCalled();
     });
 
     it('skips init when config exists and force=false', async () => {
       setupMocks({ configExists: true, analysisRecent: true });
-      const result = await specGenRun({ rootPath: ROOT });
+      const result = await openloreRun({ rootPath: ROOT });
 
       expect(result.init.created).toBe(false);
-      expect(mockWriteSpecGenConfig).not.toHaveBeenCalled();
+      expect(mockWriteOpenLoreConfig).not.toHaveBeenCalled();
     });
 
     it('force=true re-creates config even if it exists', async () => {
       setupMocks({ configExists: true, analysisRecent: true });
-      const result = await specGenRun({ rootPath: ROOT, force: true });
+      const result = await openloreRun({ rootPath: ROOT, force: true });
 
       expect(result.init.created).toBe(true);
-      expect(mockWriteSpecGenConfig).toHaveBeenCalled();
+      expect(mockWriteOpenLoreConfig).toHaveBeenCalled();
     });
   });
 
@@ -278,7 +278,7 @@ describe('specGenRun', () => {
   describe('Step 2 — Analysis', () => {
     it('skips analysis when recent cache exists', async () => {
       setupMocks({ configExists: true, analysisRecent: true });
-      const result = await specGenRun({ rootPath: ROOT });
+      const result = await openloreRun({ rootPath: ROOT });
 
       expect(result.analysis.duration).toBe(0);
       expect(RepositoryMapper).not.toHaveBeenCalled();
@@ -286,7 +286,7 @@ describe('specGenRun', () => {
 
     it('runs full analysis when cache is stale', async () => {
       setupMocks({ configExists: true, analysisRecent: false });
-      await specGenRun({ rootPath: ROOT });
+      await openloreRun({ rootPath: ROOT });
 
       expect(RepositoryMapper).toHaveBeenCalled();
       expect(DependencyGraphBuilder).toHaveBeenCalled();
@@ -295,7 +295,7 @@ describe('specGenRun', () => {
 
     it('reanalyze=true bypasses fresh cache', async () => {
       setupMocks({ configExists: true, analysisRecent: true });
-      await specGenRun({ rootPath: ROOT, reanalyze: true });
+      await openloreRun({ rootPath: ROOT, reanalyze: true });
 
       expect(RepositoryMapper).toHaveBeenCalled();
     });
@@ -304,7 +304,7 @@ describe('specGenRun', () => {
       setupMocks({ configExists: true });
       mockAccess.mockRejectedValue(new Error('ENOENT'));
 
-      await specGenRun({ rootPath: ROOT });
+      await openloreRun({ rootPath: ROOT });
 
       expect(RepositoryMapper).toHaveBeenCalled();
     });
@@ -317,7 +317,7 @@ describe('specGenRun', () => {
   describe('Step 3 — Generation', () => {
     it('returns mock report on dry run without running pipeline', async () => {
       setupMocks({ configExists: true, analysisRecent: true });
-      const result = await specGenRun({ rootPath: ROOT, dryRun: true });
+      const result = await openloreRun({ rootPath: ROOT, dryRun: true });
 
       expect(result.generation.report.filesWritten).toHaveLength(0);
       expect(SpecGenerationPipeline).not.toHaveBeenCalled();
@@ -330,12 +330,12 @@ describe('specGenRun', () => {
       delete process.env.GEMINI_API_KEY;
       delete process.env.OPENAI_COMPAT_API_KEY;
 
-      await expect(specGenRun({ rootPath: ROOT })).rejects.toThrow(/API key/i);
+      await expect(openloreRun({ rootPath: ROOT })).rejects.toThrow(/API key/i);
     });
 
     it('runs pipeline and writes specs on happy path', async () => {
       setupMocks({ configExists: true, analysisRecent: true });
-      const result = await specGenRun({ rootPath: ROOT });
+      const result = await openloreRun({ rootPath: ROOT });
 
       expect(SpecGenerationPipeline).toHaveBeenCalled();
       expect(OpenSpecWriter).toHaveBeenCalled();
@@ -348,7 +348,7 @@ describe('specGenRun', () => {
         Object.assign(this as object, { run: vi.fn().mockRejectedValue(new Error('LLM error')) });
       });
 
-      await expect(specGenRun({ rootPath: ROOT })).rejects.toThrow(/LLM error|Pipeline/i);
+      await expect(openloreRun({ rootPath: ROOT })).rejects.toThrow(/LLM error|Pipeline/i);
     });
   });
 
@@ -359,7 +359,7 @@ describe('specGenRun', () => {
   describe('result shape', () => {
     it('returns all three step results and duration', async () => {
       setupMocks({ configExists: true, analysisRecent: true });
-      const result = await specGenRun({ rootPath: ROOT });
+      const result = await openloreRun({ rootPath: ROOT });
 
       expect(result.init).toBeDefined();
       expect(result.analysis).toBeDefined();
@@ -376,7 +376,7 @@ describe('specGenRun', () => {
     it('fires init, analysis, and generation events', async () => {
       setupMocks({ configExists: true, analysisRecent: true });
       const steps = new Set<string>();
-      await specGenRun({
+      await openloreRun({
         rootPath: ROOT,
         onProgress: e => steps.add(e.step),
       });

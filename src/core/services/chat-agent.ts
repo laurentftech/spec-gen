@@ -10,16 +10,16 @@
  *   1. GEMINI_API_KEY                -> Gemini
  *   2. ANTHROPIC_API_KEY             -> Anthropic Claude
  *   3. OPENAI_COMPAT_BASE_URL        -> any OpenAI-compatible endpoint
- *   4. specGenConfig.generation      -> reads provider + openaiCompatBaseUrl from config
+ *   4. openloreConfig.generation      -> reads provider + openaiCompatBaseUrl from config
  *   5. OPENAI_API_KEY                -> OpenAI directly
  *
- * Model: OPENAI_COMPAT_MODEL env var -> specGenConfig.generation.model -> provider default.
+ * Model: OPENAI_COMPAT_MODEL env var -> openloreConfig.generation.model -> provider default.
  *
  * Max iterations: 8 (prevents runaway loops).
  */
 
 import { CHAT_TOOLS, toChatToolDefinitions } from './chat-tools.js';
-import { readSpecGenConfig } from './config-manager.js';
+import { readOpenLoreConfig } from './config-manager.js';
 import {
   DEFAULT_ANTHROPIC_MODEL,
   DEFAULT_GEMINI_MODEL,
@@ -123,7 +123,7 @@ export async function resolveProviderConfig(directory: string): Promise<Provider
   let cfgBase: string | undefined;
   let cfgModel: string | undefined;
   try {
-    const cfg = await readSpecGenConfig(directory);
+    const cfg = await readOpenLoreConfig(directory);
     cfgProvider = cfg?.generation?.provider;
     cfgBase     = cfg?.generation?.openaiCompatBaseUrl;
     cfgModel    = cfg?.generation?.model;

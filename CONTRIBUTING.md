@@ -1,4 +1,4 @@
-# Contributing to spec-gen
+# Contributing to openlore
 
 Thank you for your interest in contributing. This document covers how to set up your development environment, run tests, and submit changes.
 
@@ -7,8 +7,8 @@ Thank you for your interest in contributing. This document covers how to set up 
 **Requirements:** Node.js ≥ 20, npm ≥ 9
 
 ```bash
-git clone https://github.com/clay-good/spec-gen
-cd spec-gen
+git clone https://github.com/clay-good/openlore
+cd openlore
 npm install
 ```
 
@@ -28,11 +28,11 @@ npm run dev -- generate
 
 ## Agent Context Setup (one-time, after cloning)
 
-`CLAUDE.md` references `.spec-gen/analysis/CODEBASE.md`, which is git-ignored and must be generated locally:
+`CLAUDE.md` references `.openlore/analysis/CODEBASE.md`, which is git-ignored and must be generated locally:
 
 ```bash
 npm run build
-npm run dev -- analyze    # or: spec-gen analyze if installed globally
+npm run dev -- analyze    # or: openlore analyze if installed globally
 ```
 
 See [Agent Setup](README.md#agent-setup) in the README for the full explanation of what this file contains and why it matters.
@@ -57,13 +57,13 @@ Tests use [Vitest](https://vitest.dev/). The test suite runs entirely in-process
 
 ## Integration & E2E Tests
 
-The e2e suite (`src/core/analyzer/e2e.integration.test.ts`) runs the full `analyze` pipeline against the real spec-gen codebase and verifies that semantic queries return the correct source files. It is the primary non-regression guard for the analyzer.
+The e2e suite (`src/core/analyzer/e2e.integration.test.ts`) runs the full `analyze` pipeline against the real openlore codebase and verifies that semantic queries return the correct source files. It is the primary non-regression guard for the analyzer.
 
 **Prerequisites:**
 
 ```bash
 npm run embed:up              # start the embedding server (Docker)
-spec-gen analyze --embed      # build / refresh the vector index
+openlore analyze --embed      # build / refresh the vector index
 ```
 
 **Run:**
@@ -119,7 +119,7 @@ src/
 
 ### Key conventions
 
-- **Constants:** All magic numbers and path strings belong in `src/constants.ts`. Never hardcode `.spec-gen`, `openspec`, subdirectory names, or numeric thresholds inline.
+- **Constants:** All magic numbers and path strings belong in `src/constants.ts`. Never hardcode `.openlore`, `openspec`, subdirectory names, or numeric thresholds inline.
 - **API vs CLI:** The `src/api/` layer must never call `process.exit()` or write to stdout/stderr directly — it only throws errors. The `src/cli/` layer handles all user-facing output.
 - **File existence:** Use the async `fileExists()` from `src/utils/command-helpers.ts` instead of `fs.existsSync()` in async contexts.
 - **Error classes:** Use the `errors.*` factory functions in `src/utils/errors.ts` for typed, user-facing errors.
@@ -146,8 +146,8 @@ For each `beforeEach`, reset `process.exitCode = undefined` and call `vi.clearAl
 
 ## Reporting Bugs
 
-Open an issue at https://github.com/clay-good/spec-gen/issues with:
+Open an issue at https://github.com/clay-good/openlore/issues with:
 - The command you ran
 - The error message or unexpected output
-- Your OS, Node.js version (`node --version`), and spec-gen version (`spec-gen --version`)
-- Output of `spec-gen doctor` if relevant
+- Your OS, Node.js version (`node --version`), and openlore version (`openlore --version`)
+- Output of `openlore doctor` if relevant

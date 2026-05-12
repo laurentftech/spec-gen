@@ -23,7 +23,7 @@ function makeRecord(overrides: Partial<{
 }
 
 async function writeAnalysisFile(dir: string, filename: string, content: object) {
-  const analysisDir = join(dir, '.spec-gen', 'analysis');
+  const analysisDir = join(dir, '.openlore', 'analysis');
   await mkdir(analysisDir, { recursive: true });
   await writeFile(join(analysisDir, filename), JSON.stringify(content), 'utf-8');
 }
@@ -32,7 +32,7 @@ async function writeAnalysisFile(dir: string, filename: string, content: object)
 // MOCK validateDirectory
 // ============================================================================
 
-// We mock validateDirectory so tests don't need a real .spec-gen/config.json.
+// We mock validateDirectory so tests don't need a real .openlore/config.json.
 // loadMappingIndex is kept as the real implementation (it gracefully returns null if file absent).
 vi.mock('./utils.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./utils.js')>();
@@ -142,7 +142,7 @@ describe('handleListSpecDomains', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-semantic-test-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-semantic-test-'));
   });
 
   it('returns empty domains when openspec/specs/ does not exist', async () => {
@@ -187,7 +187,7 @@ describe('handleSearchSpecs', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-search-specs-test-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-search-specs-test-'));
   });
 
   it('returns an error object when no spec index exists', async () => {
@@ -215,7 +215,7 @@ describe('handleGetSpec', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-get-spec-test-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-get-spec-test-'));
   });
 
   it('returns error when domain spec file does not exist', async () => {
@@ -246,7 +246,7 @@ describe('handleSearchCode', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-search-code-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-search-code-'));
   });
 
   it('returns error when no vector index exists', async () => {
@@ -295,7 +295,7 @@ describe('handleSuggestInsertionPoints', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-insertion-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-insertion-'));
   });
 
   it('returns error when no vector index exists', async () => {
@@ -336,7 +336,7 @@ describe('handleSearchSpecs — success path', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-search-specs-success-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-search-specs-success-'));
   });
 
   it('returns error when no embedding config exists (spec index found but no embedSvc)', async () => {
@@ -359,9 +359,9 @@ describe('handleSearchSpecs — success path', () => {
   });
 
   it('returns error when cfg exists but fromConfig returns null', async () => {
-    // Create minimal .spec-gen/config.json so readSpecGenConfig returns a config
-    await mkdir(join(tmpDir, '.spec-gen'), { recursive: true });
-    await writeFile(join(tmpDir, '.spec-gen', 'config.json'), JSON.stringify({ version: '1' }), 'utf-8');
+    // Create minimal .openlore/config.json so readOpenLoreConfig returns a config
+    await mkdir(join(tmpDir, '.openlore'), { recursive: true });
+    await writeFile(join(tmpDir, '.openlore', 'config.json'), JSON.stringify({ version: '1' }), 'utf-8');
 
     vi.doMock('../../analyzer/spec-vector-index.js', () => ({
       SpecVectorIndex: {
@@ -390,7 +390,7 @@ describe('handleSearchCode — success paths', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-search-code-success-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-search-code-success-'));
   });
 
   it('returns results with hybrid searchMode when embedding service available', async () => {
@@ -451,7 +451,7 @@ describe('handleSearchCode — success paths', () => {
       },
     });
     {
-      const analysisDir = join(tmpDir, '.spec-gen', 'analysis');
+      const analysisDir = join(tmpDir, '.openlore', 'analysis');
       const store = EdgeStore.open(EdgeStore.dbPath(analysisDir));
       store.insertNodes([
         { id: 'src/a.ts::doA', name: 'doA', filePath: 'src/a.ts', language: 'TypeScript', fanIn: 1, fanOut: 0, isAsync: false, startIndex: 0, endIndex: 100 },
@@ -510,7 +510,7 @@ describe('handleSuggestInsertionPoints — success paths', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-insertion-success-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-insertion-success-'));
   });
 
   it('returns ranked candidates with correct roles and strategies', async () => {
@@ -590,7 +590,7 @@ describe('handleSuggestInsertionPoints — success paths', () => {
       },
     });
     {
-      const analysisDir = join(tmpDir, '.spec-gen', 'analysis');
+      const analysisDir = join(tmpDir, '.openlore', 'analysis');
       const store = EdgeStore.open(EdgeStore.dbPath(analysisDir));
       store.insertNodes([
         { id: 'seed::fn', name: 'seedFn', filePath: 'src/seed.ts', language: 'TypeScript', fanIn: 1, fanOut: 0, isAsync: false, startIndex: 0, endIndex: 100 },
@@ -631,7 +631,7 @@ describe('handleSearchSpecs — success path', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-search-specs-ok-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-search-specs-ok-'));
   });
 
   it('returns formatted spec results', async () => {
@@ -689,7 +689,7 @@ describe('handleGetSpec — with mapping', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-get-spec-mapping-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-get-spec-mapping-'));
   });
 
   it('returns linkedFunctions when mapping.json covers the domain', async () => {
@@ -723,7 +723,7 @@ describe('handleSearchCode — edgeStore fast path', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'semantic-edgestore-test-'));
-    const analysisDir = join(tmpDir, '.spec-gen', 'analysis');
+    const analysisDir = join(tmpDir, '.openlore', 'analysis');
     rmSync(analysisDir, { recursive: true, force: true });
     mkdirSync(analysisDir, { recursive: true });
     // Write minimal llm-context.json (no callGraph — edgeStore is the only source)
@@ -769,7 +769,7 @@ describe('handleSuggestInsertionPoints — edgeStore RIG-13 fast path', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'semantic-suggest-edgestore-test-'));
-    const analysisDir = join(tmpDir, '.spec-gen', 'analysis');
+    const analysisDir = join(tmpDir, '.openlore', 'analysis');
     mkdirSync(analysisDir, { recursive: true });
     writeFileSync(
       join(analysisDir, 'llm-context.json'),
