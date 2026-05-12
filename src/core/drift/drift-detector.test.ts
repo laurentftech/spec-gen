@@ -97,8 +97,8 @@ describe('isSpecRelevantChange', () => {
     expect(isSpecRelevantChange(file)).toBe(false);
   });
 
-  it('should skip .spec-gen directory changes', () => {
-    const file = makeChangedFile({ path: '.spec-gen/analysis/data.json' });
+  it('should skip .openlore directory changes', () => {
+    const file = makeChangedFile({ path: '.openlore/analysis/data.json' });
     expect(isSpecRelevantChange(file)).toBe(false);
   });
 

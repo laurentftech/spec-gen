@@ -54,7 +54,7 @@ function makeCallGraph(): SerializedCallGraph {
 
 async function setupProject(ctx: LLMContext): Promise<{ rootPath: string; outputPath: string; contextPath: string }> {
   const rootPath = await mkdtemp(join(tmpdir(), 'mcp-watcher-test-'));
-  const outputPath = join(rootPath, '.spec-gen', 'analysis');
+  const outputPath = join(rootPath, '.openlore', 'analysis');
   await mkdir(outputPath, { recursive: true });
   const contextPath = join(outputPath, 'llm-context.json');
   await writeFile(contextPath, JSON.stringify(ctx, null, 2), 'utf-8');
@@ -222,7 +222,7 @@ describe('McpWatcher.handleChange', () => {
 
   it('warns to stderr and does not throw when llm-context.json is missing', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'mcp-watcher-missing-'));
-    const outputPath = join(rootPath, '.spec-gen', 'analysis');
+    const outputPath = join(rootPath, '.openlore', 'analysis');
     // Do NOT create outputPath — simulate analyze never having been run
 
     const srcFile = join(rootPath, 'foo.ts');
@@ -236,7 +236,7 @@ describe('McpWatcher.handleChange', () => {
 
   it('warns to stderr and does not throw when llm-context.json is corrupted', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'mcp-watcher-corrupt-'));
-    const outputPath = join(rootPath, '.spec-gen', 'analysis');
+    const outputPath = join(rootPath, '.openlore', 'analysis');
     await mkdir(outputPath, { recursive: true });
     await writeFile(join(outputPath, 'llm-context.json'), '{ invalid json !!!', 'utf-8');
 
@@ -343,7 +343,7 @@ describe('McpWatcher.reEmbed', () => {
       },
     }));
     vi.doMock('./config-manager.js', () => ({
-      readSpecGenConfig: vi.fn().mockResolvedValue(null),
+      readOpenLoreConfig: vi.fn().mockResolvedValue(null),
     }));
 
     const srcFile = join(rootPath, 'index.ts');
@@ -376,7 +376,7 @@ describe('McpWatcher.reEmbed', () => {
       },
     }));
     vi.doMock('./config-manager.js', () => ({
-      readSpecGenConfig: vi.fn().mockResolvedValue(null),
+      readOpenLoreConfig: vi.fn().mockResolvedValue(null),
     }));
 
     const srcFile = join(rootPath, 'index.ts');
@@ -419,7 +419,7 @@ describe('McpWatcher.reEmbed', () => {
       },
     }));
     vi.doMock('./config-manager.js', () => ({
-      readSpecGenConfig: vi.fn().mockResolvedValue(null),
+      readOpenLoreConfig: vi.fn().mockResolvedValue(null),
     }));
 
     const srcFile = join(rootPath, 'index.ts');

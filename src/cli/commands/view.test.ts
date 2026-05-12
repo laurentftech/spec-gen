@@ -1,5 +1,5 @@
 /**
- * Tests for spec-gen view command
+ * Tests for openlore view command
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -83,7 +83,7 @@ describe('view command', () => {
     it('should have --analysis option with default', () => {
       const opt = viewCommand.options.find(o => o.long === '--analysis');
       expect(opt).toBeDefined();
-      expect(opt?.defaultValue).toContain('.spec-gen');
+      expect(opt?.defaultValue).toContain('.openlore');
       expect(opt?.defaultValue).toContain('analysis');
     });
 
@@ -170,7 +170,7 @@ describe('view command', () => {
     it('analysis default should not be a raw hardcoded string', () => {
       const opt = viewCommand.options.find(o => o.long === '--analysis');
       // Should reference the actual computed path, not a raw literal
-      expect(opt?.defaultValue).toMatch(/\.spec-gen.analysis/);
+      expect(opt?.defaultValue).toMatch(/\.openlore.analysis/);
     });
 
     it('spec default should not be a raw hardcoded string', () => {

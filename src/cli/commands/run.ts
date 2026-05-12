@@ -1,5 +1,5 @@
 /**
- * spec-gen run command (default pipeline)
+ * openlore run command (default pipeline)
  *
  * Runs the full pipeline: init → analyze → generate in sequence.
  * Smart defaults skip unnecessary steps and detect existing setups.
@@ -14,12 +14,12 @@ import {
   ANALYSIS_REUSE_THRESHOLD_MS,
   DEFAULT_MAX_FILES,
   DEFAULT_ANTHROPIC_MODEL,
-  SPEC_GEN_DIR,
-  SPEC_GEN_ANALYSIS_SUBDIR,
-  SPEC_GEN_LOGS_SUBDIR,
-  SPEC_GEN_CONFIG_REL_PATH,
-  SPEC_GEN_GENERATION_SUBDIR,
-  SPEC_GEN_RUNS_SUBDIR,
+  OPENLORE_DIR,
+  OPENLORE_ANALYSIS_SUBDIR,
+  OPENLORE_LOGS_SUBDIR,
+  OPENLORE_CONFIG_REL_PATH,
+  OPENLORE_GENERATION_SUBDIR,
+  OPENLORE_RUNS_SUBDIR,
   DEFAULT_OPENSPEC_PATH,
   ARTIFACT_REPO_STRUCTURE,
   ARTIFACT_LLM_CONTEXT,
@@ -34,9 +34,9 @@ import {
 } from '../../core/services/project-detector.js';
 import {
   getDefaultConfig,
-  readSpecGenConfig,
-  writeSpecGenConfig,
-  specGenConfigExists,
+  readOpenLoreConfig,
+  writeOpenLoreConfig,
+  openloreConfigExists,
   openspecDirExists,
   createOpenSpecStructure,
 } from '../../core/services/config-manager.js';
@@ -145,7 +145,7 @@ async function loadAnalysis(analysisPath: string): Promise<{
  * Save run metadata
  */
 async function saveRunMetadata(rootPath: string, metadata: RunMetadata): Promise<void> {
-  const runsDir = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_RUNS_SUBDIR);
+  const runsDir = join(rootPath, OPENLORE_DIR, OPENLORE_RUNS_SUBDIR);
   await mkdir(runsDir, { recursive: true });
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -161,7 +161,7 @@ async function saveRunMetadata(rootPath: string, metadata: RunMetadata): Promise
  * Display the pipeline banner
  */
 function displayBanner(projectName: string, projectType: string, rootPath: string): void {
-  const versionLabel = `spec-gen v${PKG_VERSION}`;
+  const versionLabel = `openlore v${PKG_VERSION}`;
   const title = `${versionLabel} — OpenSpec Reverse Engineering Tool`;
   const width = Math.max(53, title.length + 4);
   const pad = (s: string) => s + ' '.repeat(width - s.length - 2);
@@ -186,7 +186,7 @@ function displayCompletionBanner(): void {
   console.log('│                                                      │');
   console.log('│  Review your specs:  openspec list --specs          │');
   console.log('│  Validate structure: openspec validate --all        │');
-  console.log('│  Test accuracy:      spec-gen verify                │');
+  console.log('│  Test accuracy:      openlore verify                │');
   console.log('│  Start a change:     openspec change my-feature     │');
   console.log('╰─────────────────────────────────────────────────────╯');
   console.log('');
@@ -197,7 +197,7 @@ function displayCompletionBanner(): void {
 // ============================================================================
 
 export const runCommand = new Command('run')
-  .description('Run the full spec-gen pipeline (init → analyze → generate)')
+  .description('Run the full openlore pipeline (init → analyze → generate)')
   .option(
     '--force',
     'Reinitialize even if config exists',
@@ -237,21 +237,21 @@ export const runCommand = new Command('run')
     'after',
     `
 Examples:
-  $ spec-gen run                     Run full pipeline with smart defaults
-  $ spec-gen run --force             Reinitialize and re-analyze
-  $ spec-gen run --reanalyze         Force fresh analysis
-  $ spec-gen run --model claude-opus-4-20250514
+  $ openlore run                     Run full pipeline with smart defaults
+  $ openlore run --force             Reinitialize and re-analyze
+  $ openlore run --reanalyze         Force fresh analysis
+  $ openlore run --model claude-opus-4-20250514
                                      Use a different model
-  $ spec-gen run --dry-run           Preview what would happen
-  $ spec-gen run -y                  Skip all prompts
+  $ openlore run --dry-run           Preview what would happen
+  $ openlore run -y                  Skip all prompts
 
 Smart Defaults:
-  - Skips init if .spec-gen/config.json exists
+  - Skips init if .openlore/config.json exists
   - Skips analyze if recent analysis exists (< 1 hour old)
   - Always runs generate (the main purpose)
   - Detects and works with existing openspec/ setup
 
-The pipeline saves run metadata to .spec-gen/runs/ for tracking.
+The pipeline saves run metadata to .openlore/runs/ for tracking.
 `
   )
   .action(async function (this: Command, options: Partial<RunOptions>) {
@@ -311,22 +311,22 @@ The pipeline saves run metadata to .spec-gen/runs/ for tracking.
       // ========================================================================
       console.log('[Step 1/3] Initialization');
 
-      const configExists = await specGenConfigExists(rootPath);
-      let specGenConfig = configExists ? await readSpecGenConfig(rootPath) : null;
+      const configExists = await openloreConfigExists(rootPath);
+      let openloreConfig = configExists ? await readOpenLoreConfig(rootPath) : null;
 
       if (configExists && !opts.force) {
-        console.log(`   ✓ Configuration exists (${SPEC_GEN_CONFIG_REL_PATH})`);
+        console.log(`   ✓ Configuration exists (${OPENLORE_CONFIG_REL_PATH})`);
         metadata.steps.init = { status: 'skipped', reason: 'Config exists' };
       } else {
         if (opts.dryRun) {
-          console.log(`   → Would create ${SPEC_GEN_CONFIG_REL_PATH}`);
+          console.log(`   → Would create ${OPENLORE_CONFIG_REL_PATH}`);
           console.log(`   → Would detect project type: ${projectTypeName}`);
         } else {
           // Create config
           const openspecPath = DEFAULT_OPENSPEC_PATH;
-          specGenConfig = getDefaultConfig(detection.projectType, openspecPath);
-          await writeSpecGenConfig(rootPath, specGenConfig);
-          console.log(`   ✓ Created ${SPEC_GEN_CONFIG_REL_PATH}`);
+          openloreConfig = getDefaultConfig(detection.projectType, openspecPath);
+          await writeOpenLoreConfig(rootPath, openloreConfig);
+          console.log(`   ✓ Created ${OPENLORE_CONFIG_REL_PATH}`);
 
           // Create openspec directory if needed
           const fullOpenspecPath = join(rootPath, openspecPath);
@@ -340,10 +340,10 @@ The pipeline saves run metadata to .spec-gen/runs/ for tracking.
           // Update gitignore
           const hasGitignore = await gitignoreExists(rootPath);
           if (hasGitignore) {
-            const alreadyIgnored = await isInGitignore(rootPath, `${SPEC_GEN_DIR}/`);
+            const alreadyIgnored = await isInGitignore(rootPath, `${OPENLORE_DIR}/`);
             if (!alreadyIgnored) {
-              await addToGitignore(rootPath, `${SPEC_GEN_DIR}/`, 'spec-gen analysis artifacts');
-              console.log(`   ✓ Added ${SPEC_GEN_DIR}/ to .gitignore`);
+              await addToGitignore(rootPath, `${OPENLORE_DIR}/`, 'openlore analysis artifacts');
+              console.log(`   ✓ Added ${OPENLORE_DIR}/ to .gitignore`);
             }
           }
 
@@ -352,15 +352,15 @@ The pipeline saves run metadata to .spec-gen/runs/ for tracking.
       }
 
       // Ensure we have config
-      if (!specGenConfig && !opts.dryRun) {
-        specGenConfig = await readSpecGenConfig(rootPath);
-        if (!specGenConfig) {
+      if (!openloreConfig && !opts.dryRun) {
+        openloreConfig = await readOpenLoreConfig(rootPath);
+        if (!openloreConfig) {
           throw new Error('Failed to load configuration');
         }
       }
 
       // Check openspec directory
-      const openspecPath = specGenConfig?.openspecPath ?? DEFAULT_OPENSPEC_PATH;
+      const openspecPath = openloreConfig?.openspecPath ?? DEFAULT_OPENSPEC_PATH;
       const fullOpenspecPath = join(rootPath, openspecPath);
       if (await openspecDirExists(fullOpenspecPath)) {
         console.log(`   ✓ OpenSpec directory exists (${openspecPath})`);
@@ -373,7 +373,7 @@ The pipeline saves run metadata to .spec-gen/runs/ for tracking.
       // ========================================================================
       console.log('[Step 2/3] Analysis');
 
-      const analysisPath = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+      const analysisPath = join(rootPath, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
       const analysisAge = await getAnalysisAge(analysisPath);
 
       let analysisData: {
@@ -446,7 +446,7 @@ The pipeline saves run metadata to .spec-gen/runs/ for tracking.
       }
 
       // Check for API key
-      const resolved = resolveLLMProvider(specGenConfig ?? undefined);
+      const resolved = resolveLLMProvider(openloreConfig ?? undefined);
       if (!resolved) {
         console.log('   ✗ No LLM API key found');
         console.log('');
@@ -508,11 +508,11 @@ The pipeline saves run metadata to .spec-gen/runs/ for tracking.
           provider: resolved.provider,
           openaiCompatBaseUrl: resolved.openaiCompatBaseUrl,
           model: opts.model,
-          apiBase: globalOpts.apiBase ?? specGenConfig?.llm?.apiBase,
-          sslVerify: globalOpts.insecure != null ? !globalOpts.insecure : specGenConfig?.llm?.sslVerify ?? true,
-          timeout: globalOpts.timeout ?? specGenConfig?.generation?.timeout,
+          apiBase: globalOpts.apiBase ?? openloreConfig?.llm?.apiBase,
+          sslVerify: globalOpts.insecure != null ? !globalOpts.insecure : openloreConfig?.llm?.sslVerify ?? true,
+          timeout: globalOpts.timeout ?? openloreConfig?.generation?.timeout,
           enableLogging: true,
-          logDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_LOGS_SUBDIR),
+          logDir: join(rootPath, OPENLORE_DIR, OPENLORE_LOGS_SUBDIR),
         });
       } catch (error) {
         throw new Error(`Failed to create LLM service: ${(error as Error).message}`);
@@ -523,7 +523,7 @@ The pipeline saves run metadata to .spec-gen/runs/ for tracking.
 
       // Run generation pipeline
       const pipeline = new SpecGenerationPipeline(llm, {
-        outputDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_GENERATION_SUBDIR),
+        outputDir: join(rootPath, OPENLORE_DIR, OPENLORE_GENERATION_SUBDIR),
         saveIntermediate: true,
         generateADRs: opts.adr,
       });
@@ -557,7 +557,7 @@ The pipeline saves run metadata to .spec-gen/runs/ for tracking.
       console.log('   Writing OpenSpec specifications...');
 
       const formatGenerator = new OpenSpecFormatGenerator({
-        version: specGenConfig?.version ?? '1.0.0',
+        version: openloreConfig?.version ?? '1.0.0',
         includeConfidence: true,
         includeTechnicalNotes: true,
       });
@@ -567,7 +567,7 @@ The pipeline saves run metadata to .spec-gen/runs/ for tracking.
       // Generate ADRs if requested
       if (opts.adr && pipelineResult.adrs && pipelineResult.adrs.length > 0) {
         const adrGenerator = new ADRGenerator({
-          version: specGenConfig?.version ?? '1.0.0',
+          version: openloreConfig?.version ?? '1.0.0',
           includeMermaid: true,
         });
         const adrSpecs = adrGenerator.generateADRs(pipelineResult);
@@ -577,7 +577,7 @@ The pipeline saves run metadata to .spec-gen/runs/ for tracking.
       const writer = new OpenSpecWriter({
         rootPath,
         writeMode: 'replace',
-        version: specGenConfig?.version ?? '1.0.0',
+        version: openloreConfig?.version ?? '1.0.0',
         createBackups: true,
         updateConfig: true,
         validateBeforeWrite: true,
@@ -614,7 +614,7 @@ The pipeline saves run metadata to .spec-gen/runs/ for tracking.
       const duration = Date.now() - startTime;
       metadata.duration = duration;
 
-      console.log(`   Full report: ${SPEC_GEN_DIR}/outputs/${ARTIFACT_GENERATION_REPORT}`);
+      console.log(`   Full report: ${OPENLORE_DIR}/outputs/${ARTIFACT_GENERATION_REPORT}`);
       console.log(`   Total time: ${formatDuration(duration)}`);
       console.log('');
 

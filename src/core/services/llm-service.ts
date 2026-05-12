@@ -26,8 +26,8 @@ import {
   DEFAULT_LLM_TIMEOUT_MS,
   DEFAULT_LLM_COST_WARNING_THRESHOLD,
   CONTEXT_LIMIT_WARNING_RATIO,
-  SPEC_GEN_DIR,
-  SPEC_GEN_LOGS_SUBDIR,
+  OPENLORE_DIR,
+  OPENLORE_LOGS_SUBDIR,
 } from '../../constants.js';
 
 // ============================================================================
@@ -335,7 +335,7 @@ function disableSslVerification(): void {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
   // Warn prominently: this is process-global and affects all fetch calls.
   console.warn(
-    '[spec-gen] WARNING: TLS certificate verification is DISABLED for this process.' +
+    '[openlore] WARNING: TLS certificate verification is DISABLED for this process.' +
     ' All HTTPS connections (including LLM API calls) are vulnerable to MITM attacks.' +
     ' Only use --insecure on trusted private networks with self-signed certificates.'
   );
@@ -475,7 +475,7 @@ const PRICING: Record<string, Record<string, { input: number; output: number }>>
     default: { input: 0, output: 0 },
   },
   'cursor-agent': {
-    // No per-token cost in spec-gen: Cursor subscription / CLI auth
+    // No per-token cost in openlore: Cursor subscription / CLI auth
     default: { input: 0, output: 0 },
   },
   copilot: {
@@ -1500,7 +1500,7 @@ export class LLMService {
       maxDelay: options.maxDelay ?? DEFAULT_LLM_MAX_DELAY_MS,
       timeout: options.timeout ?? DEFAULT_LLM_TIMEOUT_MS,
       costWarningThreshold: options.costWarningThreshold ?? DEFAULT_LLM_COST_WARNING_THRESHOLD,
-      logDir: options.logDir ?? `${SPEC_GEN_DIR}/${SPEC_GEN_LOGS_SUBDIR}`,
+      logDir: options.logDir ?? `${OPENLORE_DIR}/${OPENLORE_LOGS_SUBDIR}`,
       enableLogging: options.enableLogging ?? false,
       disableResponseFormat: options.disableResponseFormat ?? false,
     };

@@ -75,7 +75,7 @@ export interface ExtractFromDiffOptions {
 function isRelevantStagedFile(filePath: string): boolean {
   const ext = filePath.includes('.') ? filePath.slice(filePath.lastIndexOf('.')) : '';
   if (ext === '.md' || ext === '.txt' || ext === '.json' || ext === '.lock') return false;
-  if (filePath.startsWith('openspec/') || filePath.startsWith('.spec-gen/')) return false;
+  if (filePath.startsWith('openspec/') || filePath.startsWith('.openlore/')) return false;
   if (filePath.includes('.test.') || filePath.includes('.spec.') || filePath.includes('/__tests__/')) return false;
   if (filePath.includes('/dist/') || filePath.includes('/node_modules/')) return false;
   return true;

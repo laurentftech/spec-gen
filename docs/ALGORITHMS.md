@@ -1,6 +1,6 @@
-# spec-gen Algorithms
+# openlore Algorithms
 
-This document describes the key algorithms used in spec-gen for code analysis and specification generation.
+This document describes the key algorithms used in openlore for code analysis and specification generation.
 
 ## 1. File Significance Scoring
 

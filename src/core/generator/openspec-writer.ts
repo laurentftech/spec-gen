@@ -9,11 +9,11 @@ import { readFile, writeFile, mkdir, copyFile, readdir, rm } from 'node:fs/promi
 import { join, dirname, relative } from 'node:path';
 import logger from '../../utils/logger.js';
 import {
-  SPEC_GEN_DIR,
-  SPEC_GEN_ANALYSIS_SUBDIR,
-  SPEC_GEN_BACKUPS_SUBDIR,
-  SPEC_GEN_OUTPUTS_SUBDIR,
-  SPEC_GEN_LOGS_SUBDIR,
+  OPENLORE_DIR,
+  OPENLORE_ANALYSIS_SUBDIR,
+  OPENLORE_BACKUPS_SUBDIR,
+  OPENLORE_OUTPUTS_SUBDIR,
+  OPENLORE_LOGS_SUBDIR,
   OPENSPEC_DIR,
   OPENSPEC_SPECS_SUBDIR,
   OPENSPEC_DECISIONS_SUBDIR,
@@ -25,7 +25,7 @@ import {
   buildDetectedContext,
   normalizeDomainName,
   validateFullSpec,
-  type SpecGenMetadata,
+  type OpenLoreMetadata,
 } from './openspec-compat.js';
 import type { GeneratedSpec } from './openspec-format-generator.js';
 import type { ProjectSurveyResult } from './spec-pipeline.js';
@@ -76,7 +76,7 @@ export interface WriteResult {
 export interface GenerationReport {
   timestamp: string;
   openspecVersion: string;
-  specGenVersion: string;
+  openloreVersion: string;
   filesWritten: string[];
   filesSkipped: string[];
   filesBackedUp: string[];
@@ -98,14 +98,14 @@ export interface GenerationReport {
 export class OpenSpecWriter {
   private rootPath: string;
   private openspecRoot: string;
-  private specGenRoot: string;
+  private openloreRoot: string;
   private options: Required<OpenSpecWriterOptions>;
   private configManager: OpenSpecConfigManager;
 
   constructor(options: OpenSpecWriterOptions) {
     this.rootPath = options.rootPath;
     this.openspecRoot = join(options.rootPath, OPENSPEC_DIR);
-    this.specGenRoot = join(options.rootPath, SPEC_GEN_DIR);
+    this.openloreRoot = join(options.rootPath, OPENLORE_DIR);
     this.options = {
       rootPath: options.rootPath,
       writeMode: options.writeMode ?? 'replace',
@@ -127,11 +127,11 @@ export class OpenSpecWriter {
     await mkdir(join(this.openspecRoot, OPENSPEC_DECISIONS_SUBDIR), { recursive: true });
     await mkdir(join(this.openspecRoot, 'changes', 'archive'), { recursive: true });
 
-    // Create .spec-gen directory structure
-    await mkdir(join(this.specGenRoot, SPEC_GEN_ANALYSIS_SUBDIR), { recursive: true });
-    await mkdir(join(this.specGenRoot, SPEC_GEN_BACKUPS_SUBDIR), { recursive: true });
-    await mkdir(join(this.specGenRoot, SPEC_GEN_OUTPUTS_SUBDIR), { recursive: true });
-    await mkdir(join(this.specGenRoot, SPEC_GEN_LOGS_SUBDIR), { recursive: true });
+    // Create .openlore directory structure
+    await mkdir(join(this.openloreRoot, OPENLORE_ANALYSIS_SUBDIR), { recursive: true });
+    await mkdir(join(this.openloreRoot, OPENLORE_BACKUPS_SUBDIR), { recursive: true });
+    await mkdir(join(this.openloreRoot, OPENLORE_OUTPUTS_SUBDIR), { recursive: true });
+    await mkdir(join(this.openloreRoot, OPENLORE_LOGS_SUBDIR), { recursive: true });
 
     logger.success('Initialized OpenSpec directory structure');
   }
@@ -146,7 +146,7 @@ export class OpenSpecWriter {
     const report: GenerationReport = {
       timestamp: new Date().toISOString(),
       openspecVersion: await this.detectOpenSpecVersion(),
-      specGenVersion: this.options.version,
+      openloreVersion: this.options.version,
       filesWritten: [],
       filesSkipped: [],
       filesBackedUp: [],
@@ -176,7 +176,7 @@ export class OpenSpecWriter {
           // Backup before removing
           if (this.options.createBackups) {
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const backupDir = join(this.specGenRoot, 'backups', timestamp, OPENSPEC_SPECS_SUBDIR, entry.name);
+            const backupDir = join(this.openloreRoot, 'backups', timestamp, OPENSPEC_SPECS_SUBDIR, entry.name);
             await mkdir(backupDir, { recursive: true });
             const domainEntries = await readdir(domainDir);
             for (const f of domainEntries) {
@@ -365,7 +365,7 @@ export class OpenSpecWriter {
    */
   private async backupFile(fullPath: string, relativePath: string): Promise<string> {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupDir = join(this.specGenRoot, 'backups', timestamp);
+    const backupDir = join(this.openloreRoot, 'backups', timestamp);
     const backupPath = join(backupDir, relativePath);
 
     await mkdir(dirname(backupPath), { recursive: true });
@@ -376,14 +376,14 @@ export class OpenSpecWriter {
   }
 
   /**
-   * Update config.yaml with spec-gen metadata
+   * Update config.yaml with openlore metadata
    */
   private async updateConfig(specs: GeneratedSpec[], survey: ProjectSurveyResult): Promise<void> {
     const domains = specs
       .filter(s => s.type === 'domain')
       .map(s => normalizeDomainName(s.domain));
 
-    const metadata: SpecGenMetadata = {
+    const metadata: OpenLoreMetadata = {
       version: this.options.version,
       generatedAt: new Date().toISOString(),
       domains,
@@ -392,7 +392,7 @@ export class OpenSpecWriter {
 
     const detectedContext = buildDetectedContext(survey);
 
-    await this.configManager.updateWithSpecGenMetadata(metadata, detectedContext, {
+    await this.configManager.updateWithOpenLoreMetadata(metadata, detectedContext, {
       preserveUserContext: true,
       appendDetectedInfo: true,
       version: this.options.version,
@@ -423,7 +423,7 @@ export class OpenSpecWriter {
     if (report.filesWritten.length > 0 || report.filesMerged.length > 0) {
       steps.push("Review generated specs: openspec list --specs");
       steps.push("Validate structure: openspec validate --all");
-      steps.push("Test accuracy: spec-gen verify");
+      steps.push("Test accuracy: openlore verify");
     }
 
     if (report.filesSkipped.length > 0) {
@@ -440,10 +440,10 @@ export class OpenSpecWriter {
   }
 
   /**
-   * Save generation report to .spec-gen/outputs/
+   * Save generation report to .openlore/outputs/
    */
   private async saveReport(report: GenerationReport): Promise<void> {
-    const reportPath = join(this.specGenRoot, 'outputs', ARTIFACT_GENERATION_REPORT);
+    const reportPath = join(this.openloreRoot, 'outputs', ARTIFACT_GENERATION_REPORT);
     await mkdir(dirname(reportPath), { recursive: true });
     await writeFile(reportPath, JSON.stringify(report, null, 2), 'utf-8');
     logger.discovery(`Saved generation report to ${relative(this.rootPath, reportPath)}`);

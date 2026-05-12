@@ -1,25 +1,25 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  SpecGenError,
+  OpenLoreError,
   errors,
-  isSpecGenError,
+  isOpenLoreError,
   formatError,
   handleError,
 } from './errors.js';
 
-describe('SpecGenError', () => {
+describe('OpenLoreError', () => {
   describe('constructor', () => {
     it('should create error with code and message', () => {
-      const error = new SpecGenError('Test message', 'NO_API_KEY');
+      const error = new OpenLoreError('Test message', 'NO_API_KEY');
 
       expect(error.message).toBe('Test message');
       expect(error.code).toBe('NO_API_KEY');
       expect(error.suggestion).toBeUndefined();
-      expect(error.name).toBe('SpecGenError');
+      expect(error.name).toBe('OpenLoreError');
     });
 
     it('should create error with suggestion', () => {
-      const error = new SpecGenError(
+      const error = new OpenLoreError(
         'Test message',
         'NO_API_KEY',
         'Try this fix'
@@ -30,15 +30,15 @@ describe('SpecGenError', () => {
     });
 
     it('should be an instance of Error', () => {
-      const error = new SpecGenError('Test', 'UNKNOWN_ERROR');
+      const error = new OpenLoreError('Test', 'UNKNOWN_ERROR');
       expect(error).toBeInstanceOf(Error);
-      expect(error).toBeInstanceOf(SpecGenError);
+      expect(error).toBeInstanceOf(OpenLoreError);
     });
   });
 
   describe('format', () => {
     it('should format error with color', () => {
-      const error = new SpecGenError(
+      const error = new OpenLoreError(
         'Something went wrong',
         'ANALYSIS_FAILED',
         'Try this instead'
@@ -54,7 +54,7 @@ describe('SpecGenError', () => {
     });
 
     it('should format error without color', () => {
-      const error = new SpecGenError(
+      const error = new OpenLoreError(
         'Something went wrong',
         'ANALYSIS_FAILED',
         'Try this instead'
@@ -70,10 +70,10 @@ describe('SpecGenError', () => {
     });
 
     it('should include help link', () => {
-      const error = new SpecGenError('Test', 'UNKNOWN_ERROR');
+      const error = new OpenLoreError('Test', 'UNKNOWN_ERROR');
       const output = error.format(false);
 
-      expect(output).toContain('https://github.com/clay-good/spec-gen#readme');
+      expect(output).toContain('https://github.com/clay-good/openlore#readme');
     });
   });
 });
@@ -148,7 +148,7 @@ describe('error factory functions', () => {
 
       expect(error.code).toBe('OPENSPEC_VALIDATION_FAILED');
       expect(error.message).toContain('validation');
-      expect(error.suggestion).toContain('.spec-gen/logs/');
+      expect(error.suggestion).toContain('.openlore/logs/');
     });
 
     it('should include details when provided', () => {
@@ -174,7 +174,7 @@ describe('error factory functions', () => {
 
       expect(error.code).toBe('GENERATION_FAILED');
       expect(error.message).toContain('API timeout');
-      expect(error.suggestion).toContain('spec-gen analyze');
+      expect(error.suggestion).toContain('openlore analyze');
     });
   });
 
@@ -184,7 +184,7 @@ describe('error factory functions', () => {
 
       expect(error.code).toBe('VERIFICATION_FAILED');
       expect(error.message).toContain('No specs to verify');
-      expect(error.suggestion).toContain('spec-gen generate');
+      expect(error.suggestion).toContain('openlore generate');
     });
   });
 
@@ -194,7 +194,7 @@ describe('error factory functions', () => {
 
       expect(error.code).toBe('CONFIG_NOT_FOUND');
       expect(error.message).toContain('/path/config.json');
-      expect(error.suggestion).toContain('spec-gen init');
+      expect(error.suggestion).toContain('openlore init');
     });
   });
 
@@ -255,28 +255,28 @@ describe('error factory functions', () => {
   });
 });
 
-describe('isSpecGenError', () => {
-  it('should return true for SpecGenError', () => {
-    const error = new SpecGenError('Test', 'UNKNOWN_ERROR');
-    expect(isSpecGenError(error)).toBe(true);
+describe('isOpenLoreError', () => {
+  it('should return true for OpenLoreError', () => {
+    const error = new OpenLoreError('Test', 'UNKNOWN_ERROR');
+    expect(isOpenLoreError(error)).toBe(true);
   });
 
   it('should return false for regular Error', () => {
     const error = new Error('Test');
-    expect(isSpecGenError(error)).toBe(false);
+    expect(isOpenLoreError(error)).toBe(false);
   });
 
   it('should return false for non-errors', () => {
-    expect(isSpecGenError('test')).toBe(false);
-    expect(isSpecGenError(null)).toBe(false);
-    expect(isSpecGenError(undefined)).toBe(false);
-    expect(isSpecGenError({})).toBe(false);
+    expect(isOpenLoreError('test')).toBe(false);
+    expect(isOpenLoreError(null)).toBe(false);
+    expect(isOpenLoreError(undefined)).toBe(false);
+    expect(isOpenLoreError({})).toBe(false);
   });
 });
 
 describe('formatError', () => {
-  it('should format SpecGenError', () => {
-    const error = new SpecGenError('Test', 'ANALYSIS_FAILED', 'Fix it');
+  it('should format OpenLoreError', () => {
+    const error = new OpenLoreError('Test', 'ANALYSIS_FAILED', 'Fix it');
     const output = formatError(error, false);
 
     expect(output).toContain('Error [ANALYSIS_FAILED]:');
@@ -312,7 +312,7 @@ describe('handleError', () => {
   });
 
   it('should log error and exit by default', () => {
-    const error = new SpecGenError('Test', 'ANALYSIS_FAILED');
+    const error = new OpenLoreError('Test', 'ANALYSIS_FAILED');
 
     expect(() => handleError(error)).toThrow('process.exit called');
     expect(console.error).toHaveBeenCalled();
@@ -320,7 +320,7 @@ describe('handleError', () => {
   });
 
   it('should not exit when exit=false', () => {
-    const error = new SpecGenError('Test', 'ANALYSIS_FAILED');
+    const error = new OpenLoreError('Test', 'ANALYSIS_FAILED');
 
     handleError(error, false);
 

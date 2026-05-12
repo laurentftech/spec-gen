@@ -12,7 +12,7 @@ describe('RepositoryMapper', () => {
   let testDir: string;
 
   beforeEach(async () => {
-    testDir = join(tmpdir(), `spec-gen-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    testDir = join(tmpdir(), `openlore-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     await mkdir(testDir, { recursive: true });
   });
 
@@ -303,7 +303,7 @@ describe('RepositoryMapper', () => {
     it('should write repository-map.json', async () => {
       await writeFile(join(testDir, 'app.ts'), 'export const x = 1;');
 
-      const outputDir = join(testDir, '.spec-gen', 'analysis');
+      const outputDir = join(testDir, '.openlore', 'analysis');
       const mapper = new RepositoryMapper(testDir, { outputDir });
       const map = await mapper.map();
       await mapper.writeOutput(map);
@@ -320,7 +320,7 @@ describe('RepositoryMapper', () => {
     it('should write SUMMARY.md', async () => {
       await writeFile(join(testDir, 'app.ts'), 'export const x = 1;');
 
-      const outputDir = join(testDir, '.spec-gen', 'analysis');
+      const outputDir = join(testDir, '.openlore', 'analysis');
       const mapper = new RepositoryMapper(testDir, { outputDir });
       const map = await mapper.map();
       await mapper.writeOutput(map);
@@ -343,7 +343,7 @@ describe('RepositoryMapper', () => {
       await writeFile(join(testDir, 'app.ts'), 'export const x = 1;');
 
       const map = await mapRepository(testDir, {
-        outputDir: join(testDir, '.spec-gen', 'analysis'),
+        outputDir: join(testDir, '.openlore', 'analysis'),
       });
 
       expect(map.metadata.projectName).toBe('convenience-test');

@@ -1,5 +1,5 @@
 /**
- * Standardized logging interface for spec-gen
+ * Standardized logging interface for openlore
  *
  * Provides semantic log levels with specific visual treatments:
  * - DISCOVERY: Finding files, detecting patterns, scanning directories

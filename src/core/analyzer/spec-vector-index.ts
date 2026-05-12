@@ -59,7 +59,7 @@ export interface SpecSearchResult {
 const DB_FOLDER = 'vector-index';
 const TABLE_NAME = 'specs';
 
-// Mapping entry shape from .spec-gen/analysis/mapping.json
+// Mapping entry shape from .openlore/analysis/mapping.json
 interface MappingEntry {
   requirement: string;
   service?: string;
@@ -256,7 +256,7 @@ export class SpecVectorIndex {
    * Discover all spec.md files under specsDir, parse them, enrich with mapping,
    * embed, and write to LanceDB table "specs".
    *
-   * @param outputDir  Path to .spec-gen/analysis/
+   * @param outputDir  Path to .openlore/analysis/
    * @param specsDir   Path to openspec/specs/ (or any directory containing domain/spec.md files)
    * @param mappingJsonPath  Path to mapping.json (optional -- no enrichment if absent)
    */
@@ -371,7 +371,7 @@ export class SpecVectorIndex {
     const { limit = 10, domain, section } = opts;
 
     if (!SpecVectorIndex.exists(outputDir)) {
-      throw new Error('No spec index found. Run "spec-gen analyze --embed" or "spec-gen analyze --reindex-specs" first.');
+      throw new Error('No spec index found. Run "openlore analyze --embed" or "openlore analyze --reindex-specs" first.');
     }
 
     const [queryVector] = await embedSvc.embed([query]);

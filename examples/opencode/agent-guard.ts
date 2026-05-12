@@ -1,7 +1,7 @@
 /**
- * spec-gen Agent Guard — OpenCode plugin
+ * openlore Agent Guard — OpenCode plugin
  *
- * Install: spec-gen setup --tools opencode
+ * Install: openlore setup --tools opencode
  * (copies to .opencode/plugins/ — auto-loaded by OpenCode)
  *
  * What it does:
@@ -17,7 +17,7 @@
  *      tool description so the model uses the right domain names.
  *
  * Consolidation is NOT the plugin's responsibility.
- * The record_decision MCP handler spawns `spec-gen decisions --consolidate` in the
+ * The record_decision MCP handler spawns `openlore decisions --consolidate` in the
  * background automatically after saving each draft. By commit time, decisions are
  * already consolidated — the pre-commit gate does no LLM work and is instant.
  */
@@ -38,7 +38,7 @@ interface PendingDecision {
 
 async function loadPendingDecisions(directory: string): Promise<PendingDecision[]> {
   try {
-    const raw = await readFile(join(directory, ".spec-gen", "decisions", "pending.json"), "utf-8")
+    const raw = await readFile(join(directory, ".openlore", "decisions", "pending.json"), "utf-8")
     const store = JSON.parse(raw)
     return (store.decisions ?? []).filter(
       (d: PendingDecision) => !["synced", "rejected"].includes(d.status),
@@ -69,7 +69,7 @@ function spawnAnalyze(directory: string): void {
   if (now - lastAnalyzeMs < ANALYZE_DEBOUNCE_MS) return
   lastAnalyzeMs = now
   // Fire-and-forget: detached + unref so it survives plugin process exit.
-  const child = spawn("spec-gen", ["analyze", "--output", ".spec-gen/analysis"], {
+  const child = spawn("openlore", ["analyze", "--output", ".openlore/analysis"], {
     detached: true,
     stdio: "ignore",
     cwd: directory,
@@ -126,7 +126,7 @@ export const AgentGuard: Plugin = async ({ directory }) => {
       const file: string = args?.filePath ?? args?.path ?? ""
       if (STRUCTURAL.test(file) && !rdCalled.get(sessionID)) {
         output.output +=
-          "\n\n[spec-gen] Structural file modified. " +
+          "\n\n[openlore] Structural file modified. " +
           "Consider calling record_decision before continuing."
       }
 

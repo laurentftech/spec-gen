@@ -45,7 +45,7 @@ Only discard decisions that are ALL of:
 - AND already obvious from the surrounding code without explanation
 - AND recorded no rationale beyond "follow existing patterns"
 
-Good examples: "Move hook installation from decisions to setup command", "Use system prompt injection instead of tool-output blocking for completion guard", "Prefer local dist/cli/index.js over global spec-gen in pre-commit hook"
+Good examples: "Move hook installation from decisions to setup command", "Use system prompt injection instead of tool-output blocking for completion guard", "Prefer local dist/cli/index.js over global openlore in pre-commit hook"
 Bad examples: "Use TypeScript interfaces for type safety", "Add error handling", "Follow existing service pattern"
 
 SCOPE CLASSIFICATION (required):

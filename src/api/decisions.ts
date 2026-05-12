@@ -1,5 +1,5 @@
 /**
- * spec-gen decisions — programmatic API
+ * openlore decisions — programmatic API
  *
  * Record, consolidate, and sync architectural decisions.
  * No side effects (no process.exit, no console.log).
@@ -7,15 +7,15 @@
 
 import { join } from 'node:path';
 import {
-  SPEC_GEN_DIR,
-  SPEC_GEN_LOGS_SUBDIR,
+  OPENLORE_DIR,
+  OPENLORE_LOGS_SUBDIR,
   OPENSPEC_DIR,
   OPENSPEC_SPECS_SUBDIR,
   DECISIONS_EXTRACTION_MAX_FILES,
   DECISIONS_DIFF_MAX_CHARS,
 } from '../constants.js';
 import { fileExists } from '../utils/command-helpers.js';
-import { readSpecGenConfig } from '../core/services/config-manager.js';
+import { readOpenLoreConfig } from '../core/services/config-manager.js';
 import { createLLMService } from '../core/services/llm-service.js';
 import { isGitRepository, getChangedFiles, getFileDiff, getCommitMessages, resolveBaseRef, buildSpecMap } from '../core/drift/index.js';
 import {
@@ -79,7 +79,7 @@ export interface ConsolidateResult {
  * Called by agents during development (via MCP or directly).
  * Returns the ID of the recorded decision.
  */
-export async function specGenRecordDecision(options: RecordDecisionOptions): Promise<{ id: string }> {
+export async function openloreRecordDecision(options: RecordDecisionOptions): Promise<{ id: string }> {
   const rootPath = options.rootPath ?? process.cwd();
   const store = await loadDecisionStore(rootPath);
 
@@ -116,14 +116,14 @@ export async function specGenRecordDecision(options: RecordDecisionOptions): Pro
  * Consolidate draft decisions via LLM, then cross-verify against git diff.
  * Returns verified, phantom, and missing decision sets.
  */
-export async function specGenConsolidateDecisions(
+export async function openloreConsolidateDecisions(
   options: ConsolidateOptions = {},
 ): Promise<ConsolidateResult> {
   const rootPath = options.rootPath ?? process.cwd();
   const { onProgress } = options;
 
-  const specGenConfig = await readSpecGenConfig(rootPath);
-  if (!specGenConfig) throw new Error('No spec-gen configuration found. Run specGenInit() first.');
+  const openloreConfig = await readOpenLoreConfig(rootPath);
+  if (!openloreConfig) throw new Error('No openlore configuration found. Run openloreInit() first.');
 
   const providerEnv =
     process.env.ANTHROPIC_API_KEY ? 'anthropic' :
@@ -131,21 +131,21 @@ export async function specGenConsolidateDecisions(
     process.env.OPENAI_COMPAT_API_KEY ? 'openai-compat' :
     process.env.OPENAI_API_KEY ? 'openai' : null;
 
-  const provider = (options.provider ?? specGenConfig.generation?.provider ?? providerEnv) as string | undefined;
+  const provider = (options.provider ?? openloreConfig.generation?.provider ?? providerEnv) as string | undefined;
   if (!provider) throw new Error('No LLM provider configured. Set an API key or configure generation.provider.');
 
   const llm = createLLMService({
     provider: provider as ProviderName,
-    model: options.model ?? specGenConfig.generation?.model,
-    apiBase: options.apiBase ?? specGenConfig.llm?.apiBase,
-    sslVerify: options.sslVerify ?? specGenConfig.llm?.sslVerify ?? true,
+    model: options.model ?? openloreConfig.generation?.model,
+    apiBase: options.apiBase ?? openloreConfig.llm?.apiBase,
+    sslVerify: options.sslVerify ?? openloreConfig.llm?.sslVerify ?? true,
     enableLogging: true,
-    logDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_LOGS_SUBDIR),
+    logDir: join(rootPath, OPENLORE_DIR, OPENLORE_LOGS_SUBDIR),
   });
 
   const store = await loadDecisionStore(rootPath);
 
-  const openspecPath = join(rootPath, specGenConfig.openspecPath ?? OPENSPEC_DIR);
+  const openspecPath = join(rootPath, openloreConfig.openspecPath ?? OPENSPEC_DIR);
   const specMap = await buildSpecMap({ rootPath, openspecPath }).catch(() => undefined);
 
   progress(onProgress, 'Consolidating drafts', 'start');
@@ -199,18 +199,18 @@ export async function specGenConsolidateDecisions(
 /**
  * Sync all approved decisions into spec.md files and create ADRs.
  */
-export async function specGenSyncDecisions(
+export async function openloreSyncDecisions(
   options: SyncDecisionsOptions = {},
 ): Promise<SyncResult> {
   const rootPath = options.rootPath ?? process.cwd();
   const { onProgress } = options;
 
-  const specGenConfig = await readSpecGenConfig(rootPath);
-  if (!specGenConfig) throw new Error('No spec-gen configuration found.');
+  const openloreConfig = await readOpenLoreConfig(rootPath);
+  if (!openloreConfig) throw new Error('No openlore configuration found.');
 
-  const openspecPath = join(rootPath, specGenConfig.openspecPath ?? OPENSPEC_DIR);
+  const openspecPath = join(rootPath, openloreConfig.openspecPath ?? OPENSPEC_DIR);
   const specsPath = join(openspecPath, OPENSPEC_SPECS_SUBDIR);
-  if (!(await fileExists(specsPath))) throw new Error('No specs found. Run specGenGenerate() first.');
+  if (!(await fileExists(specsPath))) throw new Error('No specs found. Run openloreGenerate() first.');
 
   const specMap = await buildSpecMap({ rootPath, openspecPath });
   let store = await loadDecisionStore(rootPath);

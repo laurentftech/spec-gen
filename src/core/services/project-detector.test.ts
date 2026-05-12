@@ -17,7 +17,7 @@ describe('project-detector', () => {
 
   beforeEach(async () => {
     // Create a unique temp directory for each test
-    testDir = join(tmpdir(), `spec-gen-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    testDir = join(tmpdir(), `openlore-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     await mkdir(testDir, { recursive: true });
   });
 

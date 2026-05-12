@@ -1,5 +1,5 @@
 /**
- * spec-gen run — programmatic API
+ * openlore run — programmatic API
  *
  * Runs the full pipeline: init → analyze → generate.
  * Smart defaults skip unnecessary steps.
@@ -8,7 +8,7 @@
 
 import { join } from 'node:path';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
-import { DEFAULT_MAX_FILES, DEFAULT_ANTHROPIC_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_COMPAT_MODEL, DEFAULT_COPILOT_MODEL, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, SPEC_GEN_LOGS_SUBDIR, SPEC_GEN_CONFIG_REL_PATH, SPEC_GEN_GENERATION_SUBDIR, SPEC_GEN_RUNS_SUBDIR, DEFAULT_OPENSPEC_PATH, ARTIFACT_REPO_STRUCTURE, ARTIFACT_DEPENDENCY_GRAPH, ARTIFACT_LLM_CONTEXT } from '../constants.js';
+import { DEFAULT_MAX_FILES, DEFAULT_ANTHROPIC_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_GEMINI_MODEL, DEFAULT_OPENAI_COMPAT_MODEL, DEFAULT_COPILOT_MODEL, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, OPENLORE_LOGS_SUBDIR, OPENLORE_CONFIG_REL_PATH, OPENLORE_GENERATION_SUBDIR, OPENLORE_RUNS_SUBDIR, DEFAULT_OPENSPEC_PATH, ARTIFACT_REPO_STRUCTURE, ARTIFACT_DEPENDENCY_GRAPH, ARTIFACT_LLM_CONTEXT } from '../constants.js';
 import { fileExists, readJsonFile } from '../utils/command-helpers.js';
 import { isCacheFresh } from '../core/services/mcp-handlers/utils.js';
 import {
@@ -17,9 +17,9 @@ import {
 } from '../core/services/project-detector.js';
 import {
   getDefaultConfig,
-  readSpecGenConfig,
-  writeSpecGenConfig,
-  specGenConfigExists,
+  readOpenLoreConfig,
+  writeOpenLoreConfig,
+  openloreConfigExists,
   openspecDirExists,
   createOpenSpecStructure,
 } from '../core/services/config-manager.js';
@@ -65,7 +65,7 @@ async function loadCachedArtifacts(
 }
 
 /**
- * Run the full spec-gen pipeline: init → analyze → generate.
+ * Run the full openlore pipeline: init → analyze → generate.
  *
  * Uses smart defaults to skip unnecessary steps (e.g., skips init
  * if config exists, skips analysis if recent).
@@ -73,7 +73,7 @@ async function loadCachedArtifacts(
  * @throws Error if no LLM API key found
  * @throws Error if pipeline fails
  */
-export async function specGenRun(options: RunApiOptions = {}): Promise<RunResult> {
+export async function openloreRun(options: RunApiOptions = {}): Promise<RunResult> {
   const startTime = Date.now();
   const rootPath = options.rootPath ?? process.cwd();
   const force = options.force ?? false;
@@ -91,21 +91,21 @@ export async function specGenRun(options: RunApiOptions = {}): Promise<RunResult
   const projectType = getProjectTypeName(detection.projectType);
 
   let initResult: InitResult;
-  const configExists = await specGenConfigExists(rootPath);
-  let specGenConfig = configExists ? await readSpecGenConfig(rootPath) : null;
+  const configExists = await openloreConfigExists(rootPath);
+  let openloreConfig = configExists ? await readOpenLoreConfig(rootPath) : null;
 
   if (configExists && !force) {
     initResult = {
-      configPath: SPEC_GEN_CONFIG_REL_PATH,
-      openspecPath: specGenConfig?.openspecPath ?? DEFAULT_OPENSPEC_PATH,
+      configPath: OPENLORE_CONFIG_REL_PATH,
+      openspecPath: openloreConfig?.openspecPath ?? DEFAULT_OPENSPEC_PATH,
       projectType,
       created: false,
     };
     progress(onProgress, 'Initialization', 'skip', 'Config exists');
   } else {
     const openspecPath = DEFAULT_OPENSPEC_PATH;
-    specGenConfig = getDefaultConfig(detection.projectType, openspecPath);
-    await writeSpecGenConfig(rootPath, specGenConfig);
+    openloreConfig = getDefaultConfig(detection.projectType, openspecPath);
+    await writeOpenLoreConfig(rootPath, openloreConfig);
 
     const fullOpenspecPath = join(rootPath, openspecPath);
     if (!(await openspecDirExists(fullOpenspecPath))) {
@@ -114,14 +114,14 @@ export async function specGenRun(options: RunApiOptions = {}): Promise<RunResult
 
     const hasGitignore = await gitignoreExists(rootPath);
     if (hasGitignore) {
-      const alreadyIgnored = await isInGitignore(rootPath, `${SPEC_GEN_DIR}/`);
+      const alreadyIgnored = await isInGitignore(rootPath, `${OPENLORE_DIR}/`);
       if (!alreadyIgnored) {
-        await addToGitignore(rootPath, `${SPEC_GEN_DIR}/`, 'spec-gen analysis artifacts');
+        await addToGitignore(rootPath, `${OPENLORE_DIR}/`, 'openlore analysis artifacts');
       }
     }
 
     initResult = {
-      configPath: SPEC_GEN_CONFIG_REL_PATH,
+      configPath: OPENLORE_CONFIG_REL_PATH,
       openspecPath: openspecPath,
       projectType,
       created: true,
@@ -130,9 +130,9 @@ export async function specGenRun(options: RunApiOptions = {}): Promise<RunResult
   }
 
   // Ensure we have config
-  if (!specGenConfig) {
-    specGenConfig = await readSpecGenConfig(rootPath);
-    if (!specGenConfig) {
+  if (!openloreConfig) {
+    openloreConfig = await readOpenLoreConfig(rootPath);
+    if (!openloreConfig) {
       throw new Error('Failed to load configuration');
     }
   }
@@ -142,7 +142,7 @@ export async function specGenRun(options: RunApiOptions = {}): Promise<RunResult
   // ========================================================================
   progress(onProgress, 'Analysis', 'start');
 
-  const analysisPath = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+  const analysisPath = join(rootPath, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
   let analyzeResult: AnalyzeResult;
 
   // Check for existing fresh analysis (content-hash or TTL)
@@ -156,7 +156,7 @@ export async function specGenRun(options: RunApiOptions = {}): Promise<RunResult
   if (useExisting) {
     const repoStructure = await readJsonFile<RepoStructure>(repoStructurePath, ARTIFACT_REPO_STRUCTURE);
     if (!repoStructure) {
-      throw new Error(`Failed to load ${ARTIFACT_REPO_STRUCTURE} — run spec-gen analyze to regenerate`);
+      throw new Error(`Failed to load ${ARTIFACT_REPO_STRUCTURE} — run openlore analyze to regenerate`);
     }
     const depGraph = await readJsonFile<DependencyGraphResult>(
       join(analysisPath, ARTIFACT_DEPENDENCY_GRAPH),
@@ -217,8 +217,8 @@ export async function specGenRun(options: RunApiOptions = {}): Promise<RunResult
       generation: {
         report: {
           timestamp: new Date().toISOString(),
-          openspecVersion: specGenConfig?.version ?? '1.0.0',
-          specGenVersion: '1.0.0',
+          openspecVersion: openloreConfig?.version ?? '1.0.0',
+          openloreVersion: '1.0.0',
           filesWritten: [],
           filesSkipped: [],
           filesBackedUp: [],
@@ -271,12 +271,12 @@ export async function specGenRun(options: RunApiOptions = {}): Promise<RunResult
     llm = createLLMService({
       provider,
       model,
-      apiBase: options.apiBase ?? specGenConfig.llm?.apiBase,
-      sslVerify: options.sslVerify ?? specGenConfig.llm?.sslVerify ?? true,
+      apiBase: options.apiBase ?? openloreConfig.llm?.apiBase,
+      sslVerify: options.sslVerify ?? openloreConfig.llm?.sslVerify ?? true,
       openaiCompatBaseUrl: options.openaiCompatBaseUrl,
-      timeout: options.timeout ?? specGenConfig.generation?.timeout,
+      timeout: options.timeout ?? openloreConfig.generation?.timeout,
       enableLogging: true,
-      logDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_LOGS_SUBDIR),
+      logDir: join(rootPath, OPENLORE_DIR, OPENLORE_LOGS_SUBDIR),
     });
   } catch (error) {
     throw new Error(`Failed to create LLM service: ${(error as Error).message}`);
@@ -294,12 +294,12 @@ export async function specGenRun(options: RunApiOptions = {}): Promise<RunResult
 
   const repoStructure = await readJsonFile<RepoStructure>(repoStructurePath, ARTIFACT_REPO_STRUCTURE);
   if (!repoStructure) {
-    throw new Error(`Failed to load ${ARTIFACT_REPO_STRUCTURE} — run spec-gen analyze to regenerate`);
+    throw new Error(`Failed to load ${ARTIFACT_REPO_STRUCTURE} — run openlore analyze to regenerate`);
   }
 
   // Run pipeline
   const pipeline = new SpecGenerationPipeline(llm, {
-    outputDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_GENERATION_SUBDIR),
+    outputDir: join(rootPath, OPENLORE_DIR, OPENLORE_GENERATION_SUBDIR),
     saveIntermediate: true,
     generateADRs: adr,
   });
@@ -314,7 +314,7 @@ export async function specGenRun(options: RunApiOptions = {}): Promise<RunResult
 
   // Format and write specs
   const formatGenerator = new OpenSpecFormatGenerator({
-    version: specGenConfig.version ?? '1.0.0',
+    version: openloreConfig.version ?? '1.0.0',
     includeConfidence: true,
     includeTechnicalNotes: true,
   });
@@ -323,7 +323,7 @@ export async function specGenRun(options: RunApiOptions = {}): Promise<RunResult
 
   if (adr && pipelineResult.adrs && pipelineResult.adrs.length > 0) {
     const adrGenerator = new ADRGenerator({
-      version: specGenConfig.version ?? '1.0.0',
+      version: openloreConfig.version ?? '1.0.0',
       includeMermaid: true,
     });
     const adrSpecs = adrGenerator.generateADRs(pipelineResult);
@@ -333,7 +333,7 @@ export async function specGenRun(options: RunApiOptions = {}): Promise<RunResult
   const writer = new OpenSpecWriter({
     rootPath,
     writeMode: 'replace',
-    version: specGenConfig.version ?? '1.0.0',
+    version: openloreConfig.version ?? '1.0.0',
     createBackups: true,
     updateConfig: true,
     validateBeforeWrite: true,
@@ -348,7 +348,7 @@ export async function specGenRun(options: RunApiOptions = {}): Promise<RunResult
 
   // Save run metadata
   const duration = Date.now() - startTime;
-  const runsDir = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_RUNS_SUBDIR);
+  const runsDir = join(rootPath, OPENLORE_DIR, OPENLORE_RUNS_SUBDIR);
   await mkdir(runsDir, { recursive: true });
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   await writeFile(

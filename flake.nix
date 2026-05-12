@@ -17,7 +17,7 @@
         in
         {
           default = pkgs.buildNpmPackage {
-            pname = "spec-gen";
+            pname = "openlore";
             version = "1.3.1";
 
             src = ./.;
@@ -37,11 +37,11 @@
             # Install the built package
             installPhase = ''
               runHook preInstall
-              mkdir -p $out/lib/node_modules/spec-gen
-              cp -r dist package.json $out/lib/node_modules/spec-gen/
+              mkdir -p $out/lib/node_modules/openlore
+              cp -r dist package.json $out/lib/node_modules/openlore/
 
               # Copy node_modules for runtime dependencies
-              cp -r node_modules $out/lib/node_modules/spec-gen/
+              cp -r node_modules $out/lib/node_modules/openlore/
 
               # tree-sitter-swift creates a stub symlink for tree-sitter-cli
               # that dangles when optional deps are omitted — remove it.
@@ -49,38 +49,38 @@
 
               # Create bin wrapper (ESM — must use import(), not require())
               mkdir -p $out/bin
-              cat > $out/bin/spec-gen <<EOF
+              cat > $out/bin/openlore <<EOF
               #!${pkgs.nodejs}/bin/node
-              import('../lib/node_modules/spec-gen/dist/cli/index.js');
+              import('../lib/node_modules/openlore/dist/cli/index.js');
               EOF
               # Remove leading whitespace from heredoc (including the shebang line)
-              sed -i 's/^[[:space:]]*//' $out/bin/spec-gen
-              chmod +x $out/bin/spec-gen
+              sed -i 's/^[[:space:]]*//' $out/bin/openlore
+              chmod +x $out/bin/openlore
 
               runHook postInstall
             '';
 
             meta = with pkgs.lib; {
               description = "Reverse-engineer OpenSpec specifications from existing codebases";
-              homepage = "https://github.com/clay-good/spec-gen";
+              homepage = "https://github.com/clay-good/openlore";
               license = licenses.mit;
               maintainers = [ ];
-              mainProgram = "spec-gen";
+              mainProgram = "openlore";
               platforms = platforms.all;
             };
           };
 
-          spec-gen = self.packages.${system}.default;
+          openlore = self.packages.${system}.default;
         }
       );
 
       apps = forAllSystems (system: {
         default = {
           type = "app";
-          program = "${self.packages.${system}.default}/bin/spec-gen";
+          program = "${self.packages.${system}.default}/bin/openlore";
         };
 
-        spec-gen = self.apps.${system}.default;
+        openlore = self.apps.${system}.default;
       });
 
       devShells = forAllSystems (system:
@@ -97,7 +97,7 @@
             ];
 
             shellHook = ''
-              echo "spec-gen development environment"
+              echo "openlore development environment"
               echo "Node.js version: $(node --version)"
               echo "npm version: $(npm --version)"
             '';

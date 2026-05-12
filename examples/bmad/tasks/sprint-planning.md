@@ -24,7 +24,7 @@ If the last `analyze_codebase` run was more than 24 hours ago, or if code change
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>analyze_codebase</tool_name>
   <arguments>{"directory": "$PROJECT_ROOT", "force": false}</arguments>
 </use_mcp_tool>
@@ -43,7 +43,7 @@ Read it directly from the story file. No MCP call needed.
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>annotate_story</tool_name>
   <arguments>{
     "directory": "$PROJECT_ROOT",
@@ -91,7 +91,7 @@ Get the full hub list to cross-reference:
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>get_critical_hubs</tool_name>
   <arguments>{"directory": "$PROJECT_ROOT", "limit": 15}</arguments>
 </use_mcp_tool>
@@ -109,7 +109,7 @@ For each hub that appears in two or more stories' function scope:
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>check_spec_drift</tool_name>
   <arguments>{"directory": "$PROJECT_ROOT"}</arguments>
 </use_mcp_tool>
@@ -117,7 +117,7 @@ For each hub that appears in two or more stories' function scope:
 
 For any `uncovered` files already present:
 > "Stories touching these files cannot use `check_spec_drift` as a completion gate.
-> Add a `spec-gen generate` task to the sprint."
+> Add a `openlore generate` task to the sprint."
 
 ---
 
@@ -127,7 +127,7 @@ For any `uncovered` files already present:
 1. Refactor stories before the stories they unblock
 2. Stories touching the same hub: sequence, do not parallelise
 3. Low-risk stories can be parallelised freely
-4. `spec-gen generate` after any story that adds new source files
+4. `openlore generate` after any story that adds new source files
 
 ---
 
@@ -147,7 +147,7 @@ For any `uncovered` files already present:
 
 ## Output
 
-Write the sprint plan to `.spec-gen/sprints/sprint-{N}.md`:
+Write the sprint plan to `.openlore/sprints/sprint-{N}.md`:
 
 ```markdown
 # Sprint {N} — Risk Report

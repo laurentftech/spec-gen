@@ -1,5 +1,5 @@
 /**
- * spec-gen generate command
+ * openlore generate command
  *
  * Generates OpenSpec specification files from analysis results using LLM.
  * Outputs to openspec/specs/ directory in standard OpenSpec format.
@@ -18,12 +18,12 @@ import {
   DEFAULT_COPILOT_MODEL,
   DEFAULT_GEMINI_MODEL,
   COST_CONFIRMATION_THRESHOLD,
-  SPEC_GEN_DIR,
-  SPEC_GEN_ANALYSIS_REL_PATH,
-  SPEC_GEN_LOGS_SUBDIR,
-  SPEC_GEN_OUTPUTS_SUBDIR,
-  SPEC_GEN_GENERATION_SUBDIR,
-  SPEC_GEN_CONFIG_REL_PATH,
+  OPENLORE_DIR,
+  OPENLORE_ANALYSIS_REL_PATH,
+  OPENLORE_LOGS_SUBDIR,
+  OPENLORE_OUTPUTS_SUBDIR,
+  OPENLORE_GENERATION_SUBDIR,
+  OPENLORE_CONFIG_REL_PATH,
   OPENSPEC_DIR,
   ARTIFACT_REPO_STRUCTURE,
   ARTIFACT_LLM_CONTEXT,
@@ -34,7 +34,7 @@ import {
 } from '../../constants.js';
 import type { GenerateOptions } from '../../types/index.js';
 import {
-  readSpecGenConfig,
+  readOpenLoreConfig,
   readOpenSpecConfig,
 } from '../../core/services/config-manager.js';
 import {
@@ -176,7 +176,7 @@ export const generateCommand = new Command('generate')
   .option(
     '--analysis <path>',
     'Path to existing analysis (skips re-analysis)',
-    `${SPEC_GEN_ANALYSIS_REL_PATH}/`
+    `${OPENLORE_ANALYSIS_REL_PATH}/`
   )
   .option(
     '--model <name>',
@@ -230,22 +230,22 @@ export const generateCommand = new Command('generate')
     'after',
     `
 Examples:
-  $ spec-gen generate                Generate all specs from analysis
-  $ spec-gen generate --dry-run      Preview without writing files
-  $ spec-gen generate --domains auth,api,database
+  $ openlore generate                Generate all specs from analysis
+  $ openlore generate --dry-run      Preview without writing files
+  $ openlore generate --domains auth,api,database
                                      Only generate specific domains
-  $ spec-gen generate --model claude-opus-4-20250514
+  $ openlore generate --model claude-opus-4-20250514
                                      Use a different model
-  $ spec-gen generate --analysis ./my-analysis
+  $ openlore generate --analysis ./my-analysis
                                      Use analysis from custom path
-  $ spec-gen generate --merge        Merge with existing specs
-  $ spec-gen generate --no-overwrite Skip existing spec files
-  $ spec-gen generate --adr          Also generate ADRs
-  $ spec-gen generate --adr-only     Only generate ADRs
-  $ spec-gen generate -y             Skip confirmation prompts
-  $ spec-gen generate                Auto-resumes from last completed stage if interrupted
-  $ spec-gen generate --force        Re-run all LLM stages, clear generation cache, remove stale domains
-  $ spec-gen analyze --force && spec-gen generate --force
+  $ openlore generate --merge        Merge with existing specs
+  $ openlore generate --no-overwrite Skip existing spec files
+  $ openlore generate --adr          Also generate ADRs
+  $ openlore generate --adr-only     Only generate ADRs
+  $ openlore generate -y             Skip confirmation prompts
+  $ openlore generate                Auto-resumes from last completed stage if interrupted
+  $ openlore generate --force        Re-run all LLM stages, clear generation cache, remove stale domains
+  $ openlore analyze --force && openlore generate --force
                                      Full reset: fresh static analysis + full regeneration
 
 Output structure (OpenSpec format):
@@ -274,7 +274,7 @@ Each spec.md follows OpenSpec conventions:
     const globalOpts = this.optsWithGlobals?.() ?? {};
 
     const opts: ExtendedGenerateOptions = {
-      analysis: options.analysis ?? `${SPEC_GEN_ANALYSIS_REL_PATH}/`,
+      analysis: options.analysis ?? `${OPENLORE_ANALYSIS_REL_PATH}/`,
       model: options.model ?? '',
       dryRun: options.dryRun ?? false,
       domains: options.domains ?? [],
@@ -287,7 +287,7 @@ Each spec.md follows OpenSpec conventions:
       quiet: false,
       verbose: false,
       noColor: false,
-      config: SPEC_GEN_CONFIG_REL_PATH,
+      config: OPENLORE_CONFIG_REL_PATH,
     };
 
     try {
@@ -296,22 +296,22 @@ Each spec.md follows OpenSpec conventions:
       // ========================================================================
       logger.section('Loading Configuration');
 
-      // Load spec-gen config
-      const specGenConfig = await readSpecGenConfig(rootPath);
-      if (!specGenConfig) {
-        logger.error('No spec-gen configuration found. Run "spec-gen init" first.');
+      // Load openlore config
+      const openloreConfig = await readOpenLoreConfig(rootPath);
+      if (!openloreConfig) {
+        logger.error('No openlore configuration found. Run "openlore init" first.');
         process.exitCode = 1;
         return;
       }
 
       // Determine openspec path
-      const openspecPath = opts.outputDir ?? specGenConfig.openspecPath ?? OPENSPEC_DIR;
+      const openspecPath = opts.outputDir ?? openloreConfig.openspecPath ?? OPENSPEC_DIR;
       const fullOpenspecPath = join(rootPath, openspecPath);
 
       // Load existing OpenSpec config if present
       const openspecConfig = await readOpenSpecConfig(fullOpenspecPath);
 
-      logger.info('Project', specGenConfig.projectType);
+      logger.info('Project', openloreConfig.projectType);
       logger.info('OpenSpec path', openspecPath);
       if (openspecConfig?.context) {
         logger.info('Context', openspecConfig.context.substring(0, 50) + '...');
@@ -327,7 +327,7 @@ Each spec.md follows OpenSpec conventions:
 
       // --force: clear intermediate stage files so no stale LLM output survives
       if (options.force === true) {
-        const generationDir = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_GENERATION_SUBDIR);
+        const generationDir = join(rootPath, OPENLORE_DIR, OPENLORE_GENERATION_SUBDIR);
         await rm(generationDir, { recursive: true, force: true });
         logger.discovery('--force: cleared generation cache');
       }
@@ -335,7 +335,7 @@ Each spec.md follows OpenSpec conventions:
       const analysisData = await loadAnalysis(analysisPath);
 
       if (!analysisData) {
-        logger.error('No analysis found. Run "spec-gen analyze" first.');
+        logger.error('No analysis found. Run "openlore analyze" first.');
         process.exitCode = 1;
         return;
       }
@@ -353,7 +353,7 @@ Each spec.md follows OpenSpec conventions:
       logger.section('Pre-flight Checks');
 
       // Resolve provider from env vars + config
-      const resolved = resolveLLMProvider(specGenConfig);
+      const resolved = resolveLLMProvider(openloreConfig);
       if (!resolved) {
         logger.error('No LLM API key found.');
         logger.discovery('Set one of the following environment variables:');
@@ -380,10 +380,10 @@ Each spec.md follows OpenSpec conventions:
         'gemini-cli': 'gemini-cli',
         'cursor-agent': 'cursor-agent',
       };
-      const effectiveModel = opts.model || specGenConfig.generation.model || defaultModels[effectiveProvider];
+      const effectiveModel = opts.model || openloreConfig.generation.model || defaultModels[effectiveProvider];
 
       // Apply SSL verification setting (CLI --insecure or config skipSslVerify)
-      if (globalOpts.insecure || specGenConfig.generation.skipSslVerify || specGenConfig.embedding?.skipSslVerify) {
+      if (globalOpts.insecure || openloreConfig.generation.skipSslVerify || openloreConfig.embedding?.skipSslVerify) {
         process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
         logger.warning('SSL verification disabled');
       }
@@ -470,11 +470,11 @@ Each spec.md follows OpenSpec conventions:
           provider: effectiveProvider,
           model: effectiveModel,
           openaiCompatBaseUrl: effectiveBaseUrl,
-          apiBase: globalOpts.apiBase ?? specGenConfig.llm?.apiBase,
-          sslVerify: globalOpts.insecure != null ? !globalOpts.insecure : specGenConfig.llm?.sslVerify ?? true,
-          timeout: globalOpts.timeout ?? specGenConfig.generation?.timeout,
+          apiBase: globalOpts.apiBase ?? openloreConfig.llm?.apiBase,
+          sslVerify: globalOpts.insecure != null ? !globalOpts.insecure : openloreConfig.llm?.sslVerify ?? true,
+          timeout: globalOpts.timeout ?? openloreConfig.generation?.timeout,
           enableLogging: true,
-          logDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_LOGS_SUBDIR),
+          logDir: join(rootPath, OPENLORE_DIR, OPENLORE_LOGS_SUBDIR),
         });
       } catch (error) {
         logger.error(`Failed to create LLM service: ${(error as Error).message}`);
@@ -490,7 +490,7 @@ Each spec.md follows OpenSpec conventions:
       }
 
       // Wire semantic search if a vector index exists (used by pipeline + mapping)
-      const analysisDir = join(rootPath, '.spec-gen', 'analysis');
+      const analysisDir = join(rootPath, '.openlore', 'analysis');
       let semanticSearch: import('./../../core/generator/mapping-generator.js').SemanticSearchFn | undefined;
       {
         const { VectorIndex } = await import('../../core/analyzer/vector-index.js');
@@ -498,7 +498,7 @@ Each spec.md follows OpenSpec conventions:
           const { EmbeddingService } = await import('../../core/analyzer/embedding-service.js');
           let embedSvc: InstanceType<typeof EmbeddingService> | undefined;
           try { embedSvc = EmbeddingService.fromEnv(); } catch {
-            const svc = EmbeddingService.fromConfig(specGenConfig);
+            const svc = EmbeddingService.fromConfig(openloreConfig);
             if (svc) embedSvc = svc;
           }
           if (embedSvc) {
@@ -514,14 +514,14 @@ Each spec.md follows OpenSpec conventions:
       progress.start('Generating specifications...');
 
       const pipeline = new SpecGenerationPipeline(llm, {
-        outputDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_GENERATION_SUBDIR),
+        outputDir: join(rootPath, OPENLORE_DIR, OPENLORE_GENERATION_SUBDIR),
         rootPath,
         saveIntermediate: true,
         generateADRs: opts.adr || opts.adrOnly,
         force: opts.force,
         progress,
         semanticSearch,
-        chunkMaxChars: specGenConfig.generation?.chunkMaxChars,
+        chunkMaxChars: openloreConfig.generation?.chunkMaxChars,
       });
 
       let pipelineResult: PipelineResult;
@@ -534,7 +534,7 @@ Each spec.md follows OpenSpec conventions:
         // Save logs on failure
         try {
           await llm.saveLogs();
-          logger.discovery(`LLM logs saved to ${SPEC_GEN_DIR}/${SPEC_GEN_LOGS_SUBDIR}/`);
+          logger.discovery(`LLM logs saved to ${OPENLORE_DIR}/${OPENLORE_LOGS_SUBDIR}/`);
         } catch {
           // Ignore log save errors
         }
@@ -565,10 +565,10 @@ Each spec.md follows OpenSpec conventions:
       let mappingArtifact: MappingArtifact | undefined;
       if (depGraph) {
         try {
-          const mapper = new MappingGenerator(rootPath, specGenConfig.openspecPath, semanticSearch);
+          const mapper = new MappingGenerator(rootPath, openloreConfig.openspecPath, semanticSearch);
           mappingArtifact = await mapper.generate(pipelineResult, depGraph);
           logger.success(
-            `Requirement mapping: ${mappingArtifact.stats.mappedRequirements}/${mappingArtifact.stats.totalRequirements} requirements mapped, ${mappingArtifact.stats.orphanCount} orphan functions → ${SPEC_GEN_ANALYSIS_REL_PATH}/${ARTIFACT_MAPPING}`
+            `Requirement mapping: ${mappingArtifact.stats.mappedRequirements}/${mappingArtifact.stats.totalRequirements} requirements mapped, ${mappingArtifact.stats.orphanCount} orphan functions → ${OPENLORE_ANALYSIS_REL_PATH}/${ARTIFACT_MAPPING}`
           );
         } catch (error) {
           logger.warning(`Could not generate mapping artifact: ${(error as Error).message}`);
@@ -577,7 +577,7 @@ Each spec.md follows OpenSpec conventions:
 
       // Generate formatted specs
       const formatGenerator = new OpenSpecFormatGenerator({
-        version: specGenConfig.version,
+        version: openloreConfig.version,
         includeConfidence: true,
         includeTechnicalNotes: true,
         depGraph,
@@ -602,7 +602,7 @@ Each spec.md follows OpenSpec conventions:
       // Generate ADRs if requested
       if (opts.adr || opts.adrOnly) {
         const adrGenerator = new ADRGenerator({
-          version: specGenConfig.version,
+          version: openloreConfig.version,
           includeMermaid: true,
         });
         const adrSpecs = adrGenerator.generateADRs(pipelineResult);
@@ -629,7 +629,7 @@ Each spec.md follows OpenSpec conventions:
       const writer = new OpenSpecWriter({
         rootPath,
         writeMode,
-        version: specGenConfig.version,
+        version: openloreConfig.version,
         createBackups: true,
         updateConfig: true,
         validateBeforeWrite: true,
@@ -654,7 +654,7 @@ Each spec.md follows OpenSpec conventions:
           JSON.stringify(manifest, null, 2),
           'utf-8',
         );
-        logger.success(`RAG manifest: ${manifest.domains.length} domains → ${specGenConfig.openspecPath ?? OPENSPEC_DIR}/${ARTIFACT_RAG_MANIFEST}`);
+        logger.success(`RAG manifest: ${manifest.domains.length} domains → ${openloreConfig.openspecPath ?? OPENSPEC_DIR}/${ARTIFACT_RAG_MANIFEST}`);
       } catch (error) {
         logger.warning(`Could not generate RAG manifest: ${(error as Error).message}`);
       }
@@ -715,7 +715,7 @@ Each spec.md follows OpenSpec conventions:
 
       console.log('');
       console.log(`  Total time: ${formatDuration(duration)}`);
-      console.log(`  Report saved to: ${SPEC_GEN_DIR}/${SPEC_GEN_OUTPUTS_SUBDIR}/${ARTIFACT_GENERATION_REPORT}`);
+      console.log(`  Report saved to: ${OPENLORE_DIR}/${OPENLORE_OUTPUTS_SUBDIR}/${ARTIFACT_GENERATION_REPORT}`);
       console.log('');
 
       // Save LLM logs

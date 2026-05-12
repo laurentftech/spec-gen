@@ -1,6 +1,6 @@
-# spec-gen as a Structural Context Provider
+# openlore as a Structural Context Provider
 
-spec-gen MCP can be integrated into any agentic coding workflow — regardless of the
+openlore MCP can be integrated into any agentic coding workflow — regardless of the
 method or framework used (BMAD, Claude Code rules, Cursor rules, LangGraph, etc.).
 
 The core value: **structural knowledge of the codebase is available to agents at the
@@ -17,13 +17,13 @@ starts implementing — without knowing:
 - which areas of the codebase are already spec'd and what those specs say
 - whether the insertion point it chose is a hub that three other stories also touch
 
-spec-gen MCP provides that knowledge on demand, from a pre-built index of the codebase.
+openlore MCP provides that knowledge on demand, from a pre-built index of the codebase.
 
 ---
 
 ## Generic integration pattern
 
-Any agentic workflow can adopt spec-gen by following three primitives:
+Any agentic workflow can adopt openlore by following three primitives:
 
 ### 1 — Pre-flight check (before writing code)
 
@@ -83,7 +83,7 @@ Do not propose spec updates on untested code.
 | **BMAD** | [`examples/bmad/`](../../examples/bmad/) — agents, tasks, templates, skills |
 | **Mistral Vibe** | [`examples/mistral-vibe/`](../../examples/mistral-vibe/) — reusable skills for analyze, generate, plan-refactor, execute-refactor, implement-story |
 | **spec-kit** | [`examples/spec-kit/`](../../examples/spec-kit/) — extension with `before_implement` / `after_implement` hooks |
-| **get-shit-done** | [`examples/gsd/`](../../examples/gsd/) — `/gsd:spec-gen-orient` + `/gsd:spec-gen-drift` Claude Code commands |
+| **get-shit-done** | [`examples/gsd/`](../../examples/gsd/) — `/gsd:openlore-orient` + `/gsd:openlore-drift` Claude Code commands |
 | Claude Code | Add `orient` + `analyze_impact` calls to your `CLAUDE.md` workflow section |
 | Cursor | See pre-flight `.cursorrules` pattern in this doc |
 
@@ -95,13 +95,13 @@ Add to `.cursorrules` or any agent system prompt:
 
 ```
 Before writing any code:
-1. Call spec-gen orient("$TASK") — use the returned functions and specs to scope your work
-2. Call spec-gen analyze_impact on the top 2 functions — if riskScore ≥ 70, stop and report
-3. Call spec-gen search_specs("$TASK") — read any matching requirements before coding
+1. Call openlore orient("$TASK") — use the returned functions and specs to scope your work
+2. Call openlore analyze_impact on the top 2 functions — if riskScore ≥ 70, stop and report
+3. Call openlore search_specs("$TASK") — read any matching requirements before coding
 
 After writing code:
 4. Confirm tests pass
-5. Call spec-gen check_spec_drift — resolve any gaps before closing the task
+5. Call openlore check_spec_drift — resolve any gaps before closing the task
 ```
 
 ---
@@ -111,12 +111,12 @@ After writing code:
 Before any of the above works, the index must exist:
 
 ```bash
-spec-gen analyze          # builds call graph + vector index (~2–5 min)
-spec-gen generate         # generates OpenSpec specs from analysis
+openlore analyze          # builds call graph + vector index (~2–5 min)
+openlore generate         # generates OpenSpec specs from analysis
 ```
 
 Re-run `analyze` after significant structural changes. `generate` can be run per-domain:
 
 ```bash
-spec-gen generate --domains auth,users   # refresh only changed domains
+openlore generate --domains auth,users   # refresh only changed domains
 ```

@@ -1,20 +1,20 @@
 ## Interactive Graph Viewer
 
-`spec-gen view` launches a local React app that visualises your codebase analysis and lets you explore spec requirements side-by-side with the dependency graph.
+`openlore view` launches a local React app that visualises your codebase analysis and lets you explore spec requirements side-by-side with the dependency graph.
 
 ```bash
 # Run analysis first (if not already done)
-spec-gen analyze
+openlore analyze
 
 # Launch the viewer (opens browser automatically)
-spec-gen view
+openlore view
 
 # Options
-spec-gen view --port 4000          # custom port (default: 5173)
-spec-gen view --host 0.0.0.0       # expose on LAN
-spec-gen view --no-open            # don't open browser automatically
-spec-gen view --analysis <path>    # custom analysis dir (default: .spec-gen/analysis/)
-spec-gen view --spec <path>        # custom spec dir (default: ./openspec/specs/)
+openlore view --port 4000          # custom port (default: 5173)
+openlore view --host 0.0.0.0       # expose on LAN
+openlore view --no-open            # don't open browser automatically
+openlore view --analysis <path>    # custom analysis dir (default: .openlore/analysis/)
+openlore view --spec <path>        # custom spec dir (default: ./openspec/specs/)
 ```
 
 ### Views
@@ -41,7 +41,7 @@ Example queries:
 - "Where would I add a new API endpoint?"
 - "Show me the impact of changing the authentication service"
 
-The chat requires an LLM API key (same provider configuration as `spec-gen generate`). Viewer-only operations like graph browsing, skeleton view, and search do not require an API key.
+The chat requires an LLM API key (same provider configuration as `openlore generate`). Viewer-only operations like graph browsing, skeleton view, and search do not require an API key.
 
 ### Right panel tabs (select a node to activate)
 
@@ -64,21 +64,21 @@ The viewer auto-loads all available data on startup:
 
 | Endpoint | Source | Required? |
 |----------|--------|-----------|
-| `/api/dependency-graph` | `.spec-gen/analysis/dependency-graph.json` | Yes |
-| `/api/llm-context` | `.spec-gen/analysis/llm-context.json` | No |
-| `/api/refactor-priorities` | `.spec-gen/analysis/refactor-priorities.json` | No |
-| `/api/mapping` | `.spec-gen/analysis/mapping.json` | No |
+| `/api/dependency-graph` | `.openlore/analysis/dependency-graph.json` | Yes |
+| `/api/llm-context` | `.openlore/analysis/llm-context.json` | No |
+| `/api/refactor-priorities` | `.openlore/analysis/refactor-priorities.json` | No |
+| `/api/mapping` | `.openlore/analysis/mapping.json` | No |
 | `/api/spec-requirements` | `openspec/specs/**/*.md` + `mapping.json` | No |
 | `/api/skeleton?file=` | Source file on disk | No |
-| `/api/search?q=` | `.spec-gen/analysis/vector-index/` | No (`--embed`) |
+| `/api/search?q=` | `.openlore/analysis/vector-index/` | No (`--embed`) |
 
-Run `spec-gen generate` to produce `mapping.json` and the spec files. Once present, the **Spec** tab shows the full requirement body for each selected file.
+Run `openlore generate` to produce `mapping.json` and the spec files. Once present, the **Spec** tab shows the full requirement body for each selected file.
 
 ### View Options
 
 ```bash
-spec-gen view [options]
-  --analysis <path>    Analysis directory (default: .spec-gen/analysis/)
+openlore view [options]
+  --analysis <path>    Analysis directory (default: .openlore/analysis/)
   --spec <path>        Spec files directory (default: ./openspec/specs/)
   --port <n>           Port (default: 5173)
   --host <host>        Bind host (default: 127.0.0.1; use 0.0.0.0 for LAN)

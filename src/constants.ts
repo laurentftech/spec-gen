@@ -1,5 +1,5 @@
 /**
- * Shared constants for spec-gen
+ * Shared constants for openlore
  *
  * Centralises magic numbers so they're easy to find, reason about, and change.
  */
@@ -8,38 +8,38 @@
 // DIRECTORY / PATH NAMES
 // ============================================================================
 
-/** Hidden directory where spec-gen stores its state */
-export const SPEC_GEN_DIR = '.spec-gen';
+/** Hidden directory where openlore stores its state */
+export const OPENLORE_DIR = '.openlore';
 
 /** Analysis artifacts sub-directory */
-export const SPEC_GEN_ANALYSIS_SUBDIR = 'analysis';
+export const OPENLORE_ANALYSIS_SUBDIR = 'analysis';
 
 /** LLM log sub-directory */
-export const SPEC_GEN_LOGS_SUBDIR = 'logs';
+export const OPENLORE_LOGS_SUBDIR = 'logs';
 
 /** Verification reports sub-directory */
-export const SPEC_GEN_VERIFICATION_SUBDIR = 'verification';
+export const OPENLORE_VERIFICATION_SUBDIR = 'verification';
 
 /** Generation outputs sub-directory */
-export const SPEC_GEN_OUTPUTS_SUBDIR = 'outputs';
+export const OPENLORE_OUTPUTS_SUBDIR = 'outputs';
 
 /** Spec backups sub-directory */
-export const SPEC_GEN_BACKUPS_SUBDIR = 'backups';
+export const OPENLORE_BACKUPS_SUBDIR = 'backups';
 
 /** Generation intermediate files sub-directory */
-export const SPEC_GEN_GENERATION_SUBDIR = 'generation';
+export const OPENLORE_GENERATION_SUBDIR = 'generation';
 
 /** Run metadata sub-directory */
-export const SPEC_GEN_RUNS_SUBDIR = 'runs';
+export const OPENLORE_RUNS_SUBDIR = 'runs';
 
-/** Config file name inside SPEC_GEN_DIR */
-export const SPEC_GEN_CONFIG_FILENAME = 'config.json';
+/** Config file name inside OPENLORE_DIR */
+export const OPENLORE_CONFIG_FILENAME = 'config.json';
 
-/** Relative path to the spec-gen config file */
-export const SPEC_GEN_CONFIG_REL_PATH = `${SPEC_GEN_DIR}/${SPEC_GEN_CONFIG_FILENAME}`;
+/** Relative path to the openlore config file */
+export const OPENLORE_CONFIG_REL_PATH = `${OPENLORE_DIR}/${OPENLORE_CONFIG_FILENAME}`;
 
 /** Relative path to the analysis output directory */
-export const SPEC_GEN_ANALYSIS_REL_PATH = `${SPEC_GEN_DIR}/${SPEC_GEN_ANALYSIS_SUBDIR}`;
+export const OPENLORE_ANALYSIS_REL_PATH = `${OPENLORE_DIR}/${OPENLORE_ANALYSIS_SUBDIR}`;
 
 /** Default openspec root directory name */
 export const OPENSPEC_DIR = 'openspec';
@@ -532,8 +532,8 @@ export const TRANSITIVE_SCORE_MAX = 10;
 // DECISIONS
 // ============================================================================
 
-/** Sub-directory inside SPEC_GEN_DIR where pending decisions are stored */
-export const SPEC_GEN_DECISIONS_SUBDIR = 'decisions';
+/** Sub-directory inside OPENLORE_DIR where pending decisions are stored */
+export const OPENLORE_DECISIONS_SUBDIR = 'decisions';
 
 /** Filename for the pending decisions store */
 export const DECISIONS_PENDING_FILE = 'pending.json';

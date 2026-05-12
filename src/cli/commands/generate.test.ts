@@ -40,8 +40,8 @@ vi.mock('../../core/services/llm-service.js', async (importOriginal) => {
 
 describe('generate command', () => {
   const testDir = join(process.cwd(), 'test-generate-cmd');
-  const specGenDir = join(testDir, '.spec-gen');
-  const analysisDir = join(specGenDir, 'analysis');
+  const openloreDir = join(testDir, '.openlore');
+  const analysisDir = join(openloreDir, 'analysis');
 
   beforeEach(async () => {
     // Create test directories

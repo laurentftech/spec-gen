@@ -1,6 +1,6 @@
 ## Configuration
 
-`spec-gen init` creates `.spec-gen/config.json`:
+`openlore init` creates `.openlore/config.json`:
 
 ```json
 {

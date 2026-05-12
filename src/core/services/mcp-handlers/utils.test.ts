@@ -25,8 +25,8 @@ import {
 import { EdgeStore } from '../edge-store.js';
 import { logger } from '../../../utils/logger.js';
 import {
-  SPEC_GEN_DIR,
-  SPEC_GEN_ANALYSIS_SUBDIR,
+  OPENLORE_DIR,
+  OPENLORE_ANALYSIS_SUBDIR,
   ARTIFACT_LLM_CONTEXT,
   ANALYSIS_STALE_THRESHOLD_MS,
 } from '../../../constants.js';
@@ -220,7 +220,7 @@ describe('readCachedContext', () => {
   });
 
   it('returns null when llm-context.json is malformed', async () => {
-    const dir = join(tmpDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+    const dir = join(tmpDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, ARTIFACT_LLM_CONTEXT), 'not-json', 'utf-8');
     const result = await readCachedContext(tmpDir);
@@ -233,7 +233,7 @@ describe('readCachedContext', () => {
       phase2_deep: { purpose: 'deep', files: [], totalTokens: 0 },
       phase3_validation: { purpose: 'validation', files: [], totalTokens: 0 },
     };
-    const dir = join(tmpDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+    const dir = join(tmpDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, ARTIFACT_LLM_CONTEXT), JSON.stringify(ctx), 'utf-8');
     const result = await readCachedContext(tmpDir);
@@ -241,7 +241,7 @@ describe('readCachedContext', () => {
   });
 
   it('attaches EdgeStore when call-graph.db is present', async () => {
-    const dir = join(tmpDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+    const dir = join(tmpDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
     await mkdir(dir, { recursive: true });
     const ctx = { phase1_survey: { purpose: '', files: [], totalTokens: 0 }, phase2_deep: { purpose: '', files: [], totalTokens: 0 }, phase3_validation: { purpose: '', files: [], totalTokens: 0 } };
     await writeFile(join(dir, ARTIFACT_LLM_CONTEXT), JSON.stringify(ctx), 'utf-8');
@@ -256,7 +256,7 @@ describe('readCachedContext', () => {
   });
 
   it('edgeStore is absent when call-graph.db does not exist', async () => {
-    const dir = join(tmpDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+    const dir = join(tmpDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
     await mkdir(dir, { recursive: true });
     const ctx = { phase1_survey: { purpose: '', files: [], totalTokens: 0 }, phase2_deep: { purpose: '', files: [], totalTokens: 0 }, phase3_validation: { purpose: '', files: [], totalTokens: 0 } };
     await writeFile(join(dir, ARTIFACT_LLM_CONTEXT), JSON.stringify(ctx), 'utf-8');
@@ -285,7 +285,7 @@ describe('isCacheFresh', () => {
   });
 
   it('returns true when llm-context.json was just written', async () => {
-    const dir = join(tmpDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+    const dir = join(tmpDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, ARTIFACT_LLM_CONTEXT), '{}', 'utf-8');
     const result = await isCacheFresh(tmpDir);
@@ -293,7 +293,7 @@ describe('isCacheFresh', () => {
   });
 
   it('returns false when cache is older than ANALYSIS_STALE_THRESHOLD_MS', async () => {
-    const dir = join(tmpDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+    const dir = join(tmpDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
     await mkdir(dir, { recursive: true });
     const filePath = join(dir, ARTIFACT_LLM_CONTEXT);
     await writeFile(filePath, '{}', 'utf-8');
@@ -325,7 +325,7 @@ describe('loadMappingIndex', () => {
   });
 
   it('returns indexed MappingIndex when mapping.json is valid', async () => {
-    const dir = join(tmpDir, '.spec-gen', 'analysis');
+    const dir = join(tmpDir, '.openlore', 'analysis');
     await mkdir(dir, { recursive: true });
     const mappingData = {
       mappings: [
@@ -350,7 +350,7 @@ describe('loadMappingIndex', () => {
   });
 
   it('returns null when mapping.json is malformed JSON', async () => {
-    const dir = join(tmpDir, '.spec-gen', 'analysis');
+    const dir = join(tmpDir, '.openlore', 'analysis');
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, 'mapping.json'), 'not valid json', 'utf-8');
     const result = await loadMappingIndex(tmpDir);
@@ -358,7 +358,7 @@ describe('loadMappingIndex', () => {
   });
 
   it('caches results and returns cached value on subsequent calls', async () => {
-    const dir = join(tmpDir, '.spec-gen', 'analysis');
+    const dir = join(tmpDir, '.openlore', 'analysis');
     await mkdir(dir, { recursive: true });
     const mappingData = {
       mappings: [
@@ -387,7 +387,7 @@ describe('loadMappingIndex', () => {
   });
 
   it('caches different directories separately', async () => {
-    const dir1 = join(tmpDir, '.spec-gen', 'analysis');
+    const dir1 = join(tmpDir, '.openlore', 'analysis');
     await mkdir(dir1, { recursive: true });
     const mappingData1 = {
       mappings: [
@@ -403,7 +403,7 @@ describe('loadMappingIndex', () => {
     };
     await writeFile(join(dir1, 'mapping.json'), JSON.stringify(mappingData1), 'utf-8');
 
-    const dir2 = join(tmpDir, 'other', '.spec-gen', 'analysis');
+    const dir2 = join(tmpDir, 'other', '.openlore', 'analysis');
     await mkdir(dir2, { recursive: true });
     const mappingData2 = {
       mappings: [
@@ -450,7 +450,7 @@ describe('clearMappingCache', () => {
   });
 
   it('clears the mapping cache', async () => {
-    const dir = join(tmpDir, '.spec-gen', 'analysis');
+    const dir = join(tmpDir, '.openlore', 'analysis');
     await mkdir(dir, { recursive: true });
     const mappingData = {
       mappings: [

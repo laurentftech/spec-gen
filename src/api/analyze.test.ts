@@ -1,9 +1,9 @@
 /**
- * Tests for specGenAnalyze programmatic API
+ * Tests for openloreAnalyze programmatic API
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { specGenAnalyze } from './analyze.js';
+import { openloreAnalyze } from './analyze.js';
 
 // ============================================================================
 // MOCKS
@@ -22,7 +22,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 });
 
 vi.mock('../core/services/config-manager.js', () => ({
-  readSpecGenConfig: vi.fn(),
+  readOpenLoreConfig: vi.fn(),
 }));
 
 vi.mock('../core/analyzer/repository-mapper.js', () => ({
@@ -59,7 +59,7 @@ vi.mock('../core/analyzer/artifact-generator.js', () => ({
 }));
 
 import { access, stat, readFile } from 'node:fs/promises';
-import { readSpecGenConfig } from '../core/services/config-manager.js';
+import { readOpenLoreConfig } from '../core/services/config-manager.js';
 import { RepositoryMapper } from '../core/analyzer/repository-mapper.js';
 import { DependencyGraphBuilder } from '../core/analyzer/dependency-graph.js';
 import { AnalysisArtifactGenerator } from '../core/analyzer/artifact-generator.js';
@@ -67,7 +67,7 @@ import { AnalysisArtifactGenerator } from '../core/analyzer/artifact-generator.j
 const mockAccess = vi.mocked(access);
 const mockStat = vi.mocked(stat);
 const mockReadFile = vi.mocked(readFile);
-const mockReadSpecGenConfig = vi.mocked(readSpecGenConfig);
+const mockReadOpenLoreConfig = vi.mocked(readOpenLoreConfig);
 
 // ============================================================================
 // FIXTURES
@@ -94,8 +94,8 @@ const OLD_MTIME = new Date(Date.now() - 2 * 60 * 60 * 1000); // 2 hours ago
 const RECENT_MTIME = new Date(Date.now() - 5 * 60 * 1000); // 5 minutes ago
 
 function setupMocks() {
-  mockReadSpecGenConfig.mockResolvedValue(
-    MOCK_CONFIG as ReturnType<typeof readSpecGenConfig> extends Promise<infer T> ? T : never
+  mockReadOpenLoreConfig.mockResolvedValue(
+    MOCK_CONFIG as ReturnType<typeof readOpenLoreConfig> extends Promise<infer T> ? T : never
   );
 
   vi.mocked(RepositoryMapper).mockImplementation(function (this: unknown) {
@@ -132,20 +132,20 @@ function setupMocks() {
 // TESTS
 // ============================================================================
 
-describe('specGenAnalyze', () => {
+describe('openloreAnalyze', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setupMocks();
   });
 
   describe('config validation', () => {
-    it('throws if no spec-gen config found', async () => {
+    it('throws if no openlore config found', async () => {
       mockAccess.mockRejectedValue(new Error('ENOENT'));
-      mockReadSpecGenConfig.mockResolvedValue(
-        null as unknown as ReturnType<typeof readSpecGenConfig> extends Promise<infer T> ? T : never
+      mockReadOpenLoreConfig.mockResolvedValue(
+        null as unknown as ReturnType<typeof readOpenLoreConfig> extends Promise<infer T> ? T : never
       );
 
-      await expect(specGenAnalyze({ rootPath: ROOT })).rejects.toThrow();
+      await expect(openloreAnalyze({ rootPath: ROOT })).rejects.toThrow();
     });
   });
 
@@ -161,12 +161,12 @@ describe('specGenAnalyze', () => {
     });
 
     it('skips mapper when recent cache exists', async () => {
-      await specGenAnalyze({ rootPath: ROOT });
+      await openloreAnalyze({ rootPath: ROOT });
       expect(RepositoryMapper).not.toHaveBeenCalled();
     });
 
     it('force=true bypasses cache and runs full analysis', async () => {
-      await specGenAnalyze({ rootPath: ROOT, force: true });
+      await openloreAnalyze({ rootPath: ROOT, force: true });
       expect(RepositoryMapper).toHaveBeenCalled();
     });
   });
@@ -178,7 +178,7 @@ describe('specGenAnalyze', () => {
     });
 
     it('runs full analysis pipeline', async () => {
-      await specGenAnalyze({ rootPath: ROOT });
+      await openloreAnalyze({ rootPath: ROOT });
 
       expect(RepositoryMapper).toHaveBeenCalled();
       expect(DependencyGraphBuilder).toHaveBeenCalled();
@@ -192,14 +192,14 @@ describe('specGenAnalyze', () => {
     });
 
     it('runs full analysis pipeline', async () => {
-      await specGenAnalyze({ rootPath: ROOT });
+      await openloreAnalyze({ rootPath: ROOT });
 
       expect(RepositoryMapper).toHaveBeenCalled();
       expect(AnalysisArtifactGenerator).toHaveBeenCalled();
     });
 
     it('returns analysis result with repo map', async () => {
-      const result = await specGenAnalyze({ rootPath: ROOT });
+      const result = await openloreAnalyze({ rootPath: ROOT });
       expect(result.repoMap).toBeDefined();
       expect(result.depGraph).toBeDefined();
     });
@@ -212,7 +212,7 @@ describe('specGenAnalyze', () => {
 
     it('fires progress events during analysis', async () => {
       const events: Array<{ step: string; status: string }> = [];
-      await specGenAnalyze({
+      await openloreAnalyze({
         rootPath: ROOT,
         onProgress: (e) => events.push({ step: e.step, status: e.status }),
       });

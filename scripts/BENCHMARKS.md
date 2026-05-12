@@ -4,7 +4,7 @@ Run: `npm run bench -- <project-dir>`
 
 ---
 
-## spec-gen (1019 nodes, 5203 edges)
+## openlore (1019 nodes, 5203 edges)
 
 Date: 2026-05-09
 

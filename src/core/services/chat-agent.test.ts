@@ -7,9 +7,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { resolveProviderConfig, runChatAgent } from './chat-agent.js';
 
-// Mock config-manager so we can control what readSpecGenConfig returns
+// Mock config-manager so we can control what readOpenLoreConfig returns
 vi.mock('./config-manager.js', () => ({
-  readSpecGenConfig: vi.fn().mockResolvedValue(null),
+  readOpenLoreConfig: vi.fn().mockResolvedValue(null),
 }));
 
 // Mock chat-tools so agentic loops use a controllable tool registry
@@ -29,8 +29,8 @@ vi.mock('./chat-tools.js', () => ({
   }],
 }));
 
-import { readSpecGenConfig } from './config-manager.js';
-const mockReadConfig = readSpecGenConfig as ReturnType<typeof vi.fn>;
+import { readOpenLoreConfig } from './config-manager.js';
+const mockReadConfig = readOpenLoreConfig as ReturnType<typeof vi.fn>;
 
 // ============================================================================
 // ENV VAR HELPERS

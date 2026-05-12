@@ -1,43 +1,43 @@
 schema_version: "1.0"
 
 extension:
-  id: "spec-gen"
-  name: "spec-gen structural analysis"
+  id: "openlore"
+  name: "openlore structural analysis"
   version: "1.0.0"
-  description: "Pre-flight structural risk check and post-implementation spec drift verification via spec-gen MCP."
-  author: "spec-gen contributors"
-  repository: "https://github.com/clay-good/spec-gen"
+  description: "Pre-flight structural risk check and post-implementation spec drift verification via openlore MCP."
+  author: "openlore contributors"
+  repository: "https://github.com/clay-good/openlore"
   license: "MIT"
-  homepage: "https://github.com/clay-good/spec-gen"
+  homepage: "https://github.com/clay-good/openlore"
 
 requires:
   speckit_version: ">=0.1.0"
   tools:
-    - name: "spec-gen"
+    - name: "openlore"
       version: ">=1.2.0"
       required: true
 
 provides:
   commands:
-    - name: "speckit.spec-gen.orient"
+    - name: "speckit.openlore.orient"
       file: "commands/orient.md"
       description: "Pre-flight check — orient + analyze_impact before implementation. Gates on riskScore ≥ 70."
 
-    - name: "speckit.spec-gen.drift"
+    - name: "speckit.openlore.drift"
       file: "commands/drift.md"
       description: "Post-implementation spec drift check. Run after tests are green."
 
 hooks:
   before_implement:
-    command: "speckit.spec-gen.orient"
+    command: "speckit.openlore.orient"
     optional: true
-    prompt: "Run spec-gen structural risk check before implementing?"
+    prompt: "Run openlore structural risk check before implementing?"
     description: "Identifies high-risk functions and spec requirements relevant to the planned tasks."
 
   after_implement:
-    command: "speckit.spec-gen.drift"
+    command: "speckit.openlore.drift"
     optional: true
-    prompt: "Run spec-gen drift check to verify implementation matches specs?"
+    prompt: "Run openlore drift check to verify implementation matches specs?"
     description: "Detects gaps between the implementation and existing OpenSpec specifications."
 
 tags:

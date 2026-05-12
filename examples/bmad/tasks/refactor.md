@@ -3,7 +3,7 @@
 **Purpose**: Plan and execute a safe refactoring on a brownfield codebase before implementing a story.
 Typically triggered by the `dev-brownfield` agent gate when `riskScore ≥ 70`.
 
-**Output**: `.spec-gen/refactor-plan.md` applied and verified.
+**Output**: `.openlore/refactor-plan.md` applied and verified.
 
 ---
 
@@ -30,7 +30,7 @@ If the user declines, mark the story as blocked with dependency: "Refactor `$TAR
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>get_refactor_report</tool_name>
   <arguments>{"directory": "$PROJECT_ROOT"}</arguments>
 </use_mcp_tool>
@@ -44,7 +44,7 @@ Confirm `$TARGET_FUNCTION` appears in the report and note its issues and priorit
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>get_duplicate_report</tool_name>
   <arguments>{"directory": "$PROJECT_ROOT"}</arguments>
 </use_mcp_tool>
@@ -60,7 +60,7 @@ Propose consolidation as Change 0 in the plan.
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>analyze_impact</tool_name>
   <arguments>{
     "directory": "$PROJECT_ROOT",
@@ -72,7 +72,7 @@ Propose consolidation as Change 0 in the plan.
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>get_subgraph</tool_name>
   <arguments>{
     "directory": "$PROJECT_ROOT",
@@ -91,7 +91,7 @@ Show the Mermaid diagram. Identify extraction candidates in the downstream subgr
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>get_low_risk_refactor_candidates</tool_name>
   <arguments>{
     "directory": "$PROJECT_ROOT",
@@ -109,7 +109,7 @@ Cross-reference with the subgraph: good extraction candidates are already callee
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>suggest_insertion_points</tool_name>
   <arguments>{
     "directory": "$PROJECT_ROOT",
@@ -134,12 +134,12 @@ Design an ordered sequence of atomic changes. Each change must specify:
 
 ---
 
-## Step 8 — Execute (delegate to spec-gen-execute-refactor)
+## Step 8 — Execute (delegate to openlore-execute-refactor)
 
-Once the plan is approved, hand off to the `spec-gen-execute-refactor` skill:
+Once the plan is approved, hand off to the `openlore-execute-refactor` skill:
 
-1. Write `.spec-gen/refactor-plan.md` with the full plan (see skill template)
-2. Invoke `/spec-gen-execute-refactor`
+1. Write `.openlore/refactor-plan.md` with the full plan (see skill template)
+2. Invoke `/openlore-execute-refactor`
 
 The execute skill handles:
 - Green baseline verification
@@ -155,7 +155,7 @@ After the refactor is complete, re-run `analyze_impact` on `$TARGET_FUNCTION`:
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>analyze_impact</tool_name>
   <arguments>{
     "directory": "$PROJECT_ROOT",

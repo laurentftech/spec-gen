@@ -24,7 +24,7 @@ export function renderCatch2(
 
     const tag = buildMetadataTag('//', s);
     const caseName = `${domain} / ${requirement} / ${s.scenarioName}`;
-    const tags = `[${domain}][spec-gen]`;
+    const tags = `[${domain}][openlore]`;
 
     const innerLines: string[] = [];
     for (const g of s.given) innerLines.push(`// GIVEN: ${g}`);

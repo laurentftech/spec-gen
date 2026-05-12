@@ -64,7 +64,7 @@ describe('generateTests', () => {
       rootPath: '/tmp',
     });
 
-    expect(file.content).toContain('// spec-gen: ');
+    expect(file.content).toContain('// openlore: ');
     expect(file.content).toContain('"domain":"auth"');
     expect(file.content).toContain('"requirement":"UserLogin"');
     expect(file.content).toContain('"scenario":"SuccessfulLogin"');
@@ -91,7 +91,7 @@ describe('generateTests', () => {
     });
 
     expect(file.content).toContain('import pytest');
-    expect(file.content).toContain('# spec-gen: ');
+    expect(file.content).toContain('# openlore: ');
     expect(file.content).toContain('assert response.status_code == 401');
     expect(file.outputPath).toMatch(/_test\.py$/);
   });

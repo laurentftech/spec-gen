@@ -1,5 +1,5 @@
 /**
- * spec-gen analyze — programmatic API
+ * openlore analyze — programmatic API
  *
  * Runs static analysis on the codebase (no LLM required).
  * No side effects (no process.exit, no console.log).
@@ -7,9 +7,9 @@
 
 import { join } from 'node:path';
 import { readFile, stat, mkdir, writeFile } from 'node:fs/promises';
-import { ANALYSIS_STALE_THRESHOLD_MS, DEFAULT_MAX_FILES, SPEC_GEN_ANALYSIS_REL_PATH, ARTIFACT_REPO_STRUCTURE, ARTIFACT_DEPENDENCY_GRAPH, ARTIFACT_LLM_CONTEXT, OPENSPEC_DIR } from '../constants.js';
+import { ANALYSIS_STALE_THRESHOLD_MS, DEFAULT_MAX_FILES, OPENLORE_ANALYSIS_REL_PATH, ARTIFACT_REPO_STRUCTURE, ARTIFACT_DEPENDENCY_GRAPH, ARTIFACT_LLM_CONTEXT, OPENSPEC_DIR } from '../constants.js';
 import { fileExists, readJsonFile } from '../utils/command-helpers.js';
-import { readSpecGenConfig } from '../core/services/config-manager.js';
+import { readOpenLoreConfig } from '../core/services/config-manager.js';
 import { RepositoryMapper } from '../core/analyzer/repository-mapper.js';
 import {
   DependencyGraphBuilder,
@@ -56,23 +56,23 @@ async function loadCachedArtifacts(
  * Scans the repository, builds a dependency graph, and generates
  * analysis artifacts. No LLM involvement.
  *
- * @throws Error if no spec-gen configuration found
+ * @throws Error if no openlore configuration found
  */
-export async function specGenAnalyze(options: AnalyzeApiOptions = {}): Promise<AnalyzeResult> {
+export async function openloreAnalyze(options: AnalyzeApiOptions = {}): Promise<AnalyzeResult> {
   const startTime = Date.now();
   const rootPath = options.rootPath ?? process.cwd();
   const maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
   const excludePatterns = options.excludePatterns ?? [];
   const includePatterns = options.includePatterns ?? [];
   const force = options.force ?? false;
-  const outputRelPath = options.outputPath ?? `${SPEC_GEN_ANALYSIS_REL_PATH}/`;
+  const outputRelPath = options.outputPath ?? `${OPENLORE_ANALYSIS_REL_PATH}/`;
   const outputPath = join(rootPath, outputRelPath);
   const { onProgress } = options;
 
   // Validate config exists
-  const specGenConfig = await readSpecGenConfig(rootPath);
-  if (!specGenConfig) {
-    throw new Error('No spec-gen configuration found. Run specGenInit() first.');
+  const openloreConfig = await readOpenLoreConfig(rootPath);
+  if (!openloreConfig) {
+    throw new Error('No openlore configuration found. Run openloreInit() first.');
   }
 
   // Check for existing recent analysis
@@ -94,7 +94,7 @@ export async function specGenAnalyze(options: AnalyzeApiOptions = {}): Promise<A
           ARTIFACT_REPO_STRUCTURE,
         );
         if (!repoStructure) {
-          throw new Error(`Failed to load ${ARTIFACT_REPO_STRUCTURE} — run spec-gen analyze --force to regenerate`);
+          throw new Error(`Failed to load ${ARTIFACT_REPO_STRUCTURE} — run openlore analyze --force to regenerate`);
         }
 
         const depGraph = await readJsonFile<DependencyGraphResult>(
@@ -181,7 +181,7 @@ export async function specGenAnalyze(options: AnalyzeApiOptions = {}): Promise<A
   progress(onProgress, 'Generating analysis artifacts', 'complete');
 
   // Generate spec snapshot (non-fatal — snapshot is a derived artifact)
-  const openspecRelPath = specGenConfig.openspecPath ?? OPENSPEC_DIR;
+  const openspecRelPath = openloreConfig.openspecPath ?? OPENSPEC_DIR;
   const snapshotGenerator = new SpecSnapshotGenerator(rootPath, openspecRelPath);
   await snapshotGenerator.generate().catch(() => {});
 

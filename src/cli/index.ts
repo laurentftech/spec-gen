@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * spec-gen CLI entry point
+ * openlore CLI entry point
  *
  * Reverse-engineer OpenSpec specifications from existing codebases.
  * Philosophy: "Archaeology over Creativity" — Extract the truth of what code does.
@@ -57,7 +57,7 @@ program.hook('preAction', (thisCommand) => {
 });
 
 program
-  .name('spec-gen')
+  .name('openlore')
   .description(
     'Reverse-engineer OpenSpec specifications from existing codebases.\n\n' +
       'Philosophy: "Archaeology over Creativity" — We extract the truth of what\n' +
@@ -67,7 +67,7 @@ program
   .option('-q, --quiet', 'Minimal output (errors only)', false)
   .option('-v, --verbose', 'Show debug information', false)
   .option('--no-color', 'Disable colored output (also enables timestamps)')
-  .option('--config <path>', 'Path to config file', '.spec-gen/config.json')
+  .option('--config <path>', 'Path to config file', '.openlore/config.json')
   .option(
     '--api-base <url>',
     'Custom LLM API base URL (for local/enterprise OpenAI-compatible servers)'
@@ -78,29 +78,29 @@ program
     'after',
     `
 Workflow:
-  1. spec-gen init                    Detect project type, create config
-  2. spec-gen analyze                 Scan codebase, build dependency graph
-  3. spec-gen analyze --ai-configs    Generate context files (CLAUDE.md, .cursorrules…)
-  4. spec-gen setup                   Install workflow skills (Vibe, Cline, GSD)
-  5. spec-gen view                    Review visually the dependency graph
-  6. spec-gen generate                Create OpenSpec files using LLM
-  7. spec-gen verify                  Validate specs against source code
-  8. spec-gen drift                   Detect when code outpaces specs
-  9. spec-gen test                    Generate spec-driven tests or check coverage
-  10. spec-gen digest                  Plain-English summary of specs for human review
+  1. openlore init                    Detect project type, create config
+  2. openlore analyze                 Scan codebase, build dependency graph
+  3. openlore analyze --ai-configs    Generate context files (CLAUDE.md, .cursorrules…)
+  4. openlore setup                   Install workflow skills (Vibe, Cline, GSD)
+  5. openlore view                    Review visually the dependency graph
+  6. openlore generate                Create OpenSpec files using LLM
+  7. openlore verify                  Validate specs against source code
+  8. openlore drift                   Detect when code outpaces specs
+  9. openlore test                    Generate spec-driven tests or check coverage
+  10. openlore digest                  Plain-English summary of specs for human review
 
 Quick start:
   $ cd your-project
-  $ spec-gen init
-  $ spec-gen analyze --ai-configs
-  $ spec-gen setup
-  $ spec-gen generate
+  $ openlore init
+  $ openlore analyze --ai-configs
+  $ openlore setup
+  $ openlore generate
 
 Or run the full pipeline at once:
-  $ spec-gen run
+  $ openlore run
 
 Troubleshoot your setup:
-  $ spec-gen doctor
+  $ openlore doctor
 
 Output integrates with OpenSpec ecosystem:
   openspec/

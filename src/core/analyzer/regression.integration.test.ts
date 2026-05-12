@@ -125,7 +125,7 @@ describe('Regression: docstrings indexed and searchable', () => {
     serverAvailable = await isServerUp(EMBED_BASE_URL);
     if (!serverAvailable) return;
 
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-regression-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-regression-'));
     embedSvc = new EmbeddingService({ baseUrl: EMBED_BASE_URL, model: EMBED_MODEL });
 
     await VectorIndex.build(
@@ -276,7 +276,7 @@ describe('Regression: minFanIn filter boundary conditions', () => {
     serverAvailable = await isServerUp(EMBED_BASE_URL);
     if (!serverAvailable) return;
 
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-regression-fanin-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-regression-fanin-'));
     embedSvc = new EmbeddingService({ baseUrl: EMBED_BASE_URL, model: EMBED_MODEL });
 
     await VectorIndex.build(
@@ -375,7 +375,7 @@ describe('Regression: incremental build cache key includes text', () => {
     serverAvailable = await isServerUp(EMBED_BASE_URL);
     if (!serverAvailable) return;
 
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-regression-incr-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-regression-incr-'));
     embedSvc = new EmbeddingService({ baseUrl: EMBED_BASE_URL, model: EMBED_MODEL });
 
     // Initial build

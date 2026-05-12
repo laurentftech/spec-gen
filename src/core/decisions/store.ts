@@ -1,5 +1,5 @@
 /**
- * Decision store — CRUD for .spec-gen/decisions/pending.json
+ * Decision store — CRUD for .openlore/decisions/pending.json
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -7,15 +7,15 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { logger } from '../../utils/logger.js';
 import {
-  SPEC_GEN_DIR,
-  SPEC_GEN_DECISIONS_SUBDIR,
+  OPENLORE_DIR,
+  OPENLORE_DECISIONS_SUBDIR,
   DECISIONS_PENDING_FILE,
 } from '../../constants.js';
 import { fileExists } from '../../utils/command-helpers.js';
 import type { PendingDecision, DecisionStore, DecisionStatus } from '../../types/index.js';
 
 export function decisionsDir(rootPath: string): string {
-  return join(rootPath, SPEC_GEN_DIR, SPEC_GEN_DECISIONS_SUBDIR);
+  return join(rootPath, OPENLORE_DIR, OPENLORE_DECISIONS_SUBDIR);
 }
 
 export async function loadDecisionStore(rootPath: string): Promise<DecisionStore> {

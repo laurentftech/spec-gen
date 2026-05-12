@@ -3,7 +3,7 @@
  *
  * Passing these schemas to completeJSON forces the model to return
  * the correct top-level structure (e.g. an array instead of a single object).
- * See: https://github.com/clay-good/spec-gen/issues/26
+ * See: https://github.com/clay-good/openlore/issues/26
  */
 
 export const STAGE2_ENTITY_SCHEMA = {

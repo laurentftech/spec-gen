@@ -1,10 +1,10 @@
 /**
- * Graceful shutdown handling for spec-gen CLI
+ * Graceful shutdown handling for openlore CLI
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { SPEC_GEN_DIR, ARTIFACT_SHUTDOWN_STATE } from '../constants.js';
+import { OPENLORE_DIR, ARTIFACT_SHUTDOWN_STATE } from '../constants.js';
 
 export interface ShutdownState {
   /** Current phase when interrupted */
@@ -31,7 +31,7 @@ export class ShutdownManager {
   private handlersAttached = false;
 
   constructor(projectPath: string = process.cwd(), options?: { skipHandlers?: boolean }) {
-    this.stateFile = path.join(projectPath, SPEC_GEN_DIR, ARTIFACT_SHUTDOWN_STATE);
+    this.stateFile = path.join(projectPath, OPENLORE_DIR, ARTIFACT_SHUTDOWN_STATE);
     // Skip handlers in test environment or when explicitly disabled
     if (!options?.skipHandlers && process.env.NODE_ENV !== 'test') {
       this.setupHandlers();
@@ -203,22 +203,22 @@ export class ShutdownManager {
 
     switch (this.state.phase) {
       case 'init':
-        console.log('   Run: spec-gen init');
+        console.log('   Run: openlore init');
         break;
       case 'analyze':
-        console.log('   Run: spec-gen analyze');
+        console.log('   Run: openlore analyze');
         if (this.state.savedResults) {
           console.log(`   Partial analysis saved to: ${this.state.savedResults}`);
         }
         break;
       case 'generate':
-        console.log('   Run: spec-gen generate');
+        console.log('   Run: openlore generate');
         if (this.state.savedResults) {
           console.log(`   Partial specs saved to: ${this.state.savedResults}`);
         }
         break;
       case 'verify':
-        console.log('   Run: spec-gen verify');
+        console.log('   Run: openlore verify');
         break;
     }
 

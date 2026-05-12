@@ -1,12 +1,12 @@
 /**
- * Tests for specGenGetSpecRequirements programmatic API
+ * Tests for openloreGetSpecRequirements programmatic API
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { specGenGetSpecRequirements } from './specs.js';
+import { openloreGetSpecRequirements } from './specs.js';
 
 // ============================================================================
 // TEST HELPERS
@@ -14,9 +14,9 @@ import { specGenGetSpecRequirements } from './specs.js';
 
 let testDir: string;
 
-/** Build the .spec-gen/analysis/mapping.json fixture */
+/** Build the .openlore/analysis/mapping.json fixture */
 async function writeMapping(dir: string, payload: object): Promise<void> {
-  const analysisDir = join(dir, '.spec-gen', 'analysis');
+  const analysisDir = join(dir, '.openlore', 'analysis');
   await mkdir(analysisDir, { recursive: true });
   await writeFile(join(analysisDir, 'mapping.json'), JSON.stringify(payload, null, 2));
 }
@@ -36,11 +36,11 @@ function makeSpecContent(entries: Array<{ title: string; body: string }>): strin
 // TESTS: no mapping.json
 // ============================================================================
 
-describe('specGenGetSpecRequirements — no mapping.json', () => {
+describe('openloreGetSpecRequirements — no mapping.json', () => {
   beforeEach(async () => {
     testDir = join(
       tmpdir(),
-      `spec-gen-specs-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `openlore-specs-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
     );
     await mkdir(testDir, { recursive: true });
   });
@@ -50,7 +50,7 @@ describe('specGenGetSpecRequirements — no mapping.json', () => {
   });
 
   it('returns empty requirements when mapping.json does not exist', async () => {
-    const result = await specGenGetSpecRequirements({ rootPath: testDir });
+    const result = await openloreGetSpecRequirements({ rootPath: testDir });
 
     expect(result.requirements).toEqual({});
     expect(result.generatedAt).toBeUndefined();
@@ -58,7 +58,7 @@ describe('specGenGetSpecRequirements — no mapping.json', () => {
 
   it('uses process.cwd() when rootPath is omitted (smoke test — no throw)', async () => {
     // We cannot control cwd in tests, but the call must not throw
-    await expect(specGenGetSpecRequirements()).resolves.toBeDefined();
+    await expect(openloreGetSpecRequirements()).resolves.toBeDefined();
   });
 });
 
@@ -66,11 +66,11 @@ describe('specGenGetSpecRequirements — no mapping.json', () => {
 // TESTS: mapping.json present, basic extraction
 // ============================================================================
 
-describe('specGenGetSpecRequirements — basic extraction', () => {
+describe('openloreGetSpecRequirements — basic extraction', () => {
   beforeEach(async () => {
     testDir = join(
       tmpdir(),
-      `spec-gen-specs-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `openlore-specs-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
     );
     await mkdir(testDir, { recursive: true });
   });
@@ -85,14 +85,14 @@ describe('specGenGetSpecRequirements — basic extraction', () => {
       mappings: [],
     });
 
-    const result = await specGenGetSpecRequirements({ rootPath: testDir });
+    const result = await openloreGetSpecRequirements({ rootPath: testDir });
     expect(result.generatedAt).toBe('2024-01-15T10:00:00.000Z');
   });
 
   it('returns empty requirements when mappings array is empty', async () => {
     await writeMapping(testDir, { generatedAt: '2024-01-01T00:00:00Z', mappings: [] });
 
-    const result = await specGenGetSpecRequirements({ rootPath: testDir });
+    const result = await openloreGetSpecRequirements({ rootPath: testDir });
     expect(result.requirements).toEqual({});
   });
 
@@ -113,7 +113,7 @@ describe('specGenGetSpecRequirements — basic extraction', () => {
       ],
     });
 
-    const result = await specGenGetSpecRequirements({ rootPath: testDir });
+    const result = await openloreGetSpecRequirements({ rootPath: testDir });
 
     expect(result.requirements['User Login']).toMatchObject({
       title: 'User Login',
@@ -142,7 +142,7 @@ describe('specGenGetSpecRequirements — basic extraction', () => {
       ],
     });
 
-    const result = await specGenGetSpecRequirements({ rootPath: testDir });
+    const result = await openloreGetSpecRequirements({ rootPath: testDir });
 
     expect(result.requirements['User Login'].body).toBe('Login body.');
     expect(result.requirements['User Logout'].body).toBe('Logout body.');
@@ -170,7 +170,7 @@ describe('specGenGetSpecRequirements — basic extraction', () => {
       ],
     });
 
-    const result = await specGenGetSpecRequirements({ rootPath: testDir });
+    const result = await openloreGetSpecRequirements({ rootPath: testDir });
 
     expect(result.requirements['User Login'].body).toBe('Auth body.');
     expect(result.requirements['Invoice Generation'].body).toBe('Billing body.');
@@ -181,11 +181,11 @@ describe('specGenGetSpecRequirements — basic extraction', () => {
 // TESTS: case-insensitive title matching
 // ============================================================================
 
-describe('specGenGetSpecRequirements — case-insensitive title matching', () => {
+describe('openloreGetSpecRequirements — case-insensitive title matching', () => {
   beforeEach(async () => {
     testDir = join(
       tmpdir(),
-      `spec-gen-specs-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `openlore-specs-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
     );
     await mkdir(testDir, { recursive: true });
   });
@@ -203,7 +203,7 @@ describe('specGenGetSpecRequirements — case-insensitive title matching', () =>
       mappings: [{ requirement: 'user login', specFile: specRel }],
     });
 
-    const result = await specGenGetSpecRequirements({ rootPath: testDir });
+    const result = await openloreGetSpecRequirements({ rootPath: testDir });
 
     expect(result.requirements['user login']).toBeDefined();
     expect(result.requirements['user login'].body).toBe('Body text here.');
@@ -219,7 +219,7 @@ describe('specGenGetSpecRequirements — case-insensitive title matching', () =>
       mappings: [{ requirement: 'my feature', specFile: specRel }],
     });
 
-    const result = await specGenGetSpecRequirements({ rootPath: testDir });
+    const result = await openloreGetSpecRequirements({ rootPath: testDir });
     expect(result.requirements['my feature'].title).toBe('My Feature');
   });
 });
@@ -228,11 +228,11 @@ describe('specGenGetSpecRequirements — case-insensitive title matching', () =>
 // TESTS: placeholder / fallback behaviour
 // ============================================================================
 
-describe('specGenGetSpecRequirements — placeholders and fallbacks', () => {
+describe('openloreGetSpecRequirements — placeholders and fallbacks', () => {
   beforeEach(async () => {
     testDir = join(
       tmpdir(),
-      `spec-gen-specs-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `openlore-specs-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
     );
     await mkdir(testDir, { recursive: true });
   });
@@ -246,7 +246,7 @@ describe('specGenGetSpecRequirements — placeholders and fallbacks', () => {
       mappings: [{ requirement: 'Orphan Req', domain: 'core' }],
     });
 
-    const result = await specGenGetSpecRequirements({ rootPath: testDir });
+    const result = await openloreGetSpecRequirements({ rootPath: testDir });
     const req = result.requirements['Orphan Req'];
 
     expect(req).toBeDefined();
@@ -267,7 +267,7 @@ describe('specGenGetSpecRequirements — placeholders and fallbacks', () => {
       ],
     });
 
-    const result = await specGenGetSpecRequirements({ rootPath: testDir });
+    const result = await openloreGetSpecRequirements({ rootPath: testDir });
     const req = result.requirements['Missing File Req'];
 
     expect(req.title).toBe('Missing File Req');
@@ -288,7 +288,7 @@ describe('specGenGetSpecRequirements — placeholders and fallbacks', () => {
       mappings: [{ requirement: 'Missing Heading', specFile: specRel }],
     });
 
-    const result = await specGenGetSpecRequirements({ rootPath: testDir });
+    const result = await openloreGetSpecRequirements({ rootPath: testDir });
     const req = result.requirements['Missing Heading'];
 
     expect(req.title).toBe('Missing Heading');
@@ -304,7 +304,7 @@ describe('specGenGetSpecRequirements — placeholders and fallbacks', () => {
       ],
     });
 
-    const result = await specGenGetSpecRequirements({ rootPath: testDir });
+    const result = await openloreGetSpecRequirements({ rootPath: testDir });
 
     const keys = Object.keys(result.requirements);
     expect(keys).toHaveLength(1);
@@ -333,7 +333,7 @@ describe('specGenGetSpecRequirements — placeholders and fallbacks', () => {
       ],
     });
 
-    const result = await specGenGetSpecRequirements({ rootPath: testDir });
+    const result = await openloreGetSpecRequirements({ rootPath: testDir });
 
     expect(result.requirements['Dup Req'].body).toBe('First body.');
   });
@@ -343,11 +343,11 @@ describe('specGenGetSpecRequirements — placeholders and fallbacks', () => {
 // TESTS: multi-line body extraction
 // ============================================================================
 
-describe('specGenGetSpecRequirements — multi-line body extraction', () => {
+describe('openloreGetSpecRequirements — multi-line body extraction', () => {
   beforeEach(async () => {
     testDir = join(
       tmpdir(),
-      `spec-gen-specs-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `openlore-specs-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
     );
     await mkdir(testDir, { recursive: true });
   });
@@ -374,7 +374,7 @@ Additional constraints apply.`;
       mappings: [{ requirement: 'Rich Req', specFile: specRel }],
     });
 
-    const result = await specGenGetSpecRequirements({ rootPath: testDir });
+    const result = await openloreGetSpecRequirements({ rootPath: testDir });
     expect(result.requirements['Rich Req'].body).toContain('Feature A');
     expect(result.requirements['Rich Req'].body).toContain('Additional constraints apply.');
   });
@@ -391,7 +391,7 @@ Additional constraints apply.`;
       mappings: [{ requirement: 'Trimmed Req', specFile: specRel }],
     });
 
-    const result = await specGenGetSpecRequirements({ rootPath: testDir });
+    const result = await openloreGetSpecRequirements({ rootPath: testDir });
     // body is trimmed
     expect(result.requirements['Trimmed Req'].body).toBe('Some body text.');
   });
@@ -401,11 +401,11 @@ Additional constraints apply.`;
 // TESTS: malformed inputs
 // ============================================================================
 
-describe('specGenGetSpecRequirements — malformed inputs', () => {
+describe('openloreGetSpecRequirements — malformed inputs', () => {
   beforeEach(async () => {
     testDir = join(
       tmpdir(),
-      `spec-gen-specs-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `openlore-specs-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
     );
     await mkdir(testDir, { recursive: true });
   });
@@ -415,11 +415,11 @@ describe('specGenGetSpecRequirements — malformed inputs', () => {
   });
 
   it('returns empty requirements when mapping.json is invalid JSON', async () => {
-    const analysisDir = join(testDir, '.spec-gen', 'analysis');
+    const analysisDir = join(testDir, '.openlore', 'analysis');
     await mkdir(analysisDir, { recursive: true });
     await writeFile(join(analysisDir, 'mapping.json'), '{ this is not valid json >>>');
 
-    const result = await specGenGetSpecRequirements({ rootPath: testDir });
+    const result = await openloreGetSpecRequirements({ rootPath: testDir });
 
     expect(result.requirements).toEqual({});
   });
@@ -427,7 +427,7 @@ describe('specGenGetSpecRequirements — malformed inputs', () => {
   it('returns empty requirements when mappings field is missing', async () => {
     await writeMapping(testDir, { generatedAt: '2024-01-01T00:00:00Z' /* no mappings field */ });
 
-    const result = await specGenGetSpecRequirements({ rootPath: testDir });
+    const result = await openloreGetSpecRequirements({ rootPath: testDir });
     expect(result.requirements).toEqual({});
   });
 
@@ -443,7 +443,7 @@ describe('specGenGetSpecRequirements — malformed inputs', () => {
     });
 
     // Should not throw; should return a placeholder
-    const result = await specGenGetSpecRequirements({ rootPath: testDir });
+    const result = await openloreGetSpecRequirements({ rootPath: testDir });
     expect(result.requirements['Binary Req']).toBeDefined();
     expect(result.requirements['Binary Req'].body).toBe('');
   });
@@ -454,38 +454,38 @@ describe('specGenGetSpecRequirements — malformed inputs', () => {
 // ============================================================================
 
 describe('barrel exports from index.js', () => {
-  it('exports specGenGetSpecRequirements', async () => {
+  it('exports openloreGetSpecRequirements', async () => {
     const api = await import('./index.js');
-    expect(typeof api.specGenGetSpecRequirements).toBe('function');
+    expect(typeof api.openloreGetSpecRequirements).toBe('function');
   });
 
-  it('exports specGenInit', async () => {
+  it('exports openloreInit', async () => {
     const api = await import('./index.js');
-    expect(typeof api.specGenInit).toBe('function');
+    expect(typeof api.openloreInit).toBe('function');
   });
 
-  it('exports specGenAnalyze', async () => {
+  it('exports openloreAnalyze', async () => {
     const api = await import('./index.js');
-    expect(typeof api.specGenAnalyze).toBe('function');
+    expect(typeof api.openloreAnalyze).toBe('function');
   });
 
-  it('exports specGenGenerate', async () => {
+  it('exports openloreGenerate', async () => {
     const api = await import('./index.js');
-    expect(typeof api.specGenGenerate).toBe('function');
+    expect(typeof api.openloreGenerate).toBe('function');
   });
 
-  it('exports specGenRun', async () => {
+  it('exports openloreRun', async () => {
     const api = await import('./index.js');
-    expect(typeof api.specGenRun).toBe('function');
+    expect(typeof api.openloreRun).toBe('function');
   });
 
-  it('exports specGenVerify', async () => {
+  it('exports openloreVerify', async () => {
     const api = await import('./index.js');
-    expect(typeof api.specGenVerify).toBe('function');
+    expect(typeof api.openloreVerify).toBe('function');
   });
 
-  it('exports specGenDrift', async () => {
+  it('exports openloreDrift', async () => {
     const api = await import('./index.js');
-    expect(typeof api.specGenDrift).toBe('function');
+    expect(typeof api.openloreDrift).toBe('function');
   });
 });

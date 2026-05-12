@@ -1,5 +1,5 @@
 /**
- * spec-gen generate — programmatic API
+ * openlore generate — programmatic API
  *
  * Generates OpenSpec specification files from analysis results using LLM.
  * No side effects (no process.exit, no console.log).
@@ -8,7 +8,7 @@
 import { join } from 'node:path';
 import { readJsonFile } from '../utils/command-helpers.js';
 import {
-  readSpecGenConfig,
+  readOpenLoreConfig,
   readOpenSpecConfig,
 } from '../core/services/config-manager.js';
 import { createLLMService } from '../core/services/llm-service.js';
@@ -31,11 +31,11 @@ import {
   DEFAULT_OPENAI_COMPAT_MODEL,
   DEFAULT_COPILOT_MODEL,
   DEFAULT_GEMINI_MODEL,
-  SPEC_GEN_DIR,
-  SPEC_GEN_ANALYSIS_SUBDIR,
-  SPEC_GEN_LOGS_SUBDIR,
-  SPEC_GEN_ANALYSIS_REL_PATH,
-  SPEC_GEN_GENERATION_SUBDIR,
+  OPENLORE_DIR,
+  OPENLORE_ANALYSIS_SUBDIR,
+  OPENLORE_LOGS_SUBDIR,
+  OPENLORE_ANALYSIS_REL_PATH,
+  OPENLORE_GENERATION_SUBDIR,
   OPENSPEC_DIR,
   ARTIFACT_REPO_STRUCTURE,
   ARTIFACT_LLM_CONTEXT,
@@ -88,27 +88,27 @@ async function loadAnalysisData(analysisPath: string): Promise<AnalysisData | nu
 /**
  * Generate OpenSpec specification files from analysis results using LLM.
  *
- * @throws Error if no spec-gen configuration found
+ * @throws Error if no openlore configuration found
  * @throws Error if no analysis found
  * @throws Error if no LLM API key found
  * @throws Error if LLM API connectivity fails
  * @throws Error if pipeline fails
  */
-export async function specGenGenerate(options: GenerateApiOptions = {}): Promise<GenerateResult> {
+export async function openloreGenerate(options: GenerateApiOptions = {}): Promise<GenerateResult> {
   const startTime = Date.now();
   const rootPath = options.rootPath ?? process.cwd();
-  const analysisRelPath = options.analysisPath ?? `${SPEC_GEN_ANALYSIS_REL_PATH}/`;
+  const analysisRelPath = options.analysisPath ?? `${OPENLORE_ANALYSIS_REL_PATH}/`;
   const analysisPath = join(rootPath, analysisRelPath);
   const { onProgress } = options;
 
   // Load config
   progress(onProgress, 'Loading configuration', 'start');
-  const specGenConfig = await readSpecGenConfig(rootPath);
-  if (!specGenConfig) {
-    throw new Error('No spec-gen configuration found. Run specGenInit() first.');
+  const openloreConfig = await readOpenLoreConfig(rootPath);
+  if (!openloreConfig) {
+    throw new Error('No openlore configuration found. Run openloreInit() first.');
   }
 
-  const openspecRelPath = specGenConfig.openspecPath ?? OPENSPEC_DIR;
+  const openspecRelPath = openloreConfig.openspecPath ?? OPENSPEC_DIR;
   const fullOpenspecPath = join(rootPath, openspecRelPath);
   await readOpenSpecConfig(fullOpenspecPath); // Ensure it's readable
   progress(onProgress, 'Loading configuration', 'complete');
@@ -117,7 +117,7 @@ export async function specGenGenerate(options: GenerateApiOptions = {}): Promise
   progress(onProgress, 'Loading analysis', 'start');
   const analysisData = await loadAnalysisData(analysisPath);
   if (!analysisData) {
-    throw new Error('No analysis found. Run specGenAnalyze() first.');
+    throw new Error('No analysis found. Run openloreAnalyze() first.');
   }
   const { repoStructure, llmContext, depGraph, refactorReport } = analysisData;
   progress(onProgress, 'Loading analysis', 'complete', `${repoStructure.statistics.analyzedFiles} files`);
@@ -128,7 +128,7 @@ export async function specGenGenerate(options: GenerateApiOptions = {}): Promise
   const openaiCompatKey = process.env.OPENAI_COMPAT_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
 
-  const configuredProvider = options.provider ?? specGenConfig.generation.provider;
+  const configuredProvider = options.provider ?? openloreConfig.generation.provider;
   const noKeyProviders = ['claude-code', 'mistral-vibe', 'copilot', 'gemini-cli', 'cursor-agent'];
 
   if (!noKeyProviders.includes(configuredProvider ?? '') && !anthropicKey && !openaiKey && !openaiCompatKey && !geminiKey) {
@@ -155,17 +155,17 @@ export async function specGenGenerate(options: GenerateApiOptions = {}): Promise
     'gemini-cli': 'gemini-cli',
     'cursor-agent': 'cursor-agent',
   };
-  const effectiveModel = options.model || specGenConfig.generation.model || defaultModels[effectiveProvider];
+  const effectiveModel = options.model || openloreConfig.generation.model || defaultModels[effectiveProvider];
 
-  const rootConfig = specGenConfig as unknown as Record<string, string>;
+  const rootConfig = openloreConfig as unknown as Record<string, string>;
   const effectiveBaseUrl = options.openaiCompatBaseUrl
     ?? process.env.OPENAI_COMPAT_BASE_URL
-    ?? specGenConfig.generation.openaiCompatBaseUrl
+    ?? openloreConfig.generation.openaiCompatBaseUrl
     ?? rootConfig['openaiCompatBaseUrl'];
 
   // Apply SSL verification setting
-  const sslVerify = options.sslVerify ?? specGenConfig.llm?.sslVerify ?? true;
-  if (!sslVerify || specGenConfig.generation.skipSslVerify || specGenConfig.embedding?.skipSslVerify) {
+  const sslVerify = options.sslVerify ?? openloreConfig.llm?.sslVerify ?? true;
+  if (!sslVerify || openloreConfig.generation.skipSslVerify || openloreConfig.embedding?.skipSslVerify) {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
   }
 
@@ -177,12 +177,12 @@ export async function specGenGenerate(options: GenerateApiOptions = {}): Promise
       provider: effectiveProvider,
       model: effectiveModel,
       openaiCompatBaseUrl: effectiveBaseUrl,
-      apiBase: options.apiBase ?? specGenConfig.llm?.apiBase,
+      apiBase: options.apiBase ?? openloreConfig.llm?.apiBase,
       sslVerify,
-      timeout: options.timeout ?? specGenConfig.generation?.timeout,
-      disableResponseFormat: specGenConfig.generation?.disableResponseFormat,
+      timeout: options.timeout ?? openloreConfig.generation?.timeout,
+      disableResponseFormat: openloreConfig.generation?.disableResponseFormat,
       enableLogging: true,
-      logDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_LOGS_SUBDIR),
+      logDir: join(rootPath, OPENLORE_DIR, OPENLORE_LOGS_SUBDIR),
     });
   } catch (error) {
     throw new Error(`Failed to create LLM service: ${(error as Error).message}`);
@@ -195,8 +195,8 @@ export async function specGenGenerate(options: GenerateApiOptions = {}): Promise
     return {
       report: {
         timestamp: new Date().toISOString(),
-        openspecVersion: specGenConfig.version ?? '1.0.0',
-        specGenVersion: '1.0.0',
+        openspecVersion: openloreConfig.version ?? '1.0.0',
+        openloreVersion: '1.0.0',
         filesWritten: [],
         filesSkipped: [],
         filesBackedUp: [],
@@ -217,11 +217,11 @@ export async function specGenGenerate(options: GenerateApiOptions = {}): Promise
   const adr = options.adr ?? false;
   const adrOnly = options.adrOnly ?? false;
   const pipeline = new SpecGenerationPipeline(llm, {
-    outputDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_GENERATION_SUBDIR),
+    outputDir: join(rootPath, OPENLORE_DIR, OPENLORE_GENERATION_SUBDIR),
     saveIntermediate: true,
     generateADRs: adr || adrOnly,
     force: options.force,
-    chunkMaxChars: specGenConfig.generation?.chunkMaxChars,
+    chunkMaxChars: openloreConfig.generation?.chunkMaxChars,
   });
 
   let pipelineResult;
@@ -238,14 +238,14 @@ export async function specGenGenerate(options: GenerateApiOptions = {}): Promise
   if ((options.mapping ?? true) && depGraph) {
     try {
       let semanticSearch: import('../core/generator/mapping-generator.js').SemanticSearchFn | undefined;
-      const analysisDir = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+      const analysisDir = join(rootPath, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
       const { VectorIndex } = await import('../core/analyzer/vector-index.js');
       if (VectorIndex.exists(analysisDir)) {
         const { EmbeddingService } = await import('../core/analyzer/embedding-service.js');
         let embedSvc: InstanceType<typeof EmbeddingService> | undefined;
         try { embedSvc = EmbeddingService.fromEnv(); } catch { /* no env config */ }
         if (!embedSvc) {
-          const svc = EmbeddingService.fromConfig(specGenConfig);
+          const svc = EmbeddingService.fromConfig(openloreConfig);
           if (svc) embedSvc = svc;
         }
         if (embedSvc) {
@@ -264,7 +264,7 @@ export async function specGenGenerate(options: GenerateApiOptions = {}): Promise
   // Format specs
   progress(onProgress, 'Formatting specifications', 'start');
   const formatGenerator = new OpenSpecFormatGenerator({
-    version: specGenConfig.version,
+    version: openloreConfig.version,
     includeConfidence: true,
     includeTechnicalNotes: true,
     depGraph,
@@ -283,7 +283,7 @@ export async function specGenGenerate(options: GenerateApiOptions = {}): Promise
   // Generate ADRs
   if (adr || adrOnly) {
     const adrGenerator = new ADRGenerator({
-      version: specGenConfig.version,
+      version: openloreConfig.version,
       includeMermaid: true,
     });
     const adrSpecs = adrGenerator.generateADRs(pipelineResult);
@@ -298,7 +298,7 @@ export async function specGenGenerate(options: GenerateApiOptions = {}): Promise
   const writer = new OpenSpecWriter({
     rootPath,
     writeMode,
-    version: specGenConfig.version,
+    version: openloreConfig.version,
     createBackups: true,
     updateConfig: true,
     validateBeforeWrite: true,

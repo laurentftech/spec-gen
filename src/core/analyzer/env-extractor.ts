@@ -142,7 +142,7 @@ function extractFromSource(source: string, relPath: string, ext: string): Array<
 
 const ENV_DECLARATION_FILES = new Set(['.env', '.env.example', '.env.local', '.env.test', '.env.production']);
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.pyw', '.go', '.rb']);
-const SKIP_DIRS = ['/node_modules/', '/.spec-gen/', '/dist/', '/build/', '/coverage/'];
+const SKIP_DIRS = ['/node_modules/', '/.openlore/', '/dist/', '/build/', '/coverage/'];
 
 /**
  * Extract all environment variables referenced or declared in the project.

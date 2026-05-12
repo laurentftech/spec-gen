@@ -6,7 +6,7 @@ Run once per project, then re-run at the start of each planning cycle (quarterly
 
 **Who runs this**: Architect Agent (not Dev Agent).
 
-**Output**: populated `openspec/` + `.spec-gen/` + risk register embedded in architecture doc.
+**Output**: populated `openspec/` + `.openlore/` + risk register embedded in architecture doc.
 
 **Estimated time**: 5–15 minutes depending on codebase size.
 
@@ -14,8 +14,8 @@ Run once per project, then re-run at the start of each planning cycle (quarterly
 
 ## Prerequisites
 
-- spec-gen MCP server connected
-- `spec-gen` CLI available (`npx spec-gen` or local install)
+- openlore MCP server connected
+- `openlore` CLI available (`npx openlore` or local install)
 - Read access to the project directory
 
 ---
@@ -24,7 +24,7 @@ Run once per project, then re-run at the start of each planning cycle (quarterly
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>analyze_codebase</tool_name>
   <arguments>{
     "directory": "$PROJECT_ROOT",
@@ -42,14 +42,14 @@ If `cycles_detected > 0`, note it — this is a brownfield risk signal.
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>get_architecture_overview</tool_name>
   <arguments>{"directory": "$PROJECT_ROOT"}</arguments>
 </use_mcp_tool>
 ```
 
 From the result, record:
-- **Domain clusters** (the logical groupings spec-gen detected)
+- **Domain clusters** (the logical groupings openlore detected)
 - **Cross-cluster dependencies** (coupling risks)
 - **Entry points** (where requests enter the system)
 - **Critical hubs** (high fan-in functions — touch with care)
@@ -60,7 +60,7 @@ From the result, record:
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>get_refactor_report</tool_name>
   <arguments>{"directory": "$PROJECT_ROOT"}</arguments>
 </use_mcp_tool>
@@ -82,7 +82,7 @@ Functions with priority > 70 are **no-touch zones** until refactored.
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>get_duplicate_report</tool_name>
   <arguments>{"directory": "$PROJECT_ROOT"}</arguments>
 </use_mcp_tool>
@@ -97,13 +97,13 @@ Note any clone groups — they indicate debt that will multiply if features are 
 If `openspec/` does not exist or has no specs, generate them:
 
 ```bash
-spec-gen analyze --embed
-spec-gen generate
+openlore analyze --embed
+openlore generate
 ```
 
-Or trigger the spec-gen skill in your AI agent:
+Or trigger the openlore skill in your AI agent:
 
-> "Run spec-gen on this codebase and generate OpenSpec specifications."
+> "Run openlore on this codebase and generate OpenSpec specifications."
 
 This creates `openspec/specs/{domain}/spec.md` for each detected domain.
 Commit the result — these become the baseline for drift detection.
@@ -114,7 +114,7 @@ Commit the result — these become the baseline for drift detection.
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>check_spec_drift</tool_name>
   <arguments>{
     "directory": "$PROJECT_ROOT",
@@ -149,7 +149,7 @@ Create or update `openspec/specs/architecture/spec.md` with a **brownfield basel
 
 ### Known duplicate groups
 
-- N clone groups detected (see `.spec-gen/analysis/`)
+- N clone groups detected (see `.openlore/analysis/`)
 
 ### Onboarding notes
 
@@ -160,7 +160,7 @@ Create or update `openspec/specs/architecture/spec.md` with a **brownfield basel
 
 ## Completion Criteria
 
-- [ ] `spec-gen analyze` completed without error
+- [ ] `openlore analyze` completed without error
 - [ ] Architecture overview reviewed and understood
 - [ ] Risk register created with functions priority > 70 flagged
 - [ ] `openspec/` populated (generated or pre-existing)

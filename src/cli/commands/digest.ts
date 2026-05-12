@@ -1,5 +1,5 @@
 /**
- * spec-gen digest command
+ * openlore digest command
  *
  * Generates a plain-English summary of all OpenSpec specs for human review.
  * Source spec files are never modified.
@@ -32,10 +32,10 @@ export const digestCommand = new Command('digest')
     'after',
     `
 Examples:
-  $ spec-gen digest                        Print digest to stdout
-  $ spec-gen digest --save                 Write to openspec/digest.md
-  $ spec-gen digest --output review.md     Write to a custom path
-  $ spec-gen digest --domains auth,payment Only show selected domains
+  $ openlore digest                        Print digest to stdout
+  $ openlore digest --save                 Write to openspec/digest.md
+  $ openlore digest --output review.md     Write to a custom path
+  $ openlore digest --domains auth,payment Only show selected domains
 `
   )
   .action(async function (options: {
@@ -52,7 +52,7 @@ Examples:
       });
 
       if (result.domains.length === 0) {
-        logger.error('No spec files found. Run "spec-gen generate" first.');
+        logger.error('No spec files found. Run "openlore generate" first.');
         process.exitCode = 1;
         return;
       }

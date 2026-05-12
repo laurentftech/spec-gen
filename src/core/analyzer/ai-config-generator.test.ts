@@ -33,7 +33,7 @@ describe('generateAiConfigs', () => {
   it('creates all 7 files when none exist and returns their relative paths', async () => {
     const results = await generateAiConfigs({
       rootDir: tmpDir,
-      analysisDir: '.spec-gen/analysis',
+      analysisDir: '.openlore/analysis',
       projectName: 'my-project',
     });
 
@@ -43,24 +43,24 @@ describe('generateAiConfigs', () => {
     expect(rels).toContain('CLAUDE.md');
     expect(rels).toContain('AGENTS.md');
     expect(rels).toContain('.cursorrules');
-    expect(rels).toContain('.clinerules/spec-gen.md');
+    expect(rels).toContain('.clinerules/openlore.md');
     expect(rels).toContain('.github/copilot-instructions.md');
     expect(rels).toContain('.windsurf/rules.md');
-    expect(rels).toContain('.vibe/skills/spec-gen.md');
+    expect(rels).toContain('.vibe/skills/openlore.md');
   });
 
   it('skips files that already exist — all have created=false on second call', async () => {
     // First call creates all files
     await generateAiConfigs({
       rootDir: tmpDir,
-      analysisDir: '.spec-gen/analysis',
+      analysisDir: '.openlore/analysis',
       projectName: 'my-project',
     });
 
     // Second call: all files still returned, but created=false
     const results = await generateAiConfigs({
       rootDir: tmpDir,
-      analysisDir: '.spec-gen/analysis',
+      analysisDir: '.openlore/analysis',
       projectName: 'my-project',
     });
 
@@ -71,7 +71,7 @@ describe('generateAiConfigs', () => {
   it('respects tools filter — tools: ["claude"] creates only CLAUDE.md', async () => {
     const results = await generateAiConfigs({
       rootDir: tmpDir,
-      analysisDir: '.spec-gen/analysis',
+      analysisDir: '.openlore/analysis',
       projectName: 'my-project',
       tools: ['claude'],
     });
@@ -84,13 +84,13 @@ describe('generateAiConfigs', () => {
   it('Claude format uses @analysisDir/CODEBASE.md reference', async () => {
     await generateAiConfigs({
       rootDir: tmpDir,
-      analysisDir: '.spec-gen/analysis',
+      analysisDir: '.openlore/analysis',
       projectName: 'my-project',
       tools: ['claude'],
     });
 
     const content = await readFile(join(tmpDir, 'CLAUDE.md'), 'utf-8');
-    expect(content).toContain('@.spec-gen/analysis/CODEBASE.md');
+    expect(content).toContain('@.openlore/analysis/CODEBASE.md');
     // Should NOT use HTML comment
     expect(content).not.toContain('<!--');
   });
@@ -98,20 +98,20 @@ describe('generateAiConfigs', () => {
   it('non-Claude format uses HTML comment reference', async () => {
     await generateAiConfigs({
       rootDir: tmpDir,
-      analysisDir: '.spec-gen/analysis',
+      analysisDir: '.openlore/analysis',
       projectName: 'my-project',
       tools: ['cursor'],
     });
 
     const content = await readFile(join(tmpDir, '.cursorrules'), 'utf-8');
-    expect(content).toContain('<!-- Import or paste .spec-gen/analysis/CODEBASE.md here');
-    expect(content).not.toContain('@.spec-gen/analysis/CODEBASE.md');
+    expect(content).toContain('<!-- Import or paste .openlore/analysis/CODEBASE.md here');
+    expect(content).not.toContain('@.openlore/analysis/CODEBASE.md');
   });
 
   it('content contains project name', async () => {
     await generateAiConfigs({
       rootDir: tmpDir,
-      analysisDir: '.spec-gen/analysis',
+      analysisDir: '.openlore/analysis',
       projectName: 'awesome-app',
       tools: ['claude'],
     });
@@ -123,35 +123,35 @@ describe('generateAiConfigs', () => {
   it('content contains MCP workflow', async () => {
     await generateAiConfigs({
       rootDir: tmpDir,
-      analysisDir: '.spec-gen/analysis',
+      analysisDir: '.openlore/analysis',
       projectName: 'my-project',
       tools: ['cursor'],
     });
 
     const content = await readFile(join(tmpDir, '.cursorrules'), 'utf-8');
-    expect(content).toContain('spec-gen MCP workflow');
+    expect(content).toContain('openlore MCP workflow');
     expect(content).toContain('orient');
     expect(content).toContain('search_code');
   });
 
-  it('creates nested directory for .clinerules/spec-gen.md', async () => {
+  it('creates nested directory for .clinerules/openlore.md', async () => {
     const results = await generateAiConfigs({
       rootDir: tmpDir,
-      analysisDir: '.spec-gen/analysis',
+      analysisDir: '.openlore/analysis',
       projectName: 'my-project',
       tools: ['cline'],
     });
 
-    expect(results[0].rel).toBe('.clinerules/spec-gen.md');
+    expect(results[0].rel).toBe('.clinerules/openlore.md');
     expect(results[0].created).toBe(true);
-    const content = await readFile(join(tmpDir, '.clinerules', 'spec-gen.md'), 'utf-8');
+    const content = await readFile(join(tmpDir, '.clinerules', 'openlore.md'), 'utf-8');
     expect(content.length).toBeGreaterThan(0);
   });
 
   it('creates nested directory for .github/copilot-instructions.md', async () => {
     const results = await generateAiConfigs({
       rootDir: tmpDir,
-      analysisDir: '.spec-gen/analysis',
+      analysisDir: '.openlore/analysis',
       projectName: 'my-project',
       tools: ['copilot'],
     });
@@ -165,7 +165,7 @@ describe('generateAiConfigs', () => {
   it('empty tools: [] produces no files', async () => {
     const created = await generateAiConfigs({
       rootDir: tmpDir,
-      analysisDir: '.spec-gen/analysis',
+      analysisDir: '.openlore/analysis',
       projectName: 'my-project',
       tools: [],
     });
@@ -179,7 +179,7 @@ describe('generateAiConfigs', () => {
 
     const results = await generateAiConfigs({
       rootDir: tmpDir,
-      analysisDir: '.spec-gen/analysis',
+      analysisDir: '.openlore/analysis',
       projectName: 'my-project',
     });
 

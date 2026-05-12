@@ -826,10 +826,10 @@ export class SpecGenerationPipeline implements PipelineContext {
       const filepath = join(this.options.outputDir, `${this.stageFileName(stage)}.json`);
 
       // Invalidate cache if analysis (llm-context.json) is newer than the stage file.
-      // This ensures that running `spec-gen analyze` followed by `spec-gen generate`
+      // This ensures that running `openlore analyze` followed by `openlore generate`
       // always re-runs the pipeline rather than serving stale LLM results.
       if (this.options.rootPath) {
-        const analysisFile = join(this.options.rootPath, '.spec-gen', 'analysis', 'llm-context.json');
+        const analysisFile = join(this.options.rootPath, '.openlore', 'analysis', 'llm-context.json');
         try {
           const [stageStat, analysisStat] = await Promise.all([stat(filepath), stat(analysisFile)]);
           if (analysisStat.mtimeMs > stageStat.mtimeMs) {

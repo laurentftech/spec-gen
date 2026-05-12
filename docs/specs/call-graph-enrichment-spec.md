@@ -8,7 +8,7 @@
 
 ## Décision d'architecture
 
-**Réécriture native TypeScript** — pas de subprocess Python ni de sidecar. spec-gen charge déjà tree-sitter en Node.js — les mêmes grammaires AST sont disponibles in-process. Les fichiers Python de code-graph-rag servent uniquement de spécification de référence pendant l'implémentation.
+**Réécriture native TypeScript** — pas de subprocess Python ni de sidecar. openlore charge déjà tree-sitter en Node.js — les mêmes grammaires AST sont disponibles in-process. Les fichiers Python de code-graph-rag servent uniquement de spécification de référence pendant l'implémentation.
 
 ---
 

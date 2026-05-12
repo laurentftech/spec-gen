@@ -326,13 +326,13 @@ describe('showNextSteps', () => {
   it('should show steps after analysis', () => {
     showNextSteps({ analyzed: true });
     const output = consoleSpy.mock.calls.flat().join('\n');
-    expect(output).toContain('spec-gen generate');
+    expect(output).toContain('openlore generate');
   });
 
   it('should show steps after generation', () => {
     showNextSteps({ generated: true });
     const output = consoleSpy.mock.calls.flat().join('\n');
-    expect(output).toContain('spec-gen verify');
+    expect(output).toContain('openlore verify');
     expect(output).toContain('openspec validate');
   });
 
@@ -345,7 +345,7 @@ describe('showNextSteps', () => {
   it('should show default steps', () => {
     showNextSteps({});
     const output = consoleSpy.mock.calls.flat().join('\n');
-    expect(output).toContain('spec-gen');
+    expect(output).toContain('openlore');
     expect(output).toContain('--help');
   });
 });
@@ -397,7 +397,7 @@ describe('showAnalysisSuccess', () => {
   it('should show success message', () => {
     showAnalysisSuccess({
       filesAnalyzed: 100,
-      outputPath: '.spec-gen/analysis/',
+      outputPath: '.openlore/analysis/',
     });
     const output = consoleSpy.mock.calls.flat().join('\n');
     expect(output).toContain('Analysis complete');
@@ -407,7 +407,7 @@ describe('showAnalysisSuccess', () => {
   it('should show domains when provided', () => {
     showAnalysisSuccess({
       filesAnalyzed: 50,
-      outputPath: '.spec-gen/analysis/',
+      outputPath: '.openlore/analysis/',
       domains: 5,
     });
     const output = consoleSpy.mock.calls.flat().join('\n');

@@ -1,7 +1,7 @@
 # Sisyphus — SDD Workflow Instructions
 
 You are Sisyphus, orchestrating a spec-driven development project.
-This project uses **spec-gen** to maintain a Spec-Driven Development triangle:
+This project uses **openlore** to maintain a Spec-Driven Development triangle:
 
 ```
      Specifications
@@ -14,8 +14,8 @@ Your job is to keep all three edges in sync at all times.
 
 Three plugins are active in this session:
 - **anti-laziness** — detects when you stop early and re-prompts you to continue.
-- **spec-gen-enforcer** — nudges you before structural file writes and presents pending decisions at idle.
-- **spec-gen-decision-extractor** — analyzes your file writes and suggests `record_decision` calls when it detects architectural changes.
+- **openlore-enforcer** — nudges you before structural file writes and presents pending decisions at idle.
+- **openlore-decision-extractor** — analyzes your file writes and suggests `record_decision` calls when it detects architectural changes.
 
 ---
 
@@ -42,9 +42,9 @@ Think through:
 1. record_decision(...)        ← FIRST, if architectural
 2. [code changes / file writes]
 3. check_spec_drift            ← AFTER changes
-4. spec-gen decisions --list   ← verify all decisions recorded
+4. openlore decisions --list   ← verify all decisions recorded
 5. [human approval gate]       ← NOT your job to approve
-6. spec-gen decisions --sync   ← AFTER human approval
+6. openlore decisions --sync   ← AFTER human approval
 7. git commit                  ← LAST
 ```
 
@@ -85,7 +85,7 @@ Call this tool with:
 
 If you are in a long session with multiple iterations:
 
-1. Before starting a new iteration, run `spec-gen decisions --list`
+1. Before starting a new iteration, run `openlore decisions --list`
    to review all previously recorded decisions.
 
 2. If you are about to change something that contradicts an existing decision,
@@ -114,8 +114,8 @@ I've recorded the following architectural decisions for this session:
    Domains: auth, security
 
 To approve and commit:
-  spec-gen decisions --approve a3f2e1b0
-  spec-gen decisions --sync
+  openlore decisions --approve a3f2e1b0
+  openlore decisions --sync
   git commit
 ```
 
@@ -124,8 +124,8 @@ To approve and commit:
 ## Compaction safety
 
 If the session context is compacted/summarized, the active decisions
-will be re-injected automatically by the spec-gen-enforcer plugin.
-Check `.spec-gen/decisions/pending.json` if you lose track of decisions.
+will be re-injected automatically by the openlore-enforcer plugin.
+Check `.openlore/decisions/pending.json` if you lose track of decisions.
 
 ---
 
@@ -133,15 +133,15 @@ Check `.spec-gen/decisions/pending.json` if you lose track of decisions.
 
 ```bash
 # 1. List all decisions
-spec-gen decisions --list
+openlore decisions --list
 
 # 2. Verify no spec drift
-spec-gen check-drift
+openlore check-drift
 
 # 3. Present pending decisions to user for approval
-# 4. Wait for human to run: spec-gen decisions --approve <id>
+# 4. Wait for human to run: openlore decisions --approve <id>
 # 5. Sync to spec.md
-spec-gen decisions --sync
+openlore decisions --sync
 
 # 6. Commit
 git commit -m "..."

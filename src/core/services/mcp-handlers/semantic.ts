@@ -13,14 +13,14 @@ import {
   INSERTION_ROLE_BONUS_INTERNAL,
   INSERTION_ROLE_BONUS_UTILITY,
   INSERTION_ORCHESTRATOR_FAN_OUT_THRESHOLD,
-  SPEC_GEN_DIR,
-  SPEC_GEN_ANALYSIS_SUBDIR,
+  OPENLORE_DIR,
+  OPENLORE_ANALYSIS_SUBDIR,
   OPENSPEC_DIR,
   OPENSPEC_SPECS_SUBDIR,
 } from '../../../constants.js';
 import { fileExists } from '../../../utils/command-helpers.js';
 import { validateDirectory, loadMappingIndex, specsForFile, functionsForDomain } from './utils.js';
-import { readSpecGenConfig } from '../config-manager.js';
+import { readOpenLoreConfig } from '../config-manager.js';
 
 // ============================================================================
 // INSERTION POINT HELPERS
@@ -140,7 +140,7 @@ export async function handleSearchCode(
   minFanIn?: number
 ): Promise<unknown> {
   const absDir = await validateDirectory(directory);
-  const outputDir = join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+  const outputDir = join(absDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
 
   const { VectorIndex } = await import('../../analyzer/vector-index.js');
   const { EmbeddingService } = await import('../../analyzer/embedding-service.js');
@@ -148,7 +148,7 @@ export async function handleSearchCode(
   if (!VectorIndex.exists(outputDir)) {
     return {
       error:
-        'No vector index found. Run "spec-gen analyze --embed" first, ' +
+        'No vector index found. Run "openlore analyze --embed" first, ' +
         'then configure EMBED_BASE_URL and EMBED_MODEL.',
     };
   }
@@ -159,7 +159,7 @@ export async function handleSearchCode(
   try {
     embedSvc = EmbeddingService.fromEnv();
   } catch {
-    const cfg = await readSpecGenConfig(absDir);
+    const cfg = await readOpenLoreConfig(absDir);
     const svcFromConfig = cfg ? EmbeddingService.fromConfig(cfg) : null;
     if (svcFromConfig) {
       embedSvc = svcFromConfig;
@@ -247,7 +247,7 @@ export async function handleSuggestInsertionPoints(
   language?: string
 ): Promise<unknown> {
   const absDir = await validateDirectory(directory);
-  const outputDir = join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+  const outputDir = join(absDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
 
   const { VectorIndex } = await import('../../analyzer/vector-index.js');
   const { EmbeddingService } = await import('../../analyzer/embedding-service.js');
@@ -255,7 +255,7 @@ export async function handleSuggestInsertionPoints(
   if (!VectorIndex.exists(outputDir)) {
     return {
       error:
-        'No vector index found. Run "spec-gen analyze --embed" first, ' +
+        'No vector index found. Run "openlore analyze --embed" first, ' +
         'then configure EMBED_BASE_URL and EMBED_MODEL.',
     };
   }
@@ -264,18 +264,18 @@ export async function handleSuggestInsertionPoints(
   try {
     embedSvc = EmbeddingService.fromEnv();
   } catch {
-    const cfg = await readSpecGenConfig(absDir);
+    const cfg = await readOpenLoreConfig(absDir);
     if (!cfg) {
       return {
         error:
-          'No embedding configuration found. Set EMBED_BASE_URL and EMBED_MODEL env vars, or add an "embedding" section to .spec-gen/config.json.',
+          'No embedding configuration found. Set EMBED_BASE_URL and EMBED_MODEL env vars, or add an "embedding" section to .openlore/config.json.',
       };
     }
     const svcFromConfig = EmbeddingService.fromConfig(cfg);
     if (!svcFromConfig) {
       return {
         error:
-          'No embedding configuration found. Set EMBED_BASE_URL and EMBED_MODEL env vars, or add an "embedding" section to .spec-gen/config.json.',
+          'No embedding configuration found. Set EMBED_BASE_URL and EMBED_MODEL env vars, or add an "embedding" section to .openlore/config.json.',
       };
     }
     embedSvc = svcFromConfig;
@@ -376,7 +376,7 @@ export async function handleSuggestInsertionPoints(
             `After implementing, run check_spec_drift to verify the code matches the spec`,
           ]
         : [
-            'No candidates found. Try a broader description or run "spec-gen analyze --embed" to build the index.',
+            'No candidates found. Try a broader description or run "openlore analyze --embed" to build the index.',
           ],
   };
 }
@@ -424,7 +424,7 @@ export async function handleListSpecDomains(directory: string): Promise<unknown>
   if (!(await fileExists(specsDir))) {
     return {
       domains: [],
-      note: 'No openspec/specs/ directory found. Run "spec-gen generate" first.',
+      note: 'No openspec/specs/ directory found. Run "openlore generate" first.',
     };
   }
 
@@ -443,8 +443,8 @@ export async function handleListSpecDomains(directory: string): Promise<unknown>
 }
 
 /**
- * Semantic search over the spec index built by "spec-gen analyze --embed"
- * or "spec-gen analyze --reindex-specs".
+ * Semantic search over the spec index built by "openlore analyze --embed"
+ * or "openlore analyze --reindex-specs".
  */
 export async function handleSearchSpecs(
   directory: string,
@@ -454,7 +454,7 @@ export async function handleSearchSpecs(
   section?: string
 ): Promise<unknown> {
   const absDir = await validateDirectory(directory);
-  const outputDir = join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+  const outputDir = join(absDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
 
   const { SpecVectorIndex } = await import('../../analyzer/spec-vector-index.js');
   const { EmbeddingService } = await import('../../analyzer/embedding-service.js');
@@ -462,7 +462,7 @@ export async function handleSearchSpecs(
   if (!SpecVectorIndex.exists(outputDir)) {
     return {
       error:
-        'No spec index found. Run "spec-gen analyze --embed" or "spec-gen analyze --reindex-specs" first, ' +
+        'No spec index found. Run "openlore analyze --embed" or "openlore analyze --reindex-specs" first, ' +
         'then configure EMBED_BASE_URL and EMBED_MODEL.',
     };
   }
@@ -471,18 +471,18 @@ export async function handleSearchSpecs(
   try {
     embedSvc = EmbeddingService.fromEnv();
   } catch {
-    const cfg = await readSpecGenConfig(absDir);
+    const cfg = await readOpenLoreConfig(absDir);
     if (!cfg) {
       return {
         error:
-          'No embedding configuration found. Set EMBED_BASE_URL and EMBED_MODEL env vars, or add an "embedding" section to .spec-gen/config.json.',
+          'No embedding configuration found. Set EMBED_BASE_URL and EMBED_MODEL env vars, or add an "embedding" section to .openlore/config.json.',
       };
     }
     const svcFromConfig = EmbeddingService.fromConfig(cfg);
     if (!svcFromConfig) {
       return {
         error:
-          'No embedding configuration found. Set EMBED_BASE_URL and EMBED_MODEL env vars, or add an "embedding" section to .spec-gen/config.json.',
+          'No embedding configuration found. Set EMBED_BASE_URL and EMBED_MODEL env vars, or add an "embedding" section to .openlore/config.json.',
       };
     }
     embedSvc = svcFromConfig;
@@ -522,7 +522,7 @@ export async function handleUnifiedSearch(
   section?: string
 ): Promise<unknown> {
   const absDir = await validateDirectory(directory);
-  const outputDir = join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+  const outputDir = join(absDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
 
   const { UnifiedSearch, unifiedSearchAvailable } =
     await import('../../analyzer/unified-search.js');
@@ -531,7 +531,7 @@ export async function handleUnifiedSearch(
   if (!(await unifiedSearchAvailable(outputDir))) {
     return {
       error:
-        'No unified search available. Run "spec-gen analyze --embed" first, ' +
+        'No unified search available. Run "openlore analyze --embed" first, ' +
         'then configure EMBED_BASE_URL and EMBED_MODEL.',
     };
   }
@@ -541,7 +541,7 @@ export async function handleUnifiedSearch(
   try {
     embedSvc = EmbeddingService.fromEnv();
   } catch {
-    const cfg = await readSpecGenConfig(absDir);
+    const cfg = await readOpenLoreConfig(absDir);
     const svcFromConfig = cfg ? EmbeddingService.fromConfig(cfg) : null;
     if (svcFromConfig) {
       embedSvc = svcFromConfig;

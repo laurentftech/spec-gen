@@ -1,11 +1,11 @@
-# Agent: Architect — spec-gen extension
+# Agent: Architect — openlore extension
 
 > **This file is a sidecar for the BMAD `architect` agent.**
 >
 > **Setup (one-time):**
 > ```bash
 > # 1. Copy this file into your BMAD project
-> cp examples/bmad/agents/architect.md _bmad/_memory/architect-sidecar/spec-gen.md
+> cp examples/bmad/agents/architect.md _bmad/_memory/architect-sidecar/openlore.md
 >
 > # 2. Install the customization that tells BMAD to load it
 > cp examples/bmad/setup/architect.customize.yaml \
@@ -18,7 +18,7 @@
 > After that, the Architect agent loads this file automatically at session start.
 > No manual step needed in the conversation.
 >
-> Requires: spec-gen MCP server connected and onboarding completed
+> Requires: openlore MCP server connected and onboarding completed
 > (see `tasks/onboarding.md`).
 
 ---
@@ -30,7 +30,7 @@ not just the desired target state. An architecture written without reading the c
 produces a plan that the codebase cannot support.
 
 **Produce two documents:**
-1. **Structural Reality** — what the code actually is (spec-gen output)
+1. **Structural Reality** — what the code actually is (openlore output)
 2. **Target Architecture** — what you want it to become (your design)
 
 The gap between them is the technical debt backlog.
@@ -43,7 +43,7 @@ The gap between them is the technical debt backlog.
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>get_architecture_overview</tool_name>
   <arguments>{"directory": "$PROJECT_ROOT"}</arguments>
 </use_mcp_tool>
@@ -61,7 +61,7 @@ If this returns an error, run `analyze_codebase` first.
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>get_refactor_report</tool_name>
   <arguments>{"directory": "$PROJECT_ROOT"}</arguments>
 </use_mcp_tool>
@@ -82,7 +82,7 @@ until a refactor story is completed first.
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>get_duplicate_report</tool_name>
   <arguments>{"directory": "$PROJECT_ROOT"}</arguments>
 </use_mcp_tool>
@@ -94,7 +94,7 @@ Note clone groups — they amplify the cost of any feature that touches duplicat
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>get_critical_hubs</tool_name>
   <arguments>{"directory": "$PROJECT_ROOT", "limit": 10, "minFanIn": 3}</arguments>
 </use_mcp_tool>
@@ -111,7 +111,7 @@ For each epic or major feature in scope, generate a change proposal:
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>generate_change_proposal</tool_name>
   <arguments>{
     "directory": "$PROJECT_ROOT",
@@ -144,8 +144,8 @@ Write `docs/architecture.md` (or the BMAD equivalent) with two mandatory section
 ```markdown
 ## Structural Reality (as-is)
 
-> Generated from spec-gen analysis on {date}.
-> Re-run `spec-gen analyze --force` before each planning cycle.
+> Generated from openlore analysis on {date}.
+> Re-run `openlore analyze --force` before each planning cycle.
 
 ### Domain Map
 
@@ -199,7 +199,7 @@ For each story in the backlog, run `annotate_story` — do not fill `risk_contex
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>annotate_story</tool_name>
   <arguments>{
     "directory": "$PROJECT_ROOT",

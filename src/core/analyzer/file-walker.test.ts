@@ -12,7 +12,7 @@ describe('FileWalker', () => {
   let testDir: string;
 
   beforeEach(async () => {
-    testDir = join(tmpdir(), `spec-gen-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    testDir = join(tmpdir(), `openlore-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     await mkdir(testDir, { recursive: true });
   });
 
@@ -118,10 +118,10 @@ describe('FileWalker', () => {
       expect(result.files[0].name).toBe('src.ts');
     });
 
-    it('should skip .spec-gen and openspec directories', async () => {
-      await mkdir(join(testDir, '.spec-gen'));
+    it('should skip .openlore and openspec directories', async () => {
+      await mkdir(join(testDir, '.openlore'));
       await mkdir(join(testDir, 'openspec', 'specs'), { recursive: true });
-      await writeFile(join(testDir, '.spec-gen', 'config.json'), '{}');
+      await writeFile(join(testDir, '.openlore', 'config.json'), '{}');
       await writeFile(join(testDir, 'openspec', 'specs', 'auth.md'), '');
       await writeFile(join(testDir, 'app.ts'), '');
 

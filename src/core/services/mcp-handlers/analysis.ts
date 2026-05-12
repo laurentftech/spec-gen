@@ -15,9 +15,9 @@ import {
   DEFAULT_MAX_FILES,
   DEFAULT_DRIFT_MAX_FILES,
   TOP_REFACTOR_ISSUES_LIMIT,
-  SPEC_GEN_DIR,
-  SPEC_GEN_ANALYSIS_SUBDIR,
-  SPEC_GEN_ANALYSIS_REL_PATH,
+  OPENLORE_DIR,
+  OPENLORE_ANALYSIS_SUBDIR,
+  OPENLORE_ANALYSIS_REL_PATH,
   OPENSPEC_DIR,
   ARTIFACT_DEPENDENCY_GRAPH,
   ARTIFACT_MAPPING,
@@ -42,11 +42,11 @@ import {
   buildADRMap,
   detectDrift,
 } from '../../drift/index.js';
-import { readSpecGenConfig } from '../config-manager.js';
+import { readOpenLoreConfig } from '../config-manager.js';
 import { validateDirectory, readCachedContext, isCacheFresh, safeJoin } from './utils.js';
 import type { SerializedCallGraph } from '../../analyzer/call-graph.js';
 import type { MappingArtifact } from '../../generator/mapping-generator.js';
-import { specGenAudit } from '../../../api/audit.js';
+import { openloreAudit } from '../../../api/audit.js';
 import type { DriftResult } from '../../../types/index.js';
 
 // ============================================================================
@@ -61,7 +61,7 @@ export async function handleAnalyzeCodebase(
   force: boolean
 ): Promise<Record<string, unknown>> {
   const absDir = await validateDirectory(directory);
-  const outputPath = join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+  const outputPath = join(absDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
 
   if (!force && await isCacheFresh(absDir)) {
     const ctx = await readCachedContext(absDir);
@@ -80,7 +80,7 @@ export async function handleAnalyzeCodebase(
               layerViolations: cg.layerViolations.length }
           : null,
         topRefactorIssues,
-        analysisPath: SPEC_GEN_ANALYSIS_REL_PATH,
+        analysisPath: OPENLORE_ANALYSIS_REL_PATH,
       };
     }
   }
@@ -131,7 +131,7 @@ export async function handleAnalyzeCodebase(
       : null,
     domains: rs.domains.map((d: { name: string }) => d.name),
     topRefactorIssues,
-    analysisPath: SPEC_GEN_ANALYSIS_REL_PATH,
+    analysisPath: OPENLORE_ANALYSIS_REL_PATH,
   };
 }
 
@@ -143,7 +143,7 @@ export async function handleGetArchitectureOverview(directory: string): Promise<
 
   let depGraph: import('../../analyzer/dependency-graph.js').DependencyGraphResult | null = null;
   try {
-    const raw = await readFile(join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_DEPENDENCY_GRAPH), 'utf-8');
+    const raw = await readFile(join(absDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_DEPENDENCY_GRAPH), 'utf-8');
     depGraph = JSON.parse(raw) as import('../../analyzer/dependency-graph.js').DependencyGraphResult;
   } catch { /* ignore */ }
 
@@ -180,7 +180,7 @@ export async function handleGetRefactorReport(directory: string): Promise<unknow
  */
 export async function handleGetDuplicateReport(directory: string): Promise<unknown> {
   const absDir = await validateDirectory(directory);
-  const cachePath = join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, 'duplicates.json');
+  const cachePath = join(absDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, 'duplicates.json');
 
   let raw: string;
   try {
@@ -235,16 +235,16 @@ export async function handleGetMapping(
   const absDir = await validateDirectory(directory);
   let raw: string;
   try {
-    raw = await readFile(join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_MAPPING), 'utf-8');
+    raw = await readFile(join(absDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_MAPPING), 'utf-8');
   } catch {
-    return { error: 'No mapping found. Run spec-gen generate first.' };
+    return { error: 'No mapping found. Run openlore generate first.' };
   }
 
   let mapping: MappingArtifact;
   try {
     mapping = JSON.parse(raw) as MappingArtifact;
   } catch {
-    return { error: 'Mapping file is corrupted. Re-run spec-gen generate.' };
+    return { error: 'Mapping file is corrupted. Re-run openlore generate.' };
   }
 
   if (orphansOnly) {
@@ -283,17 +283,17 @@ export async function handleCheckSpecDrift(
     return { error: 'Not a git repository. Drift detection requires git.' };
   }
 
-  const specGenConfig = await readSpecGenConfig(absDir);
-  if (!specGenConfig) {
-    return { error: 'No spec-gen configuration found. Run "spec-gen init" first.' };
+  const openloreConfig = await readOpenLoreConfig(absDir);
+  if (!openloreConfig) {
+    return { error: 'No openlore configuration found. Run "openlore init" first.' };
   }
 
-  const openspecPath = join(absDir, specGenConfig.openspecPath ?? OPENSPEC_DIR);
+  const openspecPath = join(absDir, openloreConfig.openspecPath ?? OPENSPEC_DIR);
   const specsPath = join(openspecPath, 'specs');
   try {
     await stat(specsPath);
   } catch {
-    return { error: 'No specs found. Run "spec-gen generate" first.' };
+    return { error: 'No specs found. Run "openlore generate" first.' };
   }
 
   const startTime = Date.now();
@@ -324,7 +324,7 @@ export async function handleCheckSpecDrift(
     gitResult.files = gitResult.files.slice(0, maxFiles);
   }
 
-  const repoStructurePath = join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_REPO_STRUCTURE);
+  const repoStructurePath = join(absDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_REPO_STRUCTURE);
   let hasRepoStructure = false;
   try {
     await stat(repoStructurePath);
@@ -349,7 +349,7 @@ export async function handleCheckSpecDrift(
     changedFiles: gitResult.files,
     failOn,
     domainFilter: domains.length > 0 ? domains : undefined,
-    openspecRelPath: specGenConfig.openspecPath ?? OPENSPEC_DIR,
+    openspecRelPath: openloreConfig.openspecPath ?? OPENSPEC_DIR,
     baseRef: gitResult.resolvedBase,
     adrMap: adrMap ?? undefined,
   });
@@ -417,7 +417,7 @@ export async function handleGetFunctionBody(
   }
 
   // Try call graph first: exact byte-range slice, no ambiguity
-  const contextPath = join(absDir, '.spec-gen', 'analysis', 'llm-context.json');
+  const contextPath = join(absDir, '.openlore', 'analysis', 'llm-context.json');
   try {
     const raw = await readFile(contextPath, 'utf-8');
     const ctx = JSON.parse(raw) as { callGraph?: { nodes: Array<{ name: string; filePath: string; startIndex: number; endIndex: number; language: string; className?: string }> } };
@@ -491,14 +491,14 @@ export async function handleGetDecisions(
   // Resolve openspec path from config if present
   let openspecRelPath = 'openspec';
   try {
-    const cfgRaw = await readFile(join(absDir, '.spec-gen', 'config.json'), 'utf-8');
+    const cfgRaw = await readFile(join(absDir, '.openlore', 'config.json'), 'utf-8');
     const cfg = JSON.parse(cfgRaw) as { openspecPath?: string };
     if (cfg.openspecPath) openspecRelPath = cfg.openspecPath;
   } catch { /* use default */ }
 
   const decisionsDir = pjoin(absDir, openspecRelPath, 'decisions');
   if (!existsSync(decisionsDir)) {
-    return { decisions: [], note: `No decisions directory found at ${openspecRelPath}/decisions/. Run "spec-gen generate --adrs" first.` };
+    return { decisions: [], note: `No decisions directory found at ${openspecRelPath}/decisions/. Run "openlore generate --adrs" first.` };
   }
 
   let entries: string[];
@@ -560,7 +560,7 @@ export async function handleGetRouteInventory(
   directory: string
 ): Promise<Record<string, unknown>> {
   const absDir = await validateDirectory(directory);
-  const artifactPath = join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_ROUTE_INVENTORY);
+  const artifactPath = join(absDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_ROUTE_INVENTORY);
 
   // Try reading cached artifact first
   try {
@@ -573,10 +573,10 @@ export async function handleGetRouteInventory(
 
   const { buildRouteInventory } = await import('../../analyzer/http-route-parser.js');
   const { RepositoryMapper } = await import('../../analyzer/repository-mapper.js');
-  const { readSpecGenConfig } = await import('../config-manager.js');
+  const { readOpenLoreConfig } = await import('../config-manager.js');
 
-  const specGenConfig = await readSpecGenConfig(absDir);
-  const configExclude = specGenConfig?.analysis.excludePatterns ?? [];
+  const openloreConfig = await readOpenLoreConfig(absDir);
+  const configExclude = openloreConfig?.analysis.excludePatterns ?? [];
 
   const mapper = new RepositoryMapper(absDir, {
     maxFiles: DEFAULT_MAX_FILES,
@@ -601,7 +601,7 @@ export async function handleGetMiddlewareInventory(
   directory: string
 ): Promise<Record<string, unknown>> {
   const absDir = await validateDirectory(directory);
-  const artifactPath = join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_MIDDLEWARE_INVENTORY);
+  const artifactPath = join(absDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_MIDDLEWARE_INVENTORY);
 
   // Try reading cached artifact first
   try {
@@ -614,10 +614,10 @@ export async function handleGetMiddlewareInventory(
 
   const { extractMiddleware } = await import('../../analyzer/middleware-extractor.js');
   const { RepositoryMapper } = await import('../../analyzer/repository-mapper.js');
-  const { readSpecGenConfig } = await import('../config-manager.js');
+  const { readOpenLoreConfig } = await import('../config-manager.js');
 
-  const specGenConfig = await readSpecGenConfig(absDir);
-  const configExclude = specGenConfig?.analysis.excludePatterns ?? [];
+  const openloreConfig = await readOpenLoreConfig(absDir);
+  const configExclude = openloreConfig?.analysis.excludePatterns ?? [];
 
   const mapper = new RepositoryMapper(absDir, {
     maxFiles: DEFAULT_MAX_FILES,
@@ -642,7 +642,7 @@ export async function handleGetSchemaInventory(
   directory: string
 ): Promise<Record<string, unknown>> {
   const absDir = await validateDirectory(directory);
-  const artifactPath = join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_SCHEMA_INVENTORY);
+  const artifactPath = join(absDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_SCHEMA_INVENTORY);
 
   try {
     const raw = await readFile(artifactPath, 'utf-8');
@@ -654,10 +654,10 @@ export async function handleGetSchemaInventory(
 
   const { extractSchemas } = await import('../../analyzer/schema-extractor.js');
   const { RepositoryMapper } = await import('../../analyzer/repository-mapper.js');
-  const { readSpecGenConfig } = await import('../config-manager.js');
+  const { readOpenLoreConfig } = await import('../config-manager.js');
 
-  const specGenConfig = await readSpecGenConfig(absDir);
-  const configExclude = specGenConfig?.analysis.excludePatterns ?? [];
+  const openloreConfig = await readOpenLoreConfig(absDir);
+  const configExclude = openloreConfig?.analysis.excludePatterns ?? [];
 
   const mapper = new RepositoryMapper(absDir, {
     maxFiles: DEFAULT_MAX_FILES,
@@ -682,7 +682,7 @@ export async function handleGetUIComponents(
   directory: string
 ): Promise<Record<string, unknown>> {
   const absDir = await validateDirectory(directory);
-  const artifactPath = join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_UI_INVENTORY);
+  const artifactPath = join(absDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_UI_INVENTORY);
 
   try {
     const raw = await readFile(artifactPath, 'utf-8');
@@ -694,10 +694,10 @@ export async function handleGetUIComponents(
 
   const { extractUIComponents } = await import('../../analyzer/ui-component-extractor.js');
   const { RepositoryMapper } = await import('../../analyzer/repository-mapper.js');
-  const { readSpecGenConfig } = await import('../config-manager.js');
+  const { readOpenLoreConfig } = await import('../config-manager.js');
 
-  const specGenConfig = await readSpecGenConfig(absDir);
-  const configExclude = specGenConfig?.analysis.excludePatterns ?? [];
+  const openloreConfig = await readOpenLoreConfig(absDir);
+  const configExclude = openloreConfig?.analysis.excludePatterns ?? [];
 
   const mapper = new RepositoryMapper(absDir, {
     maxFiles: DEFAULT_MAX_FILES,
@@ -722,7 +722,7 @@ export async function handleGetEnvVars(
   directory: string
 ): Promise<Record<string, unknown>> {
   const absDir = await validateDirectory(directory);
-  const artifactPath = join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_ENV_INVENTORY);
+  const artifactPath = join(absDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_ENV_INVENTORY);
 
   try {
     const raw = await readFile(artifactPath, 'utf-8');
@@ -734,10 +734,10 @@ export async function handleGetEnvVars(
 
   const { extractEnvVars } = await import('../../analyzer/env-extractor.js');
   const { RepositoryMapper } = await import('../../analyzer/repository-mapper.js');
-  const { readSpecGenConfig } = await import('../config-manager.js');
+  const { readOpenLoreConfig } = await import('../config-manager.js');
 
-  const specGenConfig = await readSpecGenConfig(absDir);
-  const configExclude = specGenConfig?.analysis.excludePatterns ?? [];
+  const openloreConfig = await readOpenLoreConfig(absDir);
+  const configExclude = openloreConfig?.analysis.excludePatterns ?? [];
 
   const mapper = new RepositoryMapper(absDir, {
     maxFiles: DEFAULT_MAX_FILES,
@@ -763,7 +763,7 @@ export async function handleGetExternalPackages(
   directory: string,
 ): Promise<Record<string, unknown>> {
   const absDir = await validateDirectory(directory);
-  const artifactPath = join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_EXTERNAL_PACKAGES);
+  const artifactPath = join(absDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_EXTERNAL_PACKAGES);
 
   try {
     const raw = await readFile(artifactPath, 'utf-8');
@@ -787,7 +787,7 @@ export async function handleAuditSpecCoverage(
 ): Promise<unknown> {
   const absDir = await validateDirectory(directory);
   try {
-    const report = await specGenAudit({
+    const report = await openloreAudit({
       rootPath: absDir,
       maxUncovered,
       hubThreshold,
@@ -826,7 +826,7 @@ export async function handleGenerateTests(args: {
   });
 
   if (scenarios.length === 0) {
-    return { files: [], message: 'No scenarios found. Run "spec-gen generate" first.' };
+    return { files: [], message: 'No scenarios found. Run "openlore generate" first.' };
   }
 
   // Resolve framework

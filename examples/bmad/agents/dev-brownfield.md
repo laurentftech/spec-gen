@@ -38,7 +38,7 @@ once planning is done correctly.
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>orient</tool_name>
   <arguments>{
     "directory": "$PROJECT_ROOT",
@@ -52,7 +52,7 @@ For each of the top 3 functions:
 
 ```xml
 <use_mcp_tool>
-  <server_name>spec-gen</server_name>
+  <server_name>openlore</server_name>
   <tool_name>analyze_impact</tool_name>
   <arguments>{
     "directory": "$PROJECT_ROOT",

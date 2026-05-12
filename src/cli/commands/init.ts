@@ -1,7 +1,7 @@
 /**
- * spec-gen init command
+ * openlore init command
  *
- * Verifies we're in a valid project and creates .spec-gen configuration.
+ * Verifies we're in a valid project and creates .openlore configuration.
  * Detects project type, existing OpenSpec setup, and prepares for analysis.
  */
 
@@ -15,9 +15,9 @@ import {
 } from '../../core/services/project-detector.js';
 import {
   getDefaultConfig,
-  readSpecGenConfig,
-  writeSpecGenConfig,
-  specGenConfigExists,
+  readOpenLoreConfig,
+  writeOpenLoreConfig,
+  openloreConfigExists,
   readOpenSpecConfig,
   openspecDirExists,
   openspecConfigExists,
@@ -29,14 +29,14 @@ import {
   addToGitignore,
 } from '../../core/services/gitignore-manager.js';
 import {
-  SPEC_GEN_DIR,
-  SPEC_GEN_CONFIG_REL_PATH,
+  OPENLORE_DIR,
+  OPENLORE_CONFIG_REL_PATH,
   DEFAULT_OPENSPEC_PATH,
 } from '../../constants.js';
 import type { InitOptions } from '../../types/index.js';
 
 export const initCommand = new Command('init')
-  .description('Initialize spec-gen in the current project')
+  .description('Initialize openlore in the current project')
   .option('--force', 'Overwrite existing configuration', false)
   .option(
     '--openspec-path <path>',
@@ -47,19 +47,19 @@ export const initCommand = new Command('init')
     'after',
     `
 Examples:
-  $ spec-gen init                    Initialize with defaults
-  $ spec-gen init --force            Overwrite existing config
-  $ spec-gen init --openspec-path ./docs/specs
+  $ openlore init                    Initialize with defaults
+  $ openlore init --force            Overwrite existing config
+  $ openlore init --openspec-path ./docs/specs
                                      Use custom output path
 
 What this command does:
   1. Detects project type (Node.js, Python, Rust, Go, etc.)
   2. Checks for existing OpenSpec setup
-  3. Creates .spec-gen/config.json configuration file
-  4. Updates .gitignore to exclude .spec-gen/
+  3. Creates .openlore/config.json configuration file
+  4. Updates .gitignore to exclude .openlore/
   5. Prepares project for analysis
 
-After initialization, run 'spec-gen analyze' to scan your codebase.
+After initialization, run 'openlore analyze' to scan your codebase.
 `
   )
   .action(async (options: Partial<InitOptions>) => {
@@ -76,7 +76,7 @@ After initialization, run 'spec-gen analyze' to scan your codebase.
       return;
     }
 
-    logger.section('Initializing spec-gen');
+    logger.section('Initializing openlore');
 
     // Step 1: Project Detection
     logger.discovery('Detecting project type...');
@@ -85,7 +85,7 @@ After initialization, run 'spec-gen analyze' to scan your codebase.
 
     if (!detection.hasGit) {
       logger.warning('No .git directory found. This may not be a repository root.');
-      logger.debug('Continuing anyway - spec-gen works without git');
+      logger.debug('Continuing anyway - openlore works without git');
     } else {
       logger.debug('Git repository detected');
     }
@@ -108,14 +108,14 @@ After initialization, run 'spec-gen analyze' to scan your codebase.
     // Step 2: Check for existing configurations
     logger.discovery('Checking for existing configurations...');
 
-    const existingSpecGenConfig = await specGenConfigExists(rootPath);
+    const existingOpenLoreConfig = await openloreConfigExists(rootPath);
     const existingOpenspecDir = await openspecDirExists(openspecPath);
     const existingOpenspecConfig = await openspecConfigExists(openspecPath);
 
-    if (existingSpecGenConfig && !force) {
-      logger.warning(`${SPEC_GEN_CONFIG_REL_PATH} already exists`);
+    if (existingOpenLoreConfig && !force) {
+      logger.warning(`${OPENLORE_CONFIG_REL_PATH} already exists`);
 
-      const existingConfig = await readSpecGenConfig(rootPath);
+      const existingConfig = await readOpenLoreConfig(rootPath);
       if (existingConfig) {
         logger.info('Existing project type', getProjectTypeName(existingConfig.projectType));
         logger.info('Created', existingConfig.createdAt);
@@ -164,8 +164,8 @@ After initialization, run 'spec-gen analyze' to scan your codebase.
 
     const config = getDefaultConfig(detection.projectType, openspecRelPath);
 
-    await writeSpecGenConfig(rootPath, config);
-    logger.success(`Created ${SPEC_GEN_CONFIG_REL_PATH}`);
+    await writeOpenLoreConfig(rootPath, config);
+    logger.success(`Created ${OPENLORE_CONFIG_REL_PATH}`);
 
     // Step 4: Create OpenSpec structure if needed
     if (!existingOpenspecDir) {
@@ -178,31 +178,31 @@ After initialization, run 'spec-gen analyze' to scan your codebase.
     logger.discovery('Checking .gitignore...');
 
     const hasGitignore = await gitignoreExists(rootPath);
-    const alreadyIgnored = hasGitignore && (await isInGitignore(rootPath, `${SPEC_GEN_DIR}/`));
+    const alreadyIgnored = hasGitignore && (await isInGitignore(rootPath, `${OPENLORE_DIR}/`));
 
     if (alreadyIgnored) {
-      logger.debug(`${SPEC_GEN_DIR}/ already in .gitignore`);
+      logger.debug(`${OPENLORE_DIR}/ already in .gitignore`);
     } else if (hasGitignore) {
       // Check if running in TTY for interactive prompt
       let shouldAdd = true;
 
       if (process.stdin.isTTY) {
         shouldAdd = await confirm({
-          message: `Add ${SPEC_GEN_DIR}/ to .gitignore? (recommended)`,
+          message: `Add ${OPENLORE_DIR}/ to .gitignore? (recommended)`,
           default: true,
         });
       }
 
       if (shouldAdd) {
-        await addToGitignore(rootPath, `${SPEC_GEN_DIR}/`, 'spec-gen analysis artifacts');
-        logger.success(`Added ${SPEC_GEN_DIR}/ to .gitignore`);
+        await addToGitignore(rootPath, `${OPENLORE_DIR}/`, 'openlore analysis artifacts');
+        logger.success(`Added ${OPENLORE_DIR}/ to .gitignore`);
       } else {
-        logger.warning(`${SPEC_GEN_DIR}/ not added to .gitignore`);
+        logger.warning(`${OPENLORE_DIR}/ not added to .gitignore`);
         logger.debug('Analysis artifacts may be committed to version control');
       }
     } else {
       logger.debug('No .gitignore file found');
-      logger.debug(`Consider creating one to exclude ${SPEC_GEN_DIR}/`);
+      logger.debug(`Consider creating one to exclude ${OPENLORE_DIR}/`);
     }
 
     // Step 6: Output summary
@@ -210,7 +210,7 @@ After initialization, run 'spec-gen analyze' to scan your codebase.
     logger.section('Initialization Complete');
 
     logger.info('Project type', getProjectTypeName(detection.projectType));
-    logger.info('Config file', SPEC_GEN_CONFIG_REL_PATH);
+    logger.info('Config file', OPENLORE_CONFIG_REL_PATH);
     logger.info('Output path', openspecRelPath);
 
     if (existingOpenspecDir) {
@@ -220,5 +220,5 @@ After initialization, run 'spec-gen analyze' to scan your codebase.
     logger.blank();
     logger.success('Ready for analysis!');
     logger.blank();
-    logger.info('Next step', "Run 'spec-gen analyze' to scan your codebase");
+    logger.info('Next step', "Run 'openlore analyze' to scan your codebase");
   });

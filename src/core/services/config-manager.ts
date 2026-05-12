@@ -1,20 +1,20 @@
 /**
  * Configuration management service
  *
- * Handles reading/writing .spec-gen/config.json and openspec/config.yaml
+ * Handles reading/writing .openlore/config.json and openspec/config.yaml
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import YAML from 'yaml';
-import type { ProjectType, SpecGenConfig } from '../../types/index.js';
+import type { ProjectType, OpenLoreConfig } from '../../types/index.js';
 import { logger } from '../../utils/logger.js';
 import {
   DEFAULT_MAX_FILES,
   DEFAULT_ANTHROPIC_MODEL,
-  SPEC_GEN_DIR,
-  SPEC_GEN_CONFIG_FILENAME,
-  SPEC_GEN_CONFIG_REL_PATH,
+  OPENLORE_DIR,
+  OPENLORE_CONFIG_FILENAME,
+  OPENLORE_CONFIG_REL_PATH,
   OPENSPEC_CONFIG_FILENAME,
 } from '../../constants.js';
 import { fileExists } from '../../utils/command-helpers.js';
@@ -25,7 +25,7 @@ import { fileExists } from '../../utils/command-helpers.js';
 export interface OpenSpecConfig {
   schema?: string;
   context?: string;
-  'spec-gen'?: {
+  'openlore'?: {
     generatedAt?: string;
     domains?: string[];
     confidence?: number;
@@ -49,9 +49,9 @@ async function ensureDir(dirPath: string): Promise<void> {
 }
 
 /**
- * Get default spec-gen configuration
+ * Get default openlore configuration
  */
-export function getDefaultConfig(projectType: ProjectType, openspecPath: string): SpecGenConfig {
+export function getDefaultConfig(projectType: ProjectType, openspecPath: string): OpenLoreConfig {
   return {
     version: '1.0.0',
     projectType,
@@ -71,10 +71,10 @@ export function getDefaultConfig(projectType: ProjectType, openspecPath: string)
 }
 
 /**
- * Read spec-gen configuration from .spec-gen/config.json
+ * Read openlore configuration from .openlore/config.json
  */
-export async function readSpecGenConfig(rootPath: string): Promise<SpecGenConfig | null> {
-  const configPath = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_CONFIG_FILENAME);
+export async function readOpenLoreConfig(rootPath: string): Promise<OpenLoreConfig | null> {
+  const configPath = join(rootPath, OPENLORE_DIR, OPENLORE_CONFIG_FILENAME);
   let content: string;
   try {
     content = await readFile(configPath, 'utf-8');
@@ -82,33 +82,33 @@ export async function readSpecGenConfig(rootPath: string): Promise<SpecGenConfig
     return null; // File doesn't exist — normal case before init
   }
   try {
-    return JSON.parse(content) as SpecGenConfig;
+    return JSON.parse(content) as OpenLoreConfig;
   } catch (err) {
     logger.warning(`Failed to parse ${configPath}: ${(err as Error).message}`);
-    logger.warning(`Delete ${SPEC_GEN_CONFIG_REL_PATH} and run 'spec-gen init' to recreate it.`);
+    logger.warning(`Delete ${OPENLORE_CONFIG_REL_PATH} and run 'openlore init' to recreate it.`);
     return null;
   }
 }
 
 /**
- * Write spec-gen configuration to .spec-gen/config.json
+ * Write openlore configuration to .openlore/config.json
  */
-export async function writeSpecGenConfig(
+export async function writeOpenLoreConfig(
   rootPath: string,
-  config: SpecGenConfig
+  config: OpenLoreConfig
 ): Promise<void> {
-  const configDir = join(rootPath, SPEC_GEN_DIR);
-  const configPath = join(configDir, SPEC_GEN_CONFIG_FILENAME);
+  const configDir = join(rootPath, OPENLORE_DIR);
+  const configPath = join(configDir, OPENLORE_CONFIG_FILENAME);
 
   await ensureDir(configDir);
   await writeFile(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
 }
 
 /**
- * Check if spec-gen config already exists
+ * Check if openlore config already exists
  */
-export async function specGenConfigExists(rootPath: string): Promise<boolean> {
-  return fileExists(join(rootPath, SPEC_GEN_DIR, SPEC_GEN_CONFIG_FILENAME));
+export async function openloreConfigExists(rootPath: string): Promise<boolean> {
+  return fileExists(join(rootPath, OPENLORE_DIR, OPENLORE_CONFIG_FILENAME));
 }
 
 /**
@@ -166,18 +166,18 @@ export async function createOpenSpecStructure(openspecPath: string): Promise<voi
 }
 
 /**
- * Merge existing OpenSpec config with spec-gen metadata
+ * Merge existing OpenSpec config with openlore metadata
  */
 export function mergeOpenSpecConfig(
   existing: OpenSpecConfig | null,
-  specGenMeta: OpenSpecConfig['spec-gen']
+  openloreMeta: OpenSpecConfig['openlore']
 ): OpenSpecConfig {
   if (existing) {
     return {
       ...existing,
-      'spec-gen': {
-        ...existing['spec-gen'],
-        ...specGenMeta,
+      'openlore': {
+        ...existing['openlore'],
+        ...openloreMeta,
       },
     };
   }
@@ -185,6 +185,6 @@ export function mergeOpenSpecConfig(
   return {
     schema: 'spec-driven',
     context: '',
-    'spec-gen': specGenMeta,
+    'openlore': openloreMeta,
   };
 }

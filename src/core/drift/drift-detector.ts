@@ -7,7 +7,7 @@
 
 import { access } from 'node:fs/promises';
 import { join, basename } from 'node:path';
-import { DRIFT_CLASSIFICATION_MAX_TOKENS, SPEC_GEN_DIR, OPENSPEC_DIR } from '../../constants.js';
+import { DRIFT_CLASSIFICATION_MAX_TOKENS, OPENLORE_DIR, OPENSPEC_DIR } from '../../constants.js';
 import type {
   ChangedFile,
   DriftIssue,
@@ -66,7 +66,7 @@ export function isSpecRelevantChange(file: ChangedFile, openspecRelPath: string 
   // Normalize leading "./" from config paths to match git-reported paths
   const normalizedSpecPath = openspecRelPath.replace(/^\.\//, '').replace(/\/$/, '');
   const specPrefix = normalizedSpecPath + '/';
-  if (file.path.startsWith(specPrefix) || file.path.startsWith(`${SPEC_GEN_DIR}/`)) return false;
+  if (file.path.startsWith(specPrefix) || file.path.startsWith(`${OPENLORE_DIR}/`)) return false;
 
   // Skip markdown files: docs, changelogs, readmes, contributing guides, etc.
   // Only source-embedded .md in non-root src directories could be spec-relevant.

@@ -1,7 +1,7 @@
 /**
- * spec-gen API: spec requirements extractor
+ * openlore API: spec requirements extractor
  *
- * Reads `.spec-gen/analysis/mapping.json` and extracts the exact requirement
+ * Reads `.openlore/analysis/mapping.json` and extracts the exact requirement
  * blocks from the spec files referenced by each mapping entry.
  *
  * The function returns a mapping from the mapping.requirement key to a
@@ -30,7 +30,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_MAPPING } from '../constants.js';
+import { OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_MAPPING } from '../constants.js';
 import { fileExists } from '../utils/command-helpers.js';
 import type { BaseOptions } from './types.js';
 
@@ -48,12 +48,12 @@ export type SpecRequirement = {
  * @param options.rootPath project root (default: process.cwd())
  * @returns an object keyed by mapping.requirement with SpecRequirement values
  */
-export async function specGenGetSpecRequirements(options: BaseOptions = {}): Promise<{
+export async function openloreGetSpecRequirements(options: BaseOptions = {}): Promise<{
   generatedAt?: string;
   requirements: Record<string, SpecRequirement>;
 }> {
   const rootPath = options.rootPath ?? process.cwd();
-  const mappingPath = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_MAPPING);
+  const mappingPath = join(rootPath, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_MAPPING);
 
   const result: Record<string, SpecRequirement> = {};
   let generatedAt: string | undefined = undefined;
@@ -153,4 +153,4 @@ export async function specGenGetSpecRequirements(options: BaseOptions = {}): Pro
   return { generatedAt, requirements: result };
 }
 
-export default specGenGetSpecRequirements;
+export default openloreGetSpecRequirements;

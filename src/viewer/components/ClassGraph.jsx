@@ -570,7 +570,7 @@ export function ClassGraph({ classData, onSelectClass, selectedClassId, focusedP
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
         height: '100%', color: 'var(--tx-muted)', fontSize: 13 }}>
-        No class data — run <code style={{ margin: '0 6px' }}>spec-gen analyze</code> to generate the call graph.
+        No class data — run <code style={{ margin: '0 6px' }}>openlore analyze</code> to generate the call graph.
       </div>
     );
   }

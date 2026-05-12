@@ -49,7 +49,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
   const [loaded, setLoaded] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [themeName, setThemeName] = useState(
-    () => localStorage.getItem('spec-gen-theme') || DEFAULT_THEME
+    () => localStorage.getItem('openlore-theme') || DEFAULT_THEME
   );
   const theme = THEMES[themeName] ?? THEMES[DEFAULT_THEME];
   const clusterPalette = themeName === 'light' ? CLUSTER_PALETTE_LIGHT : CLUSTER_PALETTE;
@@ -64,7 +64,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
   const cycleTheme = () => setThemeName((prev) => {
     const idx = THEME_KEYS.indexOf(prev);
     const next = THEME_KEYS[(idx + 1) % THEME_KEYS.length];
-    localStorage.setItem('spec-gen-theme', next);
+    localStorage.setItem('openlore-theme', next);
     return next;
   });
   const fileRef = useRef();
@@ -1374,7 +1374,7 @@ export default function App({ graphUrl, mappingUrl = '/api/mapping', specUrl = '
                             <div style={{ padding: '7px 9px', fontSize: 8, color: 'var(--tx-faint)' }}>
                               {req
                                 ? 'Requirement title mismatch — spec section not found in the spec file.'
-                                : <>Spec not loaded — run <code style={{ color: 'var(--ac-primary)' }}>spec-gen view</code> or load <code style={{ color: 'var(--ac-primary)' }}>spec.md</code> manually.</>}
+                                : <>Spec not loaded — run <code style={{ color: 'var(--ac-primary)' }}>openlore view</code> or load <code style={{ color: 'var(--ac-primary)' }}>spec.md</code> manually.</>}
                             </div>
                           )}
                           <div

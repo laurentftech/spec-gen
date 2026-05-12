@@ -1,5 +1,5 @@
 /**
- * spec-gen view command
+ * openlore view command
  *
  * Starts a local React (Vite) server to visualize analysis graphs,
  * then opens the user's browser.
@@ -17,7 +17,7 @@ import {
   MAX_CHAT_BODY_BYTES,
   DEFAULT_VIEWER_PORT,
   DEFAULT_VIEWER_HOST,
-  SPEC_GEN_ANALYSIS_REL_PATH,
+  OPENLORE_ANALYSIS_REL_PATH,
   OPENSPEC_DIR,
   OPENSPEC_SPECS_SUBDIR,
   ARTIFACT_DEPENDENCY_GRAPH,
@@ -64,8 +64,8 @@ function openBrowser(url: string): void {
 }
 
 export const viewCommand = new Command('view')
-  .description('Start an interactive graph viewer (React) for .spec-gen/analysis')
-  .option('--analysis <path>', 'Path to analysis directory', `${SPEC_GEN_ANALYSIS_REL_PATH}/`)
+  .description('Start an interactive graph viewer (React) for .openlore/analysis')
+  .option('--analysis <path>', 'Path to analysis directory', `${OPENLORE_ANALYSIS_REL_PATH}/`)
   .option('--spec <path>', 'Path to spec files directory', `./${OPENSPEC_DIR}/${OPENSPEC_SPECS_SUBDIR}/`)
   .option('--port <n>', 'Port to run the viewer on', String(DEFAULT_VIEWER_PORT))
   .option('--host <host>', 'Host to bind (use 0.0.0.0 for LAN)', DEFAULT_VIEWER_HOST)
@@ -88,7 +88,7 @@ export const viewCommand = new Command('view')
 
       if (!(await fileExists(graphPath))) {
         logger.error(`Missing graph file: ${graphPath}`);
-        logger.info('Tip', 'Run "spec-gen analyze" first (or pass --analysis)');
+        logger.info('Tip', 'Run "openlore analyze" first (or pass --analysis)');
         process.exitCode = 1;
         return;
       }
@@ -119,7 +119,7 @@ export const viewCommand = new Command('view')
       logger.info('Analysis', analysisDir);
       logger.info('Graph', graphPath);
 
-      // Dynamic imports — vite and @vitejs/plugin-react are only needed for `spec-gen view`,
+      // Dynamic imports — vite and @vitejs/plugin-react are only needed for `openlore view`,
       // so we load them at runtime to avoid ERR_MODULE_NOT_FOUND for other commands (#24).
       const { createServer } = await import('vite');
       const { default: react } = await import('@vitejs/plugin-react');
@@ -130,7 +130,7 @@ export const viewCommand = new Command('view')
         plugins: [
           react(),
           {
-            name: 'spec-gen-graph-api',
+            name: 'openlore-graph-api',
             configureServer(devServer) {
               devServer.middlewares.use('/api/dependency-graph', async (_req, res) => {
                 try {
@@ -567,7 +567,7 @@ export const viewCommand = new Command('view')
                   }
                   if (!VectorIndex.exists(analysisDir)) {
                     res.statusCode = 404;
-                    res.end(JSON.stringify({ error: 'No vector index found. Run spec-gen analyze --embed first.' }));
+                    res.end(JSON.stringify({ error: 'No vector index found. Run openlore analyze --embed first.' }));
                     return;
                   }
                   const embedSvc = EmbeddingService.fromEnv();

@@ -31,14 +31,14 @@ import {
   LEAF_FUNCTIONS_DEFAULT_LIMIT,
   HUB_HIGH_FAN_IN_THRESHOLD,
   HUB_HIGH_FAN_OUT_THRESHOLD,
-  SPEC_GEN_DIR,
-  SPEC_GEN_ANALYSIS_SUBDIR,
+  OPENLORE_DIR,
+  OPENLORE_ANALYSIS_SUBDIR,
   TRACE_PATH_DEFAULT_MAX_DEPTH,
   TRACE_PATH_MAX_PATHS,
 } from '../../../constants.js';
 import type { SerializedCallGraph, FunctionNode } from '../../analyzer/call-graph.js';
 import { getFileGodFunctions, extractSubgraph } from '../../analyzer/subgraph-extractor.js';
-import { readSpecGenConfig } from '../config-manager.js';
+import { readOpenLoreConfig } from '../config-manager.js';
 
 // ============================================================================
 // SHARED GRAPH HELPERS (also exported for chat-tools.ts)
@@ -280,12 +280,12 @@ export async function handleGetSubgraph(
     try {
       const { VectorIndex } = await import('../../analyzer/vector-index.js');
       const { EmbeddingService } = await import('../../analyzer/embedding-service.js');
-      const outputDir = join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+      const outputDir = join(absDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
 
       if (VectorIndex.exists(outputDir)) {
         let embedSvc: InstanceType<typeof EmbeddingService> | null = null;
         try { embedSvc = EmbeddingService.fromEnv(); } catch {
-          const cfg = await readSpecGenConfig(absDir);
+          const cfg = await readOpenLoreConfig(absDir);
           if (cfg?.embedding) embedSvc = EmbeddingService.fromConfig(cfg) ?? null;
         }
         if (embedSvc) {
@@ -400,12 +400,12 @@ export async function handleAnalyzeImpact(
     try {
       const { VectorIndex } = await import('../../analyzer/vector-index.js');
       const { EmbeddingService } = await import('../../analyzer/embedding-service.js');
-      const outputDir = join(absDir, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR);
+      const outputDir = join(absDir, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR);
 
       if (VectorIndex.exists(outputDir)) {
         let embedSvc: InstanceType<typeof EmbeddingService> | null = null;
         try { embedSvc = EmbeddingService.fromEnv(); } catch {
-          const cfg = await readSpecGenConfig(absDir);
+          const cfg = await readOpenLoreConfig(absDir);
           if (cfg?.embedding) embedSvc = EmbeddingService.fromConfig(cfg) ?? null;
         }
         if (embedSvc) {
@@ -667,7 +667,7 @@ export async function handleGetGodFunctions(
 /**
  * Return the file-level import dependencies for a given file.
  *
- * Uses the dependency-graph.json produced by `spec-gen analyze`.
+ * Uses the dependency-graph.json produced by `openlore analyze`.
  * direction:
  *   "imports"  — files this file depends on (outgoing edges)
  *   "importedBy" — files that depend on this file (incoming edges)
@@ -679,7 +679,7 @@ export async function handleGetFileDependencies(
   direction: 'imports' | 'importedBy' | 'both' = 'both',
 ): Promise<unknown> {
   const absDir = await validateDirectory(directory);
-  const depGraphPath = join(absDir, '.spec-gen', 'analysis', 'dependency-graph.json');
+  const depGraphPath = join(absDir, '.openlore', 'analysis', 'dependency-graph.json');
 
   interface DepEdge {
     source: string;
@@ -700,7 +700,7 @@ export async function handleGetFileDependencies(
     const raw = await readFile(depGraphPath, 'utf-8');
     graph = JSON.parse(raw) as DepGraph;
   } catch {
-    return { error: 'No dependency graph found. Run "spec-gen analyze" first.' };
+    return { error: 'No dependency graph found. Run "openlore analyze" first.' };
   }
 
   // Resolve the file path to the same form used in the graph (relative or absolute)

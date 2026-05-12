@@ -1,6 +1,6 @@
 ## Output
 
-spec-gen writes to the OpenSpec directory structure:
+openlore writes to the OpenSpec directory structure:
 
 ```
 openspec/
@@ -20,7 +20,7 @@ Each spec uses RFC 2119 keywords (SHALL, MUST, SHOULD), Given/When/Then scenario
 
 ### Analysis Artifacts
 
-Static analysis output is stored in `.spec-gen/analysis/`:
+Static analysis output is stored in `.openlore/analysis/`:
 
 | File | Description |
 |------|-------------|
@@ -33,8 +33,8 @@ Static analysis output is stored in `.spec-gen/analysis/`:
 | `refactor-priorities.json` | Refactoring issues by file and function |
 | `mapping.json` | Requirement->function mapping (produced by `generate`) |
 | `spec-snapshot.json` | Compact coverage summary: git state, per-domain coverage %, uncovered hub functions (auto-updated after `analyze` and `generate`) |
-| `audit-report.json` | Latest parity audit report (produced by `spec-gen audit`) |
+| `audit-report.json` | Latest parity audit report (produced by `openlore audit`) |
 | `vector-index/` | LanceDB semantic index (produced by `--embed`) |
 
-`spec-gen analyze` also writes **`ARCHITECTURE.md`** to your project root -- a Markdown overview of module clusters, entry points, and critical hubs, refreshed on every run.
+`openlore analyze` also writes **`ARCHITECTURE.md`** to your project root -- a Markdown overview of module clusters, entry points, and critical hubs, refreshed on every run.
 

@@ -3,17 +3,17 @@
 ```mermaid
 graph TD
     subgraph CLI["CLI Layer"]
-        CMD[spec-gen commands]
+        CMD[openlore commands]
     end
 
     subgraph API["Programmatic API"]
-        API_INIT[specGenInit]
-        API_ANALYZE[specGenAnalyze]
-        API_GENERATE[specGenGenerate]
-        API_VERIFY[specGenVerify]
-        API_DRIFT[specGenDrift]
-        API_RUN[specGenRun]
-        API_DECISIONS[specGenConsolidateDecisions / specGenSyncDecisions]
+        API_INIT[openloreInit]
+        API_ANALYZE[openloreAnalyze]
+        API_GENERATE[openloreGenerate]
+        API_VERIFY[openloreVerify]
+        API_DRIFT[openloreDrift]
+        API_RUN[openloreRun]
+        API_DECISIONS[openloreConsolidateDecisions / openloreSyncDecisions]
     end
 
     subgraph Core["Core Layer"]
@@ -85,7 +85,7 @@ graph TD
     subgraph Output["Output"]
         SPECS[openspec/specs/*.md]
         ADRS[openspec/decisions/*.md]
-        ANALYSIS[.spec-gen/analysis/]
+        ANALYSIS[.openlore/analysis/]
         REPORT[Drift Report]
     end
 

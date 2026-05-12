@@ -2,19 +2,19 @@
  * Scenario Parser
  *
  * Reads OpenSpec spec files and extracts ParsedScenario objects.
- * Extends specGenGetSpecRequirements to also parse the full G/W/T structure
+ * Extends openloreGetSpecRequirements to also parse the full G/W/T structure
  * from each "#### Scenario:" block within requirement sections.
  *
  * Mapping enrichment:
- *   If .spec-gen/analysis/mapping.json exists, each scenario is enriched with
+ *   If .openlore/analysis/mapping.json exists, each scenario is enriched with
  *   FunctionRef[] for the matching requirement (confidence ≥ heuristic).
  */
 
 import { readFile, readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import {
-  SPEC_GEN_DIR,
-  SPEC_GEN_ANALYSIS_SUBDIR,
+  OPENLORE_DIR,
+  OPENLORE_ANALYSIS_SUBDIR,
   ARTIFACT_MAPPING,
   OPENSPEC_DIR,
   OPENSPEC_SPECS_SUBDIR,
@@ -23,7 +23,7 @@ import { fileExists } from '../../utils/command-helpers.js';
 import type { ParsedScenario, FunctionRef } from '../../types/test-generator.js';
 
 // ============================================================================
-// ANNOTATION PARSER  (<!-- spec-gen-test: key=value key=value ... -->)
+// ANNOTATION PARSER  (<!-- openlore-test: key=value key=value ... -->)
 // ============================================================================
 
 interface ScenarioAnnotation {
@@ -40,7 +40,7 @@ const DEFAULT_ANNOTATION: ScenarioAnnotation = {
 };
 
 /**
- * Parse a `<!-- spec-gen-test: ... -->` comment immediately following a
+ * Parse a `<!-- openlore-test: ... -->` comment immediately following a
  * `#### Scenario:` heading. Returns default values if no annotation present.
  *
  * Supported keys:
@@ -54,7 +54,7 @@ function parseAnnotation(lines: string[]): ScenarioAnnotation {
   // Look at the first few non-empty body lines for an HTML comment annotation
   for (const line of lines.slice(0, 3)) {
     const trimmed = line.trim();
-    const m = trimmed.match(/^<!--\s*spec-gen-test:\s*(.*?)\s*-->$/i);
+    const m = trimmed.match(/^<!--\s*openlore-test:\s*(.*?)\s*-->$/i);
     if (!m) continue;
 
     const raw = m[1];
@@ -145,8 +145,8 @@ async function loadMapping(
   const map = new Map<string, FunctionRef[]>();
   const mappingPath = join(
     rootPath,
-    SPEC_GEN_DIR,
-    SPEC_GEN_ANALYSIS_SUBDIR,
+    OPENLORE_DIR,
+    OPENLORE_ANALYSIS_SUBDIR,
     ARTIFACT_MAPPING
   );
 
@@ -286,7 +286,7 @@ export async function parseScenarios(opts: {
           continue;
         }
 
-        // Parse inline annotation (<!-- spec-gen-test: ... -->)
+        // Parse inline annotation (<!-- openlore-test: ... -->)
         const annotation = parseAnnotation(bodyLines);
 
         // Filter: skipped scenarios (unless caller explicitly wants them)

@@ -223,7 +223,7 @@ describe('ADRGenerator', () => {
       const result = generator.generateADRs(createMockPipelineResult(createMockADRs()));
       const adr = result[0].content;
 
-      expect(adr).toContain('spec-gen v2.0.0');
+      expect(adr).toContain('openlore v2.0.0');
     });
   });
 

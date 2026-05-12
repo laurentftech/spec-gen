@@ -1,5 +1,5 @@
 /**
- * spec-gen decisions command
+ * openlore decisions command
  *
  * Agent-recorded architectural decision workflow:
  *   record (via MCP) → consolidate → verify → approve → sync → spec.md
@@ -17,7 +17,7 @@ import { join } from 'node:path';
 
 import { logger } from '../../utils/logger.js';
 import { fileExists, resolveLLMProvider } from '../../utils/command-helpers.js';
-import { readSpecGenConfig } from '../../core/services/config-manager.js';
+import { readOpenLoreConfig } from '../../core/services/config-manager.js';
 import { createLLMService } from '../../core/services/llm-service.js';
 import { isGitRepository, getChangedFiles, getFileDiff, getCommitMessages, resolveBaseRef, buildSpecMap } from '../../core/drift/index.js';
 import {
@@ -33,8 +33,8 @@ import { extractFromDiff } from '../../core/decisions/extractor.js';
 import { verifyDecisions } from '../../core/decisions/verifier.js';
 import { syncApprovedDecisions } from '../../core/decisions/syncer.js';
 import {
-  SPEC_GEN_DIR,
-  SPEC_GEN_LOGS_SUBDIR,
+  OPENLORE_DIR,
+  OPENLORE_LOGS_SUBDIR,
   OPENSPEC_DIR,
   OPENSPEC_SPECS_SUBDIR,
   DECISIONS_EXTRACTION_MAX_FILES,
@@ -49,7 +49,7 @@ import { runTuiApproval } from '../tui-approval.js';
 // AGENT INSTRUCTION FILES
 // ============================================================================
 
-const AGENT_INSTRUCTIONS_MARKER = '<!-- spec-gen-decisions-instructions -->';
+const AGENT_INSTRUCTIONS_MARKER = '<!-- openlore-decisions-instructions -->';
 
 const AGENT_INSTRUCTIONS_BLOCK = `${AGENT_INSTRUCTIONS_MARKER}
 ## Architectural decisions
@@ -84,23 +84,23 @@ Present each decision to the user:
 > 1. **[id]** Title — rationale
 Do you approve? (yes/no)"
 For each approval call \`approve_decision\`, for rejections call \`reject_decision\`.
-Then run \`spec-gen decisions --sync\` and retry \`git commit\`.
+Then run \`openlore decisions --sync\` and retry \`git commit\`.
 
 **\`reason: "approved_not_synced"\` — decisions approved but not written to specs:**
-Run \`spec-gen decisions --sync\` then retry \`git commit\`. Do not skip this step.
+Run \`openlore decisions --sync\` then retry \`git commit\`. Do not skip this step.
 
 **\`reason: "drafts_pending_consolidation"\` — drafts were recorded but not yet consolidated:**
 Present to the user:
 > "N decision draft(s) were recorded but never consolidated. Run consolidation now? (~10-30s)"
-If yes: run \`spec-gen decisions --consolidate --gate\` and handle the result.
+If yes: run \`openlore decisions --consolidate --gate\` and handle the result.
 If no: retry with \`git commit --no-verify\` to skip the gate.
 
 **\`reason: "no_decisions_recorded"\` — source files staged but nothing recorded:**
 Present to the user:
 > "Source files are staged but no architectural decisions were recorded. Run fallback extraction to check for undocumented decisions? (~10-30s)"
-If yes: run \`spec-gen decisions --consolidate --gate\` and handle the result.
+If yes: run \`openlore decisions --consolidate --gate\` and handle the result.
 If no: retry with \`git commit --no-verify\` to skip the gate.
-<!-- end-spec-gen-decisions-instructions -->
+<!-- end-openlore-decisions-instructions -->
 `;
 
 /** Inject decisions instructions into an existing agent file, idempotently. */
@@ -118,7 +118,7 @@ async function removeAgentInstructions(filePath: string): Promise<void> {
   const content = await readFile(filePath, 'utf-8');
   if (!content.includes(AGENT_INSTRUCTIONS_MARKER)) return;
   const cleaned = content
-    .replace(/\n*<!-- spec-gen-decisions-instructions -->[\s\S]*?<!-- end-spec-gen-decisions-instructions -->\n*/g, '')
+    .replace(/\n*<!-- openlore-decisions-instructions -->[\s\S]*?<!-- end-openlore-decisions-instructions -->\n*/g, '')
     .trim();
   await writeFile(filePath, cleaned + '\n', 'utf-8');
 }
@@ -127,23 +127,23 @@ async function removeAgentInstructions(filePath: string): Promise<void> {
 // HOOK MANAGEMENT
 // ============================================================================
 
-const HOOK_MARKER = '# spec-gen-decisions-hook';
+const HOOK_MARKER = '# openlore-decisions-hook';
 
 const HOOK_CONTENT = `${HOOK_MARKER}
 # Gate commits until architectural decisions are reviewed.
-# Installed by: spec-gen setup --tools claude
+# Installed by: openlore setup --tools claude
 
 # Prefer local build over global install.
-if [ -f "./node_modules/.bin/spec-gen" ]; then
-  ./node_modules/.bin/spec-gen decisions --gate 2>&1
+if [ -f "./node_modules/.bin/openlore" ]; then
+  ./node_modules/.bin/openlore decisions --gate 2>&1
   DECISIONS_EXIT=$?
 elif [ -f "./dist/cli/index.js" ]; then
   node ./dist/cli/index.js decisions --gate 2>&1
   DECISIONS_EXIT=$?
 else
-  SPEC_GEN=$(command -v spec-gen 2>/dev/null)
-  if [ -n "$SPEC_GEN" ] && "$SPEC_GEN" decisions --help 2>&1 | grep -q -- '--gate'; then
-    "$SPEC_GEN" decisions --gate 2>&1
+  OPENLORE=$(command -v openlore 2>/dev/null)
+  if [ -n "$OPENLORE" ] && "$OPENLORE" decisions --help 2>&1 | grep -q -- '--gate'; then
+    "$OPENLORE" decisions --gate 2>&1
     DECISIONS_EXIT=$?
   else
     DECISIONS_EXIT=0
@@ -153,25 +153,25 @@ if [ "$DECISIONS_EXIT" -ne 0 ]; then
   exit "$DECISIONS_EXIT"
 fi
 # Sentinel written on successful gate pass. Post-commit checks for its absence to detect --no-verify bypass.
-touch "$(git rev-parse --git-dir 2>/dev/null || echo .git)/SPEC_GEN_GATE_RAN" 2>/dev/null || true
-# end-spec-gen-decisions-hook
+touch "$(git rev-parse --git-dir 2>/dev/null || echo .git)/OPENLORE_GATE_RAN" 2>/dev/null || true
+# end-openlore-decisions-hook
 `;
 
-const POST_COMMIT_HOOK_MARKER = '# spec-gen-decisions-post-hook';
+const POST_COMMIT_HOOK_MARKER = '# openlore-decisions-post-hook';
 const POST_COMMIT_HOOK_CONTENT = `${POST_COMMIT_HOOK_MARKER}
 # Warn when the pre-commit gate was bypassed via --no-verify.
 # post-commit is NOT skipped by --no-verify (only pre-commit and commit-msg are).
-SENTINEL="$(git rev-parse --git-dir 2>/dev/null || echo .git)/SPEC_GEN_GATE_RAN"
+SENTINEL="$(git rev-parse --git-dir 2>/dev/null || echo .git)/OPENLORE_GATE_RAN"
 if [ -f "$SENTINEL" ]; then
   rm -f "$SENTINEL"
 else
   echo "" >&2
-  echo "⚠️  spec-gen: pre-commit gate was bypassed (--no-verify)." >&2
+  echo "⚠️  openlore: pre-commit gate was bypassed (--no-verify)." >&2
   echo "    Architectural decisions were NOT reviewed for this commit." >&2
-  echo "    Run: spec-gen decisions --consolidate --gate" >&2
+  echo "    Run: openlore decisions --consolidate --gate" >&2
   echo "" >&2
 fi
-# end-spec-gen-decisions-post-hook
+# end-openlore-decisions-post-hook
 `;
 
 async function ensureGitignored(rootPath: string, entry: string): Promise<void> {
@@ -232,17 +232,17 @@ export async function installPreCommitHook(rootPath: string): Promise<void> {
   logger.success('Post-commit hook installed at .git/hooks/post-commit (bypass detector)');
 
   // Ensure pending decisions store is not accidentally committed
-  await ensureGitignored(rootPath, '.spec-gen/decisions/');
+  await ensureGitignored(rootPath, '.openlore/decisions/');
 
   // Inject record_decision instructions into existing agent context files
   const agentFiles = [
     { path: join(rootPath, 'CLAUDE.md'), label: 'CLAUDE.md' },
     { path: join(rootPath, 'AGENTS.md'), label: 'AGENTS.md' },
     { path: join(rootPath, '.cursorrules'), label: '.cursorrules' },
-    { path: join(rootPath, '.clinerules', 'spec-gen.md'), label: '.clinerules/spec-gen.md' },
+    { path: join(rootPath, '.clinerules', 'openlore.md'), label: '.clinerules/openlore.md' },
     { path: join(rootPath, '.github', 'copilot-instructions.md'), label: '.github/copilot-instructions.md' },
     { path: join(rootPath, '.windsurf', 'rules.md'), label: '.windsurf/rules.md' },
-    { path: join(rootPath, '.vibe', 'skills', 'spec-gen.md'), label: '.vibe/skills/spec-gen.md' },
+    { path: join(rootPath, '.vibe', 'skills', 'openlore.md'), label: '.vibe/skills/openlore.md' },
   ];
 
   for (const { path: filePath, label } of agentFiles) {
@@ -261,21 +261,21 @@ export async function uninstallPreCommitHook(rootPath: string): Promise<void> {
 
   const content = await readFile(hookPath, 'utf-8');
   if (!content.includes(HOOK_MARKER)) {
-    logger.warning('Pre-commit hook does not contain spec-gen decisions gate.');
+    logger.warning('Pre-commit hook does not contain openlore decisions gate.');
     return;
   }
 
   const newContent = content
-    .replace(/\n*# spec-gen-decisions-hook[\s\S]*?# end-spec-gen-decisions-hook\n*/g, '')
+    .replace(/\n*# openlore-decisions-hook[\s\S]*?# end-openlore-decisions-hook\n*/g, '')
     .trim();
 
   if (!newContent || newContent === '#!/bin/sh') {
     const { unlink } = await import('node:fs/promises');
     await unlink(hookPath);
-    logger.success('Pre-commit hook removed (file deleted — was only spec-gen).');
+    logger.success('Pre-commit hook removed (file deleted — was only openlore).');
   } else {
     await writeFile(hookPath, newContent + '\n', 'utf-8');
-    logger.success('Spec-gen decisions gate removed from pre-commit hook.');
+    logger.success('OpenLore decisions gate removed from pre-commit hook.');
   }
 
   // Remove post-commit bypass detector
@@ -284,7 +284,7 @@ export async function uninstallPreCommitHook(rootPath: string): Promise<void> {
     const postContent = await readFile(postCommitPath, 'utf-8');
     if (postContent.includes(POST_COMMIT_HOOK_MARKER)) {
       const newPostContent = postContent
-        .replace(/\n*# spec-gen-decisions-post-hook[\s\S]*?# end-spec-gen-decisions-post-hook\n*/g, '')
+        .replace(/\n*# openlore-decisions-post-hook[\s\S]*?# end-openlore-decisions-post-hook\n*/g, '')
         .trim();
       if (!newPostContent || newPostContent === '#!/bin/sh') {
         const { unlink } = await import('node:fs/promises');
@@ -292,7 +292,7 @@ export async function uninstallPreCommitHook(rootPath: string): Promise<void> {
         logger.success('Post-commit hook removed.');
       } else {
         await writeFile(postCommitPath, newPostContent + '\n', 'utf-8');
-        logger.success('Spec-gen bypass detector removed from post-commit hook.');
+        logger.success('OpenLore bypass detector removed from post-commit hook.');
       }
     }
   }
@@ -302,23 +302,23 @@ export async function uninstallPreCommitHook(rootPath: string): Promise<void> {
     join(rootPath, 'CLAUDE.md'),
     join(rootPath, 'AGENTS.md'),
     join(rootPath, '.cursorrules'),
-    join(rootPath, '.clinerules', 'spec-gen.md'),
+    join(rootPath, '.clinerules', 'openlore.md'),
     join(rootPath, '.github', 'copilot-instructions.md'),
     join(rootPath, '.windsurf', 'rules.md'),
-    join(rootPath, '.vibe', 'skills', 'spec-gen.md'),
+    join(rootPath, '.vibe', 'skills', 'openlore.md'),
   ];
   for (const filePath of agentFiles) await removeAgentInstructions(filePath);
 }
 
-const ANALYZE_HOOK_MARKER = 'spec-gen analyze';
+const ANALYZE_HOOK_MARKER = 'openlore analyze';
 const ANALYZE_HOOK_ENTRY = {
-  _comment: 'spec-gen: keep call graph fresh after every file edit (debounced 10s)',
+  _comment: 'openlore: keep call graph fresh after every file edit (debounced 10s)',
   type: 'command',
   command: [
-    'LOCK=.spec-gen/.analyze.lock;',
+    'LOCK=.openlore/.analyze.lock;',
     'if [ ! -f "$LOCK" ] || [ $(( $(date +%s) - $(cat "$LOCK" 2>/dev/null || echo 0) )) -gt 10 ]; then',
     '  echo $(date +%s) > "$LOCK";',
-    '  spec-gen analyze --output .spec-gen/analysis 2>/dev/null & true;',
+    '  openlore analyze --output .openlore/analysis 2>/dev/null & true;',
     'fi',
   ].join(' '),
 };
@@ -360,7 +360,7 @@ export async function uninstallClaudeHook(rootPath: string): Promise<void> {
   try {
     const settings = JSON.parse(await readFile(settingsPath, 'utf-8')) as ClaudeSettings;
     const hooks = settings.hooks?.PostToolUse ?? [];
-    const filtered = hooks.filter((h) => !JSON.stringify(h).includes('spec-gen-mine-last') && !JSON.stringify(h).includes(ANALYZE_HOOK_MARKER));
+    const filtered = hooks.filter((h) => !JSON.stringify(h).includes('openlore-mine-last') && !JSON.stringify(h).includes(ANALYZE_HOOK_MARKER));
     if (filtered.length === hooks.length) return;
     if (filtered.length === 0) delete settings.hooks!.PostToolUse;
     else settings.hooks!.PostToolUse = filtered;
@@ -435,18 +435,18 @@ export const decisionsCommand = new Command('decisions')
     'after',
     `
 Workflow:
-  1. Install once: spec-gen setup --tools claude  (hooks + skills)
+  1. Install once: openlore setup --tools claude  (hooks + skills)
   2. During dev: agent calls record_decision MCP tool
-  3. At commit: spec-gen decisions --consolidate  (or via hook)
-  4. Review: spec-gen decisions --approve <id>
-  5. Write to spec: spec-gen decisions --sync
+  3. At commit: openlore decisions --consolidate  (or via hook)
+  4. Review: openlore decisions --approve <id>
+  5. Write to spec: openlore decisions --sync
 
 Examples:
-  $ spec-gen decisions                             List pending decisions
-  $ spec-gen decisions --consolidate               Consolidate + verify drafts
-  $ spec-gen decisions --approve a1b2c3d4          Approve decision a1b2c3d4
-  $ spec-gen decisions --sync                      Sync approved decisions
-  $ spec-gen decisions --status verified --json    Machine-readable output
+  $ openlore decisions                             List pending decisions
+  $ openlore decisions --consolidate               Consolidate + verify drafts
+  $ openlore decisions --approve a1b2c3d4          Approve decision a1b2c3d4
+  $ openlore decisions --sync                      Sync approved decisions
+  $ openlore decisions --status verified --json    Machine-readable output
 `
   )
   .action(async function (this: Command, options: {
@@ -501,9 +501,9 @@ Examples:
 
       // Show a dry-run preview of what would land in the spec
       if (!options.json) {
-        const specGenConfig = await readSpecGenConfig(rootPath);
-        if (specGenConfig) {
-          const openspecPath = join(rootPath, specGenConfig.openspecPath ?? OPENSPEC_DIR);
+        const openloreConfig = await readOpenLoreConfig(rootPath);
+        if (openloreConfig) {
+          const openspecPath = join(rootPath, openloreConfig.openspecPath ?? OPENSPEC_DIR);
           const specsExist = await fileExists(join(openspecPath, OPENSPEC_SPECS_SUBDIR));
           if (specsExist) {
             const specMap = await buildSpecMap({ rootPath, openspecPath }).catch(() => undefined);
@@ -513,7 +513,7 @@ Examples:
               });
               if (result.modifiedSpecs.length > 0) {
                 console.log(`\nWould write to: ${result.modifiedSpecs.join(', ')}`);
-                console.log('Run "spec-gen decisions --sync" to apply.');
+                console.log('Run "openlore decisions --sync" to apply.');
               }
             }
           }
@@ -545,7 +545,7 @@ Examples:
           console.log(`  git restore ${f}`);
         }
         console.log('\nOr to document why this approach was rejected:');
-        console.log('  spec-gen decisions --record');
+        console.log('  openlore decisions --record');
         console.log('  (then re-run --consolidate before committing)');
       }
       return;
@@ -553,9 +553,9 @@ Examples:
 
     // ── Consolidate + Verify ─────────────────────────────────────────────────
     if (options.consolidate) {
-      const specGenConfig = await readSpecGenConfig(rootPath);
-      if (!specGenConfig) {
-        logger.error('No spec-gen configuration found. Run "spec-gen init" first.');
+      const openloreConfig = await readOpenLoreConfig(rootPath);
+      if (!openloreConfig) {
+        logger.error('No openlore configuration found. Run "openlore init" first.');
         process.exitCode = 1;
         return;
       }
@@ -563,26 +563,26 @@ Examples:
       const drafts = getDecisionsByStatus(store, 'draft');
       const hasDrafts = drafts.length > 0;
 
-      const resolved = resolveLLMProvider(specGenConfig);
+      const resolved = resolveLLMProvider(openloreConfig);
       if (!resolved) {
         logger.error('No LLM provider configured. Consolidation requires an LLM.');
-        logger.discovery('Set ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or configure llm in .spec-gen/config.json');
+        logger.discovery('Set ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or configure llm in .openlore/config.json');
         process.exitCode = 1;
         return;
       }
 
       const llm = createLLMService({
         provider: resolved.provider,
-        model: specGenConfig.generation?.model,
+        model: openloreConfig.generation?.model,
         openaiCompatBaseUrl: resolved.openaiCompatBaseUrl,
-        apiBase: globalOpts.apiBase ?? specGenConfig.llm?.apiBase,
-        sslVerify: globalOpts.insecure != null ? !globalOpts.insecure : (specGenConfig.llm?.sslVerify ?? true),
+        apiBase: globalOpts.apiBase ?? openloreConfig.llm?.apiBase,
+        sslVerify: globalOpts.insecure != null ? !globalOpts.insecure : (openloreConfig.llm?.sslVerify ?? true),
         enableLogging: true,
-        logDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_LOGS_SUBDIR),
+        logDir: join(rootPath, OPENLORE_DIR, OPENLORE_LOGS_SUBDIR),
       });
 
       // Step 1 — Consolidate drafts OR extract from diff as fallback
-      const openspecPath = join(rootPath, specGenConfig.openspecPath ?? OPENSPEC_DIR);
+      const openspecPath = join(rootPath, openloreConfig.openspecPath ?? OPENSPEC_DIR);
       const specMapResult = await buildSpecMap({ rootPath, openspecPath }).catch(() => undefined);
       let consolidated: PendingDecision[];
       let supersededIds: string[] = [];
@@ -684,7 +684,7 @@ Examples:
         const rejected = verified.filter((d) => results.get(d.id) === 'rejected');
 
         if (approved.length > 0) {
-          console.log(`\n${approved.length} decision(s) approved. Run "spec-gen decisions --sync" to write to spec.md.`);
+          console.log(`\n${approved.length} decision(s) approved. Run "openlore decisions --sync" to write to spec.md.`);
         }
         if (rejected.length > 0) {
           console.log(`${rejected.length} decision(s) rejected.`);
@@ -716,9 +716,9 @@ Examples:
           phantom: phantom.map((d) => ({ id: d.id, title: d.title })),
           missing: missing.map((m) => ({ file: m.file, description: m.description })),
           actions: {
-            approve: 'spec-gen decisions --approve <id>',
-            reject: 'spec-gen decisions --reject <id>',
-            sync: 'spec-gen decisions --sync',
+            approve: 'openlore decisions --approve <id>',
+            reject: 'openlore decisions --reject <id>',
+            sync: 'openlore decisions --sync',
           },
         };
         process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
@@ -741,15 +741,15 @@ Examples:
 
       displayMissing(missing);
 
-      console.log('\nApprove with: spec-gen decisions --approve <id>');
-      console.log('Reject with:  spec-gen decisions --reject <id>');
-      console.log('Sync all approved: spec-gen decisions --sync');
+      console.log('\nApprove with: openlore decisions --approve <id>');
+      console.log('Reject with:  openlore decisions --reject <id>');
+      console.log('Sync all approved: openlore decisions --sync');
 
       if (options.gate && missing.length > 0) {
-        logger.warning(`\nCommit gated — ${missing.length} undocumented change(s) require a decision. Record with: spec-gen decisions --record or record_decision MCP tool.`);
+        logger.warning(`\nCommit gated — ${missing.length} undocumented change(s) require a decision. Record with: openlore decisions --record or record_decision MCP tool.`);
         process.exitCode = 1;
       } else if (options.gate && verified.length > 0) {
-        logger.warning('\nDecisions verified — approve them before syncing: spec-gen decisions --approve <id>');
+        logger.warning('\nDecisions verified — approve them before syncing: openlore decisions --approve <id>');
         process.exitCode = 1;
       }
       return;
@@ -765,7 +765,7 @@ Examples:
           reason: GATE_REASONS.APPROVED_NOT_SYNCED,
           message: `${approved.length} approved decision(s) must be synced to spec files before committing.`,
           approved: approved.map((d) => ({ id: d.id, title: d.title })),
-          actions: { sync: 'spec-gen decisions --sync' },
+          actions: { sync: 'openlore decisions --sync' },
         };
         process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
         process.exitCode = 1;
@@ -786,8 +786,8 @@ Examples:
             message: `${drafts.length} draft decision(s) were recorded but never consolidated.`,
             drafts: drafts.map((d) => ({ id: d.id, title: d.title, recordedAt: d.recordedAt })),
             actions: {
-              consolidate: 'spec-gen decisions --consolidate',
-              consolidateAndGate: 'spec-gen decisions --consolidate --gate',
+              consolidate: 'openlore decisions --consolidate',
+              consolidateAndGate: 'openlore decisions --consolidate --gate',
               skip: 'git commit --no-verify',
             },
           };
@@ -826,7 +826,7 @@ Examples:
                 reason: GATE_REASONS.NO_DECISIONS_RECORDED,
                 message: 'Source files are staged but no architectural decisions were recorded.',
                 actions: {
-                  consolidateAndGate: 'spec-gen decisions --consolidate --gate',
+                  consolidateAndGate: 'openlore decisions --consolidate --gate',
                   skip: 'git commit --no-verify',
                 },
               };
@@ -877,9 +877,9 @@ Examples:
         phantom: [],
         missing,
         actions: {
-          approve: 'spec-gen decisions --approve <id>',
-          reject: 'spec-gen decisions --reject <id>',
-          sync: 'spec-gen decisions --sync',
+          approve: 'openlore decisions --approve <id>',
+          reject: 'openlore decisions --reject <id>',
+          sync: 'openlore decisions --sync',
         },
       };
       process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
@@ -889,17 +889,17 @@ Examples:
 
     // ── Sync ─────────────────────────────────────────────────────────────────
     if (options.sync) {
-      const specGenConfig = await readSpecGenConfig(rootPath);
-      if (!specGenConfig) {
-        logger.error('No spec-gen configuration found.');
+      const openloreConfig = await readOpenLoreConfig(rootPath);
+      if (!openloreConfig) {
+        logger.error('No openlore configuration found.');
         process.exitCode = 1;
         return;
       }
 
-      const openspecPath = join(rootPath, specGenConfig.openspecPath ?? OPENSPEC_DIR);
+      const openspecPath = join(rootPath, openloreConfig.openspecPath ?? OPENSPEC_DIR);
       const specsPath = join(openspecPath, OPENSPEC_SPECS_SUBDIR);
       if (!(await fileExists(specsPath))) {
-        logger.error('No specs found. Run "spec-gen generate" first.');
+        logger.error('No specs found. Run "openlore generate" first.');
         process.exitCode = 1;
         return;
       }

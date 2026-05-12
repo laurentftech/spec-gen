@@ -1,5 +1,5 @@
 /**
- * spec-gen drift command
+ * openlore drift command
  *
  * Detects spec drift: finds code changes not reflected in specs.
  * Can be used standalone or as a pre-commit hook.
@@ -12,16 +12,16 @@ import { logger } from '../../utils/logger.js';
 import { fileExists, formatDuration, parseList, resolveLLMProvider } from '../../utils/command-helpers.js';
 import {
   DEFAULT_DRIFT_MAX_FILES,
-  SPEC_GEN_DIR,
-  SPEC_GEN_ANALYSIS_SUBDIR,
-  SPEC_GEN_LOGS_SUBDIR,
-  SPEC_GEN_CONFIG_REL_PATH,
+  OPENLORE_DIR,
+  OPENLORE_ANALYSIS_SUBDIR,
+  OPENLORE_LOGS_SUBDIR,
+  OPENLORE_CONFIG_REL_PATH,
   OPENSPEC_DIR,
   OPENSPEC_SPECS_SUBDIR,
   ARTIFACT_REPO_STRUCTURE,
 } from '../../constants.js';
 import type { DriftOptions, DriftIssue, DriftResult, DriftSeverity } from '../../types/index.js';
-import { readSpecGenConfig } from '../../core/services/config-manager.js';
+import { readOpenLoreConfig } from '../../core/services/config-manager.js';
 import {
   getChangedFiles,
   isGitRepository,
@@ -122,20 +122,20 @@ function displaySummary(result: DriftResult): void {
 // HOOK MANAGEMENT
 // ============================================================================
 
-const HOOK_MARKER = '# spec-gen-drift-hook';
+const HOOK_MARKER = '# openlore-drift-hook';
 const HOOK_CONTENT = `
 ${HOOK_MARKER}
 # Automatically check for spec drift before committing
-# Installed by: spec-gen drift --install-hook
+# Installed by: openlore drift --install-hook
 
-# Run spec-gen drift in static mode (fast, no LLM)
+# Run openlore drift in static mode (fast, no LLM)
 # Use --json for machine-parseable output, suppress only npx banner noise
-DRIFT_OUTPUT=$(npx --yes spec-gen drift --fail-on warning --json 2>/dev/null)
+DRIFT_OUTPUT=$(npx --yes openlore drift --fail-on warning --json 2>/dev/null)
 DRIFT_EXIT=$?
 
 if [ $DRIFT_EXIT -ne 0 ]; then
   echo ""
-  echo "spec-gen: Spec drift detected! Commit blocked."
+  echo "openlore: Spec drift detected! Commit blocked."
   echo ""
   # Show concise summary from JSON output
   if command -v python3 > /dev/null 2>&1; then
@@ -161,12 +161,12 @@ except: pass
     echo "  (Install python3 for detailed issue summary in hook output)"
   fi
   echo ""
-  echo "  Run 'spec-gen drift' for full details."
+  echo "  Run 'openlore drift' for full details."
   echo "  To skip this check: git commit --no-verify"
   echo ""
   exit 1
 fi
-# end-spec-gen-drift-hook
+# end-openlore-drift-hook
 `.trimStart();
 
 async function installPreCommitHook(rootPath: string): Promise<void> {
@@ -193,7 +193,7 @@ async function installPreCommitHook(rootPath: string): Promise<void> {
     }
 
     // Append to existing hook
-    logger.discovery('Existing pre-commit hook found. Appending spec-gen drift check.');
+    logger.discovery('Existing pre-commit hook found. Appending openlore drift check.');
     const newContent = existingContent.trimEnd() + '\n\n' + HOOK_CONTENT;
     await writeFile(hookPath, newContent, 'utf-8');
   } else {
@@ -217,23 +217,23 @@ async function uninstallPreCommitHook(rootPath: string): Promise<void> {
 
   const content = await readFile(hookPath, 'utf-8');
   if (!content.includes(HOOK_MARKER)) {
-    logger.warning('Pre-commit hook does not contain spec-gen drift check.');
+    logger.warning('Pre-commit hook does not contain openlore drift check.');
     return;
   }
 
-  // Remove the spec-gen block
+  // Remove the openlore block
   const newContent = content
-    .replace(/\n*# spec-gen-drift-hook[\s\S]*?# end-spec-gen-drift-hook\n*/g, '')
+    .replace(/\n*# openlore-drift-hook[\s\S]*?# end-openlore-drift-hook\n*/g, '')
     .trim();
 
   if (!newContent || newContent === '#!/bin/sh') {
     // Hook file is now empty — remove the shebang-only file
     const { unlink } = await import('node:fs/promises');
     await unlink(hookPath);
-    logger.success('Pre-commit hook removed (file deleted — was only spec-gen).');
+    logger.success('Pre-commit hook removed (file deleted — was only openlore).');
   } else {
     await writeFile(hookPath, newContent + '\n', 'utf-8');
-    logger.success('Spec-gen drift check removed from pre-commit hook.');
+    logger.success('OpenLore drift check removed from pre-commit hook.');
   }
 }
 
@@ -302,13 +302,13 @@ export const driftCommand = new Command('drift')
     'after',
     `
 Examples:
-  $ spec-gen drift                    Check for drift against main branch
-  $ spec-gen drift --base develop     Compare against develop branch
-  $ spec-gen drift --json             Output JSON for CI integration
-  $ spec-gen drift --fail-on error    Only fail on error-level drift
-  $ spec-gen drift --use-llm          Use LLM for semantic analysis
-  $ spec-gen drift --install-hook     Install as pre-commit hook
-  $ spec-gen drift --uninstall-hook   Remove pre-commit hook
+  $ openlore drift                    Check for drift against main branch
+  $ openlore drift --base develop     Compare against develop branch
+  $ openlore drift --json             Output JSON for CI integration
+  $ openlore drift --fail-on error    Only fail on error-level drift
+  $ openlore drift --use-llm          Use LLM for semantic analysis
+  $ openlore drift --install-hook     Install as pre-commit hook
+  $ openlore drift --uninstall-hook   Remove pre-commit hook
 
 Drift categories:
   gap:           Code changed but spec not updated
@@ -349,7 +349,7 @@ Pre-commit hook:
       verbose: options.verbose ?? globalOpts.verbose ?? false,
       quiet: globalOpts.quiet ?? false,
       noColor: globalOpts.color === false,
-      config: globalOpts.config ?? SPEC_GEN_CONFIG_REL_PATH,
+      config: globalOpts.config ?? OPENLORE_CONFIG_REL_PATH,
     };
 
     if (isNaN(opts.maxFiles) || opts.maxFiles < 1) {
@@ -393,10 +393,10 @@ Pre-commit hook:
         return;
       }
 
-      // Load spec-gen config
-      const specGenConfig = await readSpecGenConfig(rootPath);
-      if (!specGenConfig) {
-        logger.error('No spec-gen configuration found. Run "spec-gen init" first.');
+      // Load openlore config
+      const openloreConfig = await readOpenLoreConfig(rootPath);
+      if (!openloreConfig) {
+        logger.error('No openlore configuration found. Run "openlore init" first.');
         process.exitCode = 1;
         return;
       }
@@ -404,7 +404,7 @@ Pre-commit hook:
       // Create LLM service if --use-llm is specified
       let llm: LLMService | undefined;
       if (opts.useLlm) {
-        const resolved = resolveLLMProvider(specGenConfig);
+        const resolved = resolveLLMProvider(openloreConfig);
         if (!resolved) {
           logger.error('No LLM API key found. --use-llm requires an API key.');
           logger.discovery('Set ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENAI_COMPAT_API_KEY + OPENAI_COMPAT_BASE_URL.');
@@ -415,13 +415,13 @@ Pre-commit hook:
         try {
           llm = createLLMService({
             provider: resolved.provider,
-            model: specGenConfig.generation?.model,
+            model: openloreConfig.generation?.model,
             openaiCompatBaseUrl: resolved.openaiCompatBaseUrl,
-            apiBase: globalOpts.apiBase ?? specGenConfig.llm?.apiBase,
-            sslVerify: globalOpts.insecure != null ? !globalOpts.insecure : specGenConfig.llm?.sslVerify ?? true,
-            timeout: globalOpts.timeout ?? specGenConfig.generation?.timeout,
+            apiBase: globalOpts.apiBase ?? openloreConfig.llm?.apiBase,
+            sslVerify: globalOpts.insecure != null ? !globalOpts.insecure : openloreConfig.llm?.sslVerify ?? true,
+            timeout: globalOpts.timeout ?? openloreConfig.generation?.timeout,
             enableLogging: true,
-            logDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_LOGS_SUBDIR),
+            logDir: join(rootPath, OPENLORE_DIR, OPENLORE_LOGS_SUBDIR),
           });
           if (!opts.json) {
             logger.discovery(`LLM enabled (${resolved.provider}) — gap issues will be semantically analyzed`);
@@ -434,12 +434,12 @@ Pre-commit hook:
       }
 
       // Determine openspec path
-      const openspecPath = join(rootPath, specGenConfig.openspecPath ?? OPENSPEC_DIR);
+      const openspecPath = join(rootPath, openloreConfig.openspecPath ?? OPENSPEC_DIR);
       const specsPath = join(openspecPath, OPENSPEC_SPECS_SUBDIR);
 
       // Check if specs exist
       if (!(await fileExists(specsPath))) {
-        logger.error('No specs found. Run "spec-gen generate" first.');
+        logger.error('No specs found. Run "openlore generate" first.');
         process.exitCode = 1;
         return;
       }
@@ -502,11 +502,11 @@ Pre-commit hook:
       }
 
       // Check for repo-structure.json for enhanced mapping
-      const repoStructurePath = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_ANALYSIS_SUBDIR, ARTIFACT_REPO_STRUCTURE);
+      const repoStructurePath = join(rootPath, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_REPO_STRUCTURE);
       const hasRepoStructure = await fileExists(repoStructurePath);
 
       if (!hasRepoStructure && !opts.json) {
-        logger.debug('No prior analysis found. Using spec headers only for file mapping. Run "spec-gen analyze" for better detection.');
+        logger.debug('No prior analysis found. Using spec headers only for file mapping. Run "openlore analyze" for better detection.');
       }
 
       const specMap = await buildSpecMap({
@@ -544,7 +544,7 @@ Pre-commit hook:
         changedFiles: gitResult.files,
         failOn: opts.failOn,
         domainFilter: opts.domains.length > 0 ? opts.domains : undefined,
-        openspecRelPath: specGenConfig.openspecPath ?? OPENSPEC_DIR,
+        openspecRelPath: openloreConfig.openspecPath ?? OPENSPEC_DIR,
         llm,
         baseRef: gitResult.resolvedBase,
         adrMap: adrMap ?? undefined,
@@ -639,7 +639,7 @@ Pre-commit hook:
           logger.blank();
         } else {
           logger.blank();
-          logger.info('Suggest tests', 'No spec-gen test files found for affected domains. Run "spec-gen test" to generate them.');
+          logger.info('Suggest tests', 'No openlore test files found for affected domains. Run "openlore test" to generate them.');
         }
       }
 

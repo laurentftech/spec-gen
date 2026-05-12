@@ -69,7 +69,7 @@ describe('analyzeTestCoverage', () => {
     const testDir = join(tmpDir, 'spec-tests', 'auth');
     await mkdir(testDir, { recursive: true });
     const testFile = `
-// spec-gen: {"domain":"auth","requirement":"UserLogin","scenario":"SuccessfulLogin","specFile":"openspec/specs/auth/spec.md"}
+// openlore: {"domain":"auth","requirement":"UserLogin","scenario":"SuccessfulLogin","specFile":"openspec/specs/auth/spec.md"}
 describe("Auth / UserLogin / SuccessfulLogin", () => {
   it("should satisfy spec scenario", async () => {
     expect(response.status).toBe(200);
@@ -94,11 +94,11 @@ describe("Auth / UserLogin / SuccessfulLogin", () => {
     const testDir = join(tmpDir, 'spec-tests', 'auth');
     await mkdir(testDir, { recursive: true });
     const testFile = `
-// spec-gen: {"domain":"auth","requirement":"UserLogin","scenario":"SuccessfulLogin"}
+// openlore: {"domain":"auth","requirement":"UserLogin","scenario":"SuccessfulLogin"}
 describe("test 1") {}
-// spec-gen: {"domain":"auth","requirement":"UserLogin","scenario":"InvalidCredentials"}
+// openlore: {"domain":"auth","requirement":"UserLogin","scenario":"InvalidCredentials"}
 describe("test 2") {}
-// spec-gen: {"domain":"auth","requirement":"UserRegistration","scenario":"SuccessfulRegistration"}
+// openlore: {"domain":"auth","requirement":"UserRegistration","scenario":"SuccessfulRegistration"}
 describe("test 3") {}
 `;
     await writeFile(join(testDir, 'all.spec.ts'), testFile);
@@ -131,9 +131,9 @@ describe("test 3") {}
     await writeFile(
       join(testDir, 'full.spec.ts'),
       [
-        '// spec-gen: {"domain":"auth","requirement":"UserLogin","scenario":"SuccessfulLogin"}',
-        '// spec-gen: {"domain":"auth","requirement":"UserLogin","scenario":"InvalidCredentials"}',
-        '// spec-gen: {"domain":"auth","requirement":"UserRegistration","scenario":"SuccessfulRegistration"}',
+        '// openlore: {"domain":"auth","requirement":"UserLogin","scenario":"SuccessfulLogin"}',
+        '// openlore: {"domain":"auth","requirement":"UserLogin","scenario":"InvalidCredentials"}',
+        '// openlore: {"domain":"auth","requirement":"UserRegistration","scenario":"SuccessfulRegistration"}',
       ].join('\n')
     );
 
@@ -162,12 +162,12 @@ describe("test 3") {}
     expect(report.byDomain['auth']?.hasDrift).toBe(true);
   });
 
-  it('supports Python # spec-gen: tags', async () => {
+  it('supports Python # openlore: tags', async () => {
     const testDir = join(tmpDir, 'spec-tests', 'auth');
     await mkdir(testDir, { recursive: true });
     await writeFile(
       join(testDir, 'auth_test.py'),
-      '# spec-gen: {"domain":"auth","requirement":"UserLogin","scenario":"SuccessfulLogin"}\nclass TestAuth:\n    pass\n'
+      '# openlore: {"domain":"auth","requirement":"UserLogin","scenario":"SuccessfulLogin"}\nclass TestAuth:\n    pass\n'
     );
 
     const report = await analyzeTestCoverage({

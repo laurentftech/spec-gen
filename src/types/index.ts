@@ -1,12 +1,12 @@
 /**
- * Core type definitions for spec-gen
+ * Core type definitions for openlore
  */
 
 // Project detection types
 export type ProjectType = 'nodejs' | 'python' | 'rust' | 'go' | 'java' | 'ruby' | 'php' | 'unknown';
 
 // Configuration types
-export interface SpecGenConfig {
+export interface OpenLoreConfig {
   version: string;
   projectType: ProjectType;
   openspecPath: string;
@@ -444,7 +444,7 @@ export interface PendingDecision {
   syncedToSpecs: string[];
 }
 
-/** Persistent store written to .spec-gen/decisions/pending.json */
+/** Persistent store written to .openlore/decisions/pending.json */
 export interface DecisionStore {
   version: '1';
   /** Cleared when a new session starts (new commit cycle) */

@@ -1,5 +1,5 @@
 /**
- * Tests for spec-gen doctor command
+ * Tests for openlore doctor command
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -31,7 +31,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 vi.mock('node:child_process', () => ({ execFile: vi.fn() }));
 
 vi.mock('../../core/services/config-manager.js', () => ({
-  readSpecGenConfig: vi.fn().mockResolvedValue({
+  readOpenLoreConfig: vi.fn().mockResolvedValue({
     projectType: 'nodejs',
     createdAt: '2024-01-01T00:00:00Z',
     openspecPath: './openspec',
@@ -151,9 +151,9 @@ describe('doctor command', () => {
       expect(gitCheck).toBeDefined();
     });
 
-    it('should include a spec-gen config check', async () => {
+    it('should include a openlore config check', async () => {
       const checks = await runDoctorJson();
-      const configCheck = checks.find(c => c.name === 'spec-gen config');
+      const configCheck = checks.find(c => c.name === 'openlore config');
       expect(configCheck).toBeDefined();
     });
 
@@ -292,7 +292,7 @@ describe('doctor command', () => {
   describe('config check', () => {
     it('should show ok when config exists and parses', async () => {
       const checks = await runDoctorJson();
-      const configCheck = checks.find(c => c.name === 'spec-gen config')!;
+      const configCheck = checks.find(c => c.name === 'openlore config')!;
       expect(configCheck.status).toBe('ok');
       expect(configCheck.detail).toContain('nodejs');
     });
@@ -302,9 +302,9 @@ describe('doctor command', () => {
       vi.mocked(access).mockRejectedValue(new Error('ENOENT'));
 
       const checks = await runDoctorJson();
-      const configCheck = checks.find(c => c.name === 'spec-gen config')!;
+      const configCheck = checks.find(c => c.name === 'openlore config')!;
       expect(configCheck.status).toBe('warn');
-      expect(configCheck.fix).toContain('spec-gen init');
+      expect(configCheck.fix).toContain('openlore init');
     });
 
     it('should show fail when config file exists but cannot be parsed', async () => {
@@ -312,12 +312,12 @@ describe('doctor command', () => {
       vi.mocked(access).mockResolvedValue(undefined);
 
       const configManager = await import('../../core/services/config-manager.js');
-      vi.mocked(configManager.readSpecGenConfig).mockResolvedValue(null);
+      vi.mocked(configManager.readOpenLoreConfig).mockResolvedValue(null);
 
       const checks = await runDoctorJson();
-      const configCheck = checks.find(c => c.name === 'spec-gen config')!;
+      const configCheck = checks.find(c => c.name === 'openlore config')!;
       expect(configCheck.status).toBe('fail');
-      expect(configCheck.fix).toContain('spec-gen init');
+      expect(configCheck.fix).toContain('openlore init');
     });
   });
 
@@ -340,7 +340,7 @@ describe('doctor command', () => {
       const checks = await runDoctorJson();
       const artifactCheck = checks.find(c => c.name === 'Analysis artifacts')!;
       expect(artifactCheck.status).toBe('warn');
-      expect(artifactCheck.fix).toContain('spec-gen analyze');
+      expect(artifactCheck.fix).toContain('openlore analyze');
     });
 
     it('should show warn when no analysis exists', async () => {
@@ -406,7 +406,7 @@ describe('doctor command', () => {
       vi.mocked(stat).mockResolvedValue({ mtime: new Date() } as ReturnType<typeof stat> extends Promise<infer T> ? T : never);
       vi.mocked(access).mockResolvedValue(undefined);
       const configManager = await import('../../core/services/config-manager.js');
-      vi.mocked(configManager.readSpecGenConfig).mockResolvedValue({
+      vi.mocked(configManager.readOpenLoreConfig).mockResolvedValue({
         projectType: 'nodejs', createdAt: '2024-01-01T00:00:00Z', openspecPath: './openspec', maxFiles: 500,
       } as never);
 

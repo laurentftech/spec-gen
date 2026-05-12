@@ -37,13 +37,13 @@ export interface OpenSpecConfig {
     design?: string[];
     tasks?: string[];
   };
-  'spec-gen'?: SpecGenMetadata;
+  'openlore'?: OpenLoreMetadata;
 }
 
 /**
- * spec-gen metadata added to config.yaml
+ * openlore metadata added to config.yaml
  */
-export interface SpecGenMetadata {
+export interface OpenLoreMetadata {
   version: string;
   generatedAt: string;
   domains: string[];
@@ -248,21 +248,21 @@ export class OpenSpecValidator {
       }
     }
 
-    // Check spec-gen metadata if present
-    if (configObj['spec-gen'] !== undefined) {
-      const specGen = configObj['spec-gen'] as Record<string, unknown>;
+    // Check openlore metadata if present
+    if (configObj['openlore'] !== undefined) {
+      const openlore = configObj['openlore'] as Record<string, unknown>;
 
-      if (typeof specGen.version !== 'string') {
-        warnings.push('spec-gen.version should be a string');
+      if (typeof openlore.version !== 'string') {
+        warnings.push('openlore.version should be a string');
       }
-      if (typeof specGen.generatedAt !== 'string') {
-        warnings.push('spec-gen.generatedAt should be a string');
+      if (typeof openlore.generatedAt !== 'string') {
+        warnings.push('openlore.generatedAt should be a string');
       }
-      if (!Array.isArray(specGen.domains)) {
-        warnings.push('spec-gen.domains should be an array');
+      if (!Array.isArray(openlore.domains)) {
+        warnings.push('openlore.domains should be an array');
       }
-      if (typeof specGen.confidence !== 'number') {
-        warnings.push('spec-gen.confidence should be a number');
+      if (typeof openlore.confidence !== 'number') {
+        warnings.push('openlore.confidence should be a number');
       }
     }
 
@@ -388,10 +388,10 @@ export class OpenSpecConfigManager {
   }
 
   /**
-   * Update config with spec-gen metadata while preserving user content
+   * Update config with openlore metadata while preserving user content
    */
-  async updateWithSpecGenMetadata(
-    metadata: SpecGenMetadata,
+  async updateWithOpenLoreMetadata(
+    metadata: OpenLoreMetadata,
     detectedContext?: DetectedContext,
     options: ContextUpdateOptions = {
       preserveUserContext: true,
@@ -407,8 +407,8 @@ export class OpenSpecConfigManager {
       };
     }
 
-    // Add spec-gen metadata
-    config['spec-gen'] = metadata;
+    // Add openlore metadata
+    config['openlore'] = metadata;
 
     // Update context if we have detected info and user approves
     if (detectedContext && options.appendDetectedInfo) {
@@ -437,7 +437,7 @@ export class OpenSpecConfigManager {
     }
 
     // Add auto-detected context
-    lines.push('# Auto-detected by spec-gen');
+    lines.push('# Auto-detected by openlore');
     lines.push(`Tech stack: ${detected.techStack}`);
     lines.push(`Architecture: ${detected.architecture}`);
     lines.push(`Domains: ${detected.domains.join(', ')}`);

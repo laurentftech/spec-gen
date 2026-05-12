@@ -1,12 +1,12 @@
 /**
- * Custom error classes for spec-gen with helpful user-facing messages
+ * Custom error classes for openlore with helpful user-facing messages
  */
 
 import {
-  SPEC_GEN_DIR,
-  SPEC_GEN_BACKUPS_SUBDIR,
-  SPEC_GEN_LOGS_SUBDIR,
-  SPEC_GEN_CONFIG_REL_PATH,
+  OPENLORE_DIR,
+  OPENLORE_BACKUPS_SUBDIR,
+  OPENLORE_LOGS_SUBDIR,
+  OPENLORE_CONFIG_REL_PATH,
 } from '../constants.js';
 
 export type ErrorCode =
@@ -29,16 +29,16 @@ export type ErrorCode =
   | 'UNKNOWN_ERROR';
 
 /**
- * Base error class for spec-gen with code and suggestion
+ * Base error class for openlore with code and suggestion
  */
-export class SpecGenError extends Error {
+export class OpenLoreError extends Error {
   constructor(
     message: string,
     public code: ErrorCode,
     public suggestion?: string
   ) {
     super(message);
-    this.name = 'SpecGenError';
+    this.name = 'OpenLoreError';
     // Maintains proper stack trace for where error was thrown
     Error.captureStackTrace?.(this, this.constructor);
   }
@@ -58,7 +58,7 @@ export class SpecGenError extends Error {
       output += `\n\n${yellow}Suggestion:${reset} ${this.suggestion}`;
     }
 
-    output += `\n\n${dim}For more help, see: https://github.com/clay-good/spec-gen#readme${reset}`;
+    output += `\n\n${dim}For more help, see: https://github.com/clay-good/openlore#readme${reset}`;
 
     return output;
   }
@@ -68,8 +68,8 @@ export class SpecGenError extends Error {
  * Error factory functions with predefined messages and suggestions
  */
 export const errors = {
-  noApiKey(): SpecGenError {
-    return new SpecGenError(
+  noApiKey(): OpenLoreError {
+    return new OpenLoreError(
       'No API key found for LLM provider',
       'NO_API_KEY',
       `Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable.
@@ -77,43 +77,43 @@ Get an API key at https://console.anthropic.com/ or https://platform.openai.com/
     );
   },
 
-  notARepository(): SpecGenError {
-    return new SpecGenError(
+  notARepository(): OpenLoreError {
+    return new OpenLoreError(
       'No .git directory found',
       'NOT_A_REPOSITORY',
-      `spec-gen works best in git repositories.
+      `openlore works best in git repositories.
 Run 'git init' or use --force to continue anyway.`
     );
   },
 
-  openspecExists(path: string): SpecGenError {
-    return new SpecGenError(
+  openspecExists(path: string): OpenLoreError {
+    return new OpenLoreError(
       `openspec/specs/ already contains specifications at ${path}`,
       'OPENSPEC_EXISTS',
       `Use --merge to add to existing specs, or --force to overwrite.
-Existing specs will be backed up to ${SPEC_GEN_DIR}/${SPEC_GEN_BACKUPS_SUBDIR}/`
+Existing specs will be backed up to ${OPENLORE_DIR}/${OPENLORE_BACKUPS_SUBDIR}/`
     );
   },
 
-  analysisTooOld(ageHours: number): SpecGenError {
-    return new SpecGenError(
+  analysisTooOld(ageHours: number): OpenLoreError {
+    return new OpenLoreError(
       `Existing analysis is ${ageHours.toFixed(1)} hours old`,
       'ANALYSIS_TOO_OLD',
-      `Run 'spec-gen analyze' to refresh, or use --reanalyze flag.`
+      `Run 'openlore analyze' to refresh, or use --reanalyze flag.`
     );
   },
 
-  noHighValueFiles(): SpecGenError {
-    return new SpecGenError(
+  noHighValueFiles(): OpenLoreError {
+    return new OpenLoreError(
       'Could not identify any high-value files to analyze',
       'NO_HIGH_VALUE_FILES',
       `This might happen with unusual project structures.
-Try adjusting scoring in ${SPEC_GEN_CONFIG_REL_PATH} or use --include patterns.`
+Try adjusting scoring in ${OPENLORE_CONFIG_REL_PATH} or use --include patterns.`
     );
   },
 
-  llmRateLimit(attempt: number, maxAttempts: number): SpecGenError {
-    return new SpecGenError(
+  llmRateLimit(attempt: number, maxAttempts: number): OpenLoreError {
+    return new OpenLoreError(
       'API rate limit exceeded',
       'LLM_RATE_LIMIT',
       `Waiting and retrying... (attempt ${attempt} of ${maxAttempts})
@@ -121,17 +121,17 @@ If this persists, try a different model or wait a few minutes.`
     );
   },
 
-  openspecValidationFailed(details?: string): SpecGenError {
-    return new SpecGenError(
+  openspecValidationFailed(details?: string): OpenLoreError {
+    return new OpenLoreError(
       `Generated specs failed OpenSpec validation${details ? `: ${details}` : ''}`,
       'OPENSPEC_VALIDATION_FAILED',
-      `Check ${SPEC_GEN_DIR}/${SPEC_GEN_LOGS_SUBDIR}/ for details.
-This may indicate a generation bug - please report it at https://github.com/clay-good/spec-gen/issues`
+      `Check ${OPENLORE_DIR}/${OPENLORE_LOGS_SUBDIR}/ for details.
+This may indicate a generation bug - please report it at https://github.com/clay-good/openlore/issues`
     );
   },
 
-  analysisFailed(reason: string): SpecGenError {
-    return new SpecGenError(
+  analysisFailed(reason: string): OpenLoreError {
+    return new OpenLoreError(
       `Static analysis failed: ${reason}`,
       'ANALYSIS_FAILED',
       `Check that the project directory is accessible and contains source files.
@@ -139,95 +139,95 @@ Try running with --verbose for more details.`
     );
   },
 
-  generationFailed(reason: string): SpecGenError {
-    return new SpecGenError(
+  generationFailed(reason: string): OpenLoreError {
+    return new OpenLoreError(
       `Spec generation failed: ${reason}`,
       'GENERATION_FAILED',
       `This could be due to API issues or invalid analysis data.
-Try running 'spec-gen analyze' first, then 'spec-gen generate'.`
+Try running 'openlore analyze' first, then 'openlore generate'.`
     );
   },
 
-  verificationFailed(reason: string): SpecGenError {
-    return new SpecGenError(
+  verificationFailed(reason: string): OpenLoreError {
+    return new OpenLoreError(
       `Verification failed: ${reason}`,
       'VERIFICATION_FAILED',
       `Ensure specs exist in openspec/specs/ directory.
-Run 'spec-gen generate' first if you haven't already.`
+Run 'openlore generate' first if you haven't already.`
     );
   },
 
-  configNotFound(path: string): SpecGenError {
-    return new SpecGenError(
+  configNotFound(path: string): OpenLoreError {
+    return new OpenLoreError(
       `Configuration file not found at ${path}`,
       'CONFIG_NOT_FOUND',
-      `Run 'spec-gen init' to create a configuration file.`
+      `Run 'openlore init' to create a configuration file.`
     );
   },
 
-  invalidConfig(path: string, details?: string): SpecGenError {
-    return new SpecGenError(
+  invalidConfig(path: string, details?: string): OpenLoreError {
+    return new OpenLoreError(
       `Invalid configuration file at ${path}${details ? `: ${details}` : ''}`,
       'INVALID_CONFIG',
-      `Check the configuration file format. You may need to delete it and run 'spec-gen init' again.`
+      `Check the configuration file format. You may need to delete it and run 'openlore init' again.`
     );
   },
 
-  fileWriteError(path: string, reason?: string): SpecGenError {
-    return new SpecGenError(
+  fileWriteError(path: string, reason?: string): OpenLoreError {
+    return new OpenLoreError(
       `Failed to write file ${path}${reason ? `: ${reason}` : ''}`,
       'FILE_WRITE_ERROR',
       `Check that you have write permissions for the directory.`
     );
   },
 
-  fileReadError(path: string, reason?: string): SpecGenError {
-    return new SpecGenError(
+  fileReadError(path: string, reason?: string): OpenLoreError {
+    return new OpenLoreError(
       `Failed to read file ${path}${reason ? `: ${reason}` : ''}`,
       'FILE_READ_ERROR',
       `Check that the file exists and you have read permissions.`
     );
   },
 
-  driftDetected(issueCount: number): SpecGenError {
-    return new SpecGenError(
+  driftDetected(issueCount: number): OpenLoreError {
+    return new OpenLoreError(
       `Spec drift detected: ${issueCount} issue${issueCount === 1 ? '' : 's'} found`,
       'DRIFT_DETECTED',
-      `Run 'spec-gen drift' to see details, then update specs to match code changes.
-Use 'spec-gen drift --verbose' for detailed issue descriptions.`
+      `Run 'openlore drift' to see details, then update specs to match code changes.
+Use 'openlore drift --verbose' for detailed issue descriptions.`
     );
   },
 
-  noSpecsFound(): SpecGenError {
-    return new SpecGenError(
+  noSpecsFound(): OpenLoreError {
+    return new OpenLoreError(
       'No OpenSpec specifications found',
       'NO_SPECS_FOUND',
-      `Run 'spec-gen generate' to create specifications from your codebase.`
+      `Run 'openlore generate' to create specifications from your codebase.`
     );
   },
 
-  unknown(error: unknown): SpecGenError {
+  unknown(error: unknown): OpenLoreError {
     const message = error instanceof Error ? error.message : String(error);
-    return new SpecGenError(
+    return new OpenLoreError(
       `An unexpected error occurred: ${message}`,
       'UNKNOWN_ERROR',
-      `Please report this issue at https://github.com/clay-good/spec-gen/issues`
+      `Please report this issue at https://github.com/clay-good/openlore/issues`
     );
   },
 };
 
 /**
- * Type guard to check if an error is a SpecGenError
+ * Type guard to check if an error is a OpenLoreError
  */
-export function isSpecGenError(error: unknown): error is SpecGenError {
-  return error instanceof SpecGenError;
+export function isOpenLoreError(error: unknown): error is OpenLoreError {
+  return error instanceof OpenLoreError;
 }
 
 /**
  * Format any error for CLI display
  */
 export function formatError(error: unknown, useColor = true): string {
-  if (isSpecGenError(error)) {
+  if (isOpenLoreError(error)) {
     return error.format(useColor);
   }
 

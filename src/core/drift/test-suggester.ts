@@ -1,6 +1,6 @@
 /**
  * Maps drift results to the test files that cover the affected domains.
- * Scans test files for // spec-gen: {JSON} metadata tags (written by spec-gen test).
+ * Scans test files for // openlore: {JSON} metadata tags (written by openlore test).
  * No LLM required.
  */
 
@@ -30,7 +30,7 @@ export interface TestSuggestion {
 // ============================================================================
 
 const TEST_FILE_EXTENSIONS = /\.(spec|test)\.[tj]sx?$|_test\.(py|cpp|cc)$|^test_.*\.py$/;
-const TAG_REGEX = /(?:\/\/|#)\s*spec-gen:\s*(\{[^\n]+\})/g;
+const TAG_REGEX = /(?:\/\/|#)\s*openlore:\s*(\{[^\n]+\})/g;
 
 async function walkTestFiles(dir: string): Promise<string[]> {
   const results: string[] = [];

@@ -1,8 +1,8 @@
-# spec-gen
+# openlore
 
 **Persistent architectural memory and structural cognition for AI coding agents.**
 
-spec-gen turns any evolving codebase into a navigable knowledge graph backed by [OpenSpec](https://github.com/Fission-AI/OpenSpec) living specifications. It maintains persistent architectural context across agent sessions: graph structure, specs, decisions, drift state, and semantic retrieval — so agents start each task already oriented instead of re-discovering the system from file reads.
+openlore turns any evolving codebase into a navigable knowledge graph backed by [OpenSpec](https://github.com/Fission-AI/OpenSpec) living specifications. It maintains persistent architectural context across agent sessions: graph structure, specs, decisions, drift state, and semantic retrieval — so agents start each task already oriented instead of re-discovering the system from file reads.
 
 ---
 
@@ -15,9 +15,9 @@ AI agents are powerful but amnesiac. On every new task:
 - They have no link between specs and code — drift is invisible
 - File-by-file navigation often burns **15,000–50,000 tokens** per orientation pass, before a single line of useful code is written
 
-spec-gen closes this loop. Run a full analysis once, then keep the graph incrementally updated as the codebase evolves. Even greenfield projects become cognitively "brownfield" after only a few agent sessions — architectural context fragments, decisions disappear, and agents repeatedly reconstruct the same understanding from scratch.
+openlore closes this loop. Run a full analysis once, then keep the graph incrementally updated as the codebase evolves. Even greenfield projects become cognitively "brownfield" after only a few agent sessions — architectural context fragments, decisions disappear, and agents repeatedly reconstruct the same understanding from scratch.
 
-spec-gen persists that context continuously: structure, specs, decisions, drift state, and graph relationships remain queryable across sessions.
+openlore persists that context continuously: structure, specs, decisions, drift state, and graph relationships remain queryable across sessions.
 
 ---
 
@@ -31,13 +31,13 @@ Three layers, each usable independently:
 | **2. Spec Layer** | LLM-generated living specs, ADRs, drift detection, decision gates | For generation |
 | **3. Agent Runtime** | 45 MCP tools — `orient()`, semantic search, graph expansion | No |
 
-You can use layer 1 alone to give agents structural context. Add layer 2 for semantic intent and architectural governance through OpenSpec-compatible living specifications. Layer 3 keeps that context continuously accessible through graph-native MCP tools once `spec-gen mcp` is running.
+You can use layer 1 alone to give agents structural context. Add layer 2 for semantic intent and architectural governance through OpenSpec-compatible living specifications. Layer 3 keeps that context continuously accessible through graph-native MCP tools once `openlore mcp` is running.
 
 ---
 
-## spec-gen vs. Alternatives
+## openlore vs. Alternatives
 
-| | Cursor / Claude Code | Sourcegraph | spec-gen |
+| | Cursor / Claude Code | Sourcegraph | openlore |
 |---|---|---|---|
 | Graph-aware MCP context | ❌ file-based reads | Partial | ✓ call graph + clusters |
 | Spec drift detection | ❌ | ❌ | ✓ milliseconds, no API |
@@ -47,7 +47,7 @@ You can use layer 1 alone to give agents structural context. Add layer 2 for sem
 | Living spec generation | ❌ | ❌ | ✓ |
 | Persistent cross-session architectural memory | ❌ | Partial | ✓ |
 
-Traditional coding agents reconstruct architecture from repeated file reads every session. spec-gen persists it as a queryable graph.
+Traditional coding agents reconstruct architecture from repeated file reads every session. openlore persists it as a queryable graph.
 
 ---
 
@@ -56,11 +56,11 @@ Traditional coding agents reconstruct architecture from repeated file reads ever
 > **Minimum to see value — no API key needed:**
 
 ```bash
-npm install -g spec-gen-cli
+npm install -g openlore
 cd /path/to/your-project
 
-spec-gen analyze          # build call graph, clusters, CODEBASE.md
-spec-gen mcp              # start MCP server
+openlore analyze          # build call graph, clusters, CODEBASE.md
+openlore mcp              # start MCP server
 ```
 
 Then ask your agent: **`orient("add a new payment method")`**
@@ -70,17 +70,17 @@ That single call returns the relevant functions, their call neighbours, matching
 **Full pipeline** (specs + decisions — optional and additive):
 
 ```bash
-spec-gen generate         # generate living specs (requires API key)
-spec-gen drift            # detect spec/code drift
-spec-gen decisions        # manage architectural decisions
+openlore generate         # generate living specs (requires API key)
+openlore drift            # detect spec/code drift
+openlore decisions        # manage architectural decisions
 ```
 
 <details>
 <summary>Install from source</summary>
 
 ```bash
-git clone https://github.com/clay-good/spec-gen
-cd spec-gen
+git clone https://github.com/clay-good/openlore
+cd openlore
 npm install && npm run build && npm link
 ```
 
@@ -90,13 +90,13 @@ npm install && npm run build && npm link
 <summary>Nix / NixOS</summary>
 
 ```bash
-nix run github:clay-good/spec-gen -- analyze
-nix shell github:clay-good/spec-gen
+nix run github:clay-good/openlore -- analyze
+nix shell github:clay-good/openlore
 ```
 
 System flake:
 ```nix
-environment.systemPackages = [ spec-gen.packages.x86_64-linux.default ];
+environment.systemPackages = [ openlore.packages.x86_64-linux.default ];
 ```
 
 </details>
@@ -145,7 +145,7 @@ One graph query replaces most exploratory file reads. The agent knows exactly wh
 
 **Analyze** (no API key)
 
-Continuously maintains a structural representation of your codebase using pure static analysis. Builds a full call graph persisted to SQLite, runs label-propagation community detection to cluster tightly coupled functions, computes McCabe cyclomatic complexity for every function, and extracts DB schemas, HTTP routes, UI components, middleware chains, and environment variables. Outputs `.spec-gen/analysis/CODEBASE.md` — a ~600-token structural digest that compresses the equivalent of tens of thousands of exploratory tokens into a small, queryable summary.
+Continuously maintains a structural representation of your codebase using pure static analysis. Builds a full call graph persisted to SQLite, runs label-propagation community detection to cluster tightly coupled functions, computes McCabe cyclomatic complexity for every function, and extracts DB schemas, HTTP routes, UI components, middleware chains, and environment variables. Outputs `.openlore/analysis/CODEBASE.md` — a ~600-token structural digest that compresses the equivalent of tens of thousands of exploratory tokens into a small, queryable summary.
 
 With `--watch-auto`, the call graph updates incrementally on every file save: changed file and its direct callers are re-parsed and the graph is atomically swapped. Orient and BFS queries remain live between full analyze runs.
 
@@ -172,13 +172,13 @@ Agents call `record_decision` before writing code. Consolidation runs immediatel
 
 ## Architecture
 
-OpenSpec provides semantic intent and workflow structure. spec-gen maintains the evolving implementation as a continuously queryable architectural graph for agents.
+OpenSpec provides semantic intent and workflow structure. openlore maintains the evolving implementation as a continuously queryable architectural graph for agents.
 
 ```
 Codebase
    │
    ▼
-spec-gen analyze ──► SQLite graph store (.spec-gen/analysis/call-graph.db)
+openlore analyze ──► SQLite graph store (.openlore/analysis/call-graph.db)
                           │                      │
                           │              MCP tools (orient, BFS, search…)
                           │                      │
@@ -187,9 +187,9 @@ spec-gen analyze ──► SQLite graph store (.spec-gen/analysis/call-graph.db)
                     ┌─────┴──────┐
                     ▼            ▼
               CODEBASE.md   (optional)
-                         spec-gen generate ──► openspec/specs/*.md
-                         spec-gen drift   ──► drift report
-                         spec-gen decisions ► ADR gates
+                         openlore generate ──► openspec/specs/*.md
+                         openlore drift   ──► drift report
+                         openlore decisions ► ADR gates
 ```
 
 The graph and the OpenSpec spec layer are co-equal: the graph makes orientation fast, the specs make it semantically grounded. Drift detection and decision gates connect both. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full pipeline diagram.
@@ -226,8 +226,8 @@ The graph and the OpenSpec spec layer are co-equal: the graph makes orientation 
 - **Static analysis only**: dynamic dispatch, runtime metaprogramming, and `eval`-based patterns are not captured in the call graph.
 - **LLM spec quality varies**: generated specs reflect the model's understanding. Review sections covering complex business logic before treating them as authoritative.
 - **Embedding is optional**: without an embedding endpoint, `orient` and `search_code` fall back to BM25 keyword search (still useful, less accurate for semantic queries).
-- **Large monorepos**: `spec-gen analyze` on large codebases may take several minutes. Graph storage itself has no practical limit — the pipeline (AST parsing, symbol extraction) is the bottleneck.
-- **`node:sqlite` experimental warning on Node 22**: Node.js 22 prints `ExperimentalWarning: SQLite is an experimental feature` to stderr. The warning is gone on Node 24+. Suppress on Node 22 with `NODE_NO_WARNINGS=1 spec-gen analyze`.
+- **Large monorepos**: `openlore analyze` on large codebases may take several minutes. Graph storage itself has no practical limit — the pipeline (AST parsing, symbol extraction) is the bottleneck.
+- **`node:sqlite` experimental warning on Node 22**: Node.js 22 prints `ExperimentalWarning: SQLite is an experimental feature` to stderr. The warning is gone on Node 24+. Suppress on Node 22 with `NODE_NO_WARNINGS=1 openlore analyze`.
 
 ---
 

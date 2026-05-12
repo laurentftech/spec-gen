@@ -39,7 +39,7 @@ function makeContext(): LLMContext {
 
 async function setupProject(): Promise<{ rootPath: string; outputPath: string; contextPath: string }> {
   const rootPath   = await mkdtemp(join(tmpdir(), 'mcp-watcher-int-'));
-  const outputPath = join(rootPath, '.spec-gen', 'analysis');
+  const outputPath = join(rootPath, '.openlore', 'analysis');
   await mkdir(outputPath, { recursive: true });
   const contextPath = join(outputPath, 'llm-context.json');
   await writeFile(contextPath, JSON.stringify(makeContext(), null, 2), 'utf-8');

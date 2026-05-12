@@ -243,7 +243,7 @@ describe('VectorIndex + EmbeddingService (integration)', () => {
     serverAvailable = await isServerUp(EMBED_BASE_URL);
     if (!serverAvailable) return;
 
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-integration-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-integration-'));
     embedSvc = new EmbeddingService({ baseUrl: EMBED_BASE_URL, model: EMBED_MODEL });
 
     const hubIds = new Set(['src/db/connection.ts::connect', 'src/auth/jwt.ts::verifyToken']);
@@ -427,7 +427,7 @@ describe('VectorIndex — opaque names (RIG-16)', () => {
     serverAvailable = await isServerUp(EMBED_BASE_URL);
     if (!serverAvailable) return;
 
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-opaque-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-opaque-'));
     embedSvc = new EmbeddingService({ baseUrl: EMBED_BASE_URL, model: EMBED_MODEL });
 
     await VectorIndex.build(

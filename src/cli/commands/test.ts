@@ -1,11 +1,11 @@
 /**
- * spec-gen test command
+ * openlore test command
  *
  * Reports spec test coverage across the project by scanning test files
- * for spec-gen annotation tags:
+ * for openlore annotation tags:
  *
- *   // spec-gen: {"domain":"auth","requirement":"UserLogin","scenario":"SuccessfulLogin",...}
- *   # spec-gen: ...  (Python)
+ *   // openlore: {"domain":"auth","requirement":"UserLogin","scenario":"SuccessfulLogin",...}
+ *   # openlore: ...  (Python)
  *
  * Options:
  *   --discover      Extend coverage via semantic test title matching (requires --use-llm)
@@ -14,22 +14,22 @@
  *   --test-dirs     Directories to scan (default: spec-tests,src)
  *   --json          Machine-readable output
  *
- * To write tests with real assertions, use the spec-gen-write-tests skill
- * (Vibe: /spec-gen-write-tests, Cline: spec-gen-write-tests workflow).
+ * To write tests with real assertions, use the openlore-write-tests skill
+ * (Vibe: /openlore-write-tests, Cline: openlore-write-tests workflow).
  */
 
 import { Command } from 'commander';
 import { join } from 'node:path';
 import { logger } from '../../utils/logger.js';
 import { parseList, resolveLLMProvider } from '../../utils/command-helpers.js';
-import { readSpecGenConfig } from '../../core/services/config-manager.js';
+import { readOpenLoreConfig } from '../../core/services/config-manager.js';
 import { createLLMService } from '../../core/services/llm-service.js';
 import type { LLMService } from '../../core/services/llm-service.js';
 import { analyzeTestCoverage } from '../../core/test-generator/index.js';
 import type { TestCoverageReport } from '../../types/test-generator.js';
 import {
-  SPEC_GEN_DIR,
-  SPEC_GEN_LOGS_SUBDIR,
+  OPENLORE_DIR,
+  OPENLORE_LOGS_SUBDIR,
   OPENSPEC_DIR,
   OPENSPEC_SPECS_SUBDIR,
 } from '../../constants.js';
@@ -91,7 +91,7 @@ function displayCoverageReport(report: TestCoverageReport, json: boolean): void 
 // ============================================================================
 
 export const testCommand = new Command('test')
-  .description('Report spec test coverage (scan test files for spec-gen annotation tags)')
+  .description('Report spec test coverage (scan test files for openlore annotation tags)')
   .option(
     '--discover',
     'Semantically match existing tests to uncovered scenarios (requires --use-llm)',
@@ -114,19 +114,19 @@ export const testCommand = new Command('test')
     'after',
     `
 Examples:
-  $ spec-gen test                              Show spec test coverage
-  $ spec-gen test --domains auth,tasks         Only for specific domains
-  $ spec-gen test --min-coverage 80            Fail CI if coverage < 80%
-  $ spec-gen test --discover --use-llm         Semantic discovery of existing tests
-  $ spec-gen test --json                       Machine-readable output
+  $ openlore test                              Show spec test coverage
+  $ openlore test --domains auth,tasks         Only for specific domains
+  $ openlore test --min-coverage 80            Fail CI if coverage < 80%
+  $ openlore test --discover --use-llm         Semantic discovery of existing tests
+  $ openlore test --json                       Machine-readable output
 
 Annotation tag format (add above each describe/class/suite block):
-  // spec-gen: {"domain":"auth","requirement":"UserLogin","scenario":"SuccessfulLogin","specFile":"openspec/specs/auth/spec.md"}
-  # spec-gen: ...  (Python)
+  // openlore: {"domain":"auth","requirement":"UserLogin","scenario":"SuccessfulLogin","specFile":"openspec/specs/auth/spec.md"}
+  # openlore: ...  (Python)
 
-To write tests, use the spec-gen-write-tests skill:
-  Vibe:  /spec-gen-write-tests
-  Cline: spec-gen-write-tests workflow (.clinerules/workflows/)
+To write tests, use the openlore-write-tests skill:
+  Vibe:  /openlore-write-tests
+  Cline: openlore-write-tests workflow (.clinerules/workflows/)
 `
   )
   .action(async function (this: Command) {
@@ -147,7 +147,7 @@ To write tests, use the spec-gen-write-tests skill:
 
     const specsPath = join(rootPath, OPENSPEC_DIR, OPENSPEC_SPECS_SUBDIR);
     if (!(await fileExists(specsPath))) {
-      logger.error('No specs found. Run "spec-gen generate" first.');
+      logger.error('No specs found. Run "openlore generate" first.');
       process.exitCode = 1;
       return;
     }
@@ -155,7 +155,7 @@ To write tests, use the spec-gen-write-tests skill:
     // ── LLM Setup (only needed for --discover) ───────────────────────────
     let llm: LLMService | undefined;
     if (useLlm || isDiscover) {
-      const config = await readSpecGenConfig(rootPath);
+      const config = await readOpenLoreConfig(rootPath);
       const resolved = resolveLLMProvider(config ?? undefined);
 
       if (!resolved) {
@@ -173,7 +173,7 @@ To write tests, use the spec-gen-write-tests skill:
             globalOpts.insecure != null ? !globalOpts.insecure : (config?.llm?.sslVerify ?? true),
           timeout: globalOpts.timeout ?? config?.generation?.timeout,
           enableLogging: true,
-          logDir: join(rootPath, SPEC_GEN_DIR, SPEC_GEN_LOGS_SUBDIR),
+          logDir: join(rootPath, OPENLORE_DIR, OPENLORE_LOGS_SUBDIR),
         });
       } catch (err) {
         logger.error(`LLM setup failed: ${(err as Error).message}`);

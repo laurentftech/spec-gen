@@ -5,7 +5,7 @@
  *
  * Strategy: mock validateDirectory to return tmpDir so real store file I/O
  * runs against the temp directory. Mock spawn (background consolidation),
- * syncApprovedDecisions, buildSpecMap, and readSpecGenConfig.
+ * syncApprovedDecisions, buildSpecMap, and readOpenLoreConfig.
  */
 
 // ── Module mocks (hoisted) ────────────────────────────────────────────────────
@@ -25,7 +25,7 @@ vi.mock('node:child_process', () => ({
 }));
 
 vi.mock('../config-manager.js', () => ({
-  readSpecGenConfig: vi.fn(async () => null),
+  readOpenLoreConfig: vi.fn(async () => null),
 }));
 
 vi.mock('../../../core/drift/spec-mapper.js', () => ({
@@ -48,8 +48,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { DecisionStore, PendingDecision } from '../../../types/index.js';
 import {
-  SPEC_GEN_DIR,
-  SPEC_GEN_DECISIONS_SUBDIR,
+  OPENLORE_DIR,
+  OPENLORE_DECISIONS_SUBDIR,
   DECISIONS_PENDING_FILE,
 } from '../../../constants.js';
 import {
@@ -60,7 +60,7 @@ import {
   handleSyncDecisions,
 } from './decisions.js';
 import { validateDirectory } from './utils.js';
-import { readSpecGenConfig } from '../config-manager.js';
+import { readOpenLoreConfig } from '../config-manager.js';
 import { syncApprovedDecisions } from '../../decisions/syncer.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -94,13 +94,13 @@ function makeStore(overrides: Partial<DecisionStore> = {}): DecisionStore {
 }
 
 async function writeStore(rootPath: string, store: DecisionStore): Promise<void> {
-  const dir = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_DECISIONS_SUBDIR);
+  const dir = join(rootPath, OPENLORE_DIR, OPENLORE_DECISIONS_SUBDIR);
   await mkdir(dir, { recursive: true });
   await writeFile(join(dir, DECISIONS_PENDING_FILE), JSON.stringify(store, null, 2) + '\n', 'utf-8');
 }
 
 async function readStore(rootPath: string): Promise<DecisionStore> {
-  const path = join(rootPath, SPEC_GEN_DIR, SPEC_GEN_DECISIONS_SUBDIR, DECISIONS_PENDING_FILE);
+  const path = join(rootPath, OPENLORE_DIR, OPENLORE_DECISIONS_SUBDIR, DECISIONS_PENDING_FILE);
   return JSON.parse(await readFile(path, 'utf-8')) as DecisionStore;
 }
 
@@ -110,7 +110,7 @@ describe('handleRecordDecision', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-decisions-test-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-decisions-test-'));
     vi.clearAllMocks();
     vi.mocked(validateDirectory).mockResolvedValue(tmpDir);
   });
@@ -230,7 +230,7 @@ describe('handleListDecisions', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-decisions-test-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-decisions-test-'));
     vi.mocked(validateDirectory).mockResolvedValue(tmpDir);
   });
 
@@ -285,7 +285,7 @@ describe('handleApproveDecision', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-decisions-test-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-decisions-test-'));
     vi.mocked(validateDirectory).mockResolvedValue(tmpDir);
   });
 
@@ -332,7 +332,7 @@ describe('handleRejectDecision', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-decisions-test-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-decisions-test-'));
     vi.mocked(validateDirectory).mockResolvedValue(tmpDir);
   });
 
@@ -369,18 +369,18 @@ describe('handleSyncDecisions', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), 'spec-gen-decisions-test-'));
+    tmpDir = await mkdtemp(join(tmpdir(), 'openlore-decisions-test-'));
     vi.mocked(validateDirectory).mockResolvedValue(tmpDir);
-    vi.mocked(readSpecGenConfig).mockResolvedValue(null);
+    vi.mocked(readOpenLoreConfig).mockResolvedValue(null);
   });
 
-  it('returns error when no spec-gen config exists', async () => {
+  it('returns error when no openlore config exists', async () => {
     const result = await handleSyncDecisions(tmpDir) as { error: string };
-    expect(result.error).toMatch(/No spec-gen configuration/);
+    expect(result.error).toMatch(/No openlore configuration/);
   });
 
   it('calls syncApprovedDecisions with rootPath and dryRun flag', async () => {
-    vi.mocked(readSpecGenConfig).mockResolvedValue({ openspecPath: 'openspec' } as never);
+    vi.mocked(readOpenLoreConfig).mockResolvedValue({ openspecPath: 'openspec' } as never);
     await writeStore(tmpDir, makeStore());
 
     await handleSyncDecisions(tmpDir, true);
@@ -391,7 +391,7 @@ describe('handleSyncDecisions', () => {
   });
 
   it('returns synced/errors/modifiedSpecs and dryRun from syncer result', async () => {
-    vi.mocked(readSpecGenConfig).mockResolvedValue({ openspecPath: 'openspec' } as never);
+    vi.mocked(readOpenLoreConfig).mockResolvedValue({ openspecPath: 'openspec' } as never);
     vi.mocked(syncApprovedDecisions).mockResolvedValue({
       store: makeStore(),
       result: {
@@ -415,7 +415,7 @@ describe('handleSyncDecisions', () => {
   });
 
   it('promotes a specific decision to approved before syncing when id provided', async () => {
-    vi.mocked(readSpecGenConfig).mockResolvedValue({ openspecPath: 'openspec' } as never);
+    vi.mocked(readOpenLoreConfig).mockResolvedValue({ openspecPath: 'openspec' } as never);
     const decision = makeDecision({ id: 'abc12345', status: 'draft' });
     await writeStore(tmpDir, makeStore({ decisions: [decision] }));
 
@@ -431,7 +431,7 @@ describe('handleSyncDecisions', () => {
   });
 
   it('returns error when specific id not found', async () => {
-    vi.mocked(readSpecGenConfig).mockResolvedValue({ openspecPath: 'openspec' } as never);
+    vi.mocked(readOpenLoreConfig).mockResolvedValue({ openspecPath: 'openspec' } as never);
     await writeStore(tmpDir, makeStore());
 
     const result = await handleSyncDecisions(tmpDir, false, 'notfound') as { error: string };

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { EmbeddingService } from './embedding-service.js';
-import type { SpecGenConfig } from '../../types/index.js';
+import type { OpenLoreConfig } from '../../types/index.js';
 
 // ============================================================================
 // HELPERS
@@ -202,7 +202,7 @@ describe('EmbeddingService', () => {
   });
 
   describe('fromConfig', () => {
-    const baseConfig: SpecGenConfig = {
+    const baseConfig: OpenLoreConfig = {
       version: '1.0.0',
       projectType: 'nodejs',
       openspecPath: './openspec',

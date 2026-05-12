@@ -33,7 +33,7 @@ describe('SpecVerificationEngine', () => {
   const testDir = join(process.cwd(), 'test-verify-engine');
   const openspecDir = join(testDir, 'openspec');
   const specsDir = join(openspecDir, 'specs');
-  const outputDir = join(testDir, '.spec-gen', 'verification');
+  const outputDir = join(testDir, '.openlore', 'verification');
   const srcDir = join(testDir, 'src');
 
   let mockProvider: MockLLMProvider;

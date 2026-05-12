@@ -18,7 +18,7 @@ describe('gitignore-manager', () => {
   let testDir: string;
 
   beforeEach(async () => {
-    testDir = join(tmpdir(), `spec-gen-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    testDir = join(tmpdir(), `openlore-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     await mkdir(testDir, { recursive: true });
   });
 
@@ -70,7 +70,7 @@ describe('gitignore-manager', () => {
     it('should return false when entry does not exist', async () => {
       await writeFile(join(testDir, '.gitignore'), 'node_modules/\n.env\n');
 
-      const result = await isInGitignore(testDir, '.spec-gen/');
+      const result = await isInGitignore(testDir, '.openlore/');
       expect(result).toBe(false);
     });
 
@@ -101,47 +101,47 @@ describe('gitignore-manager', () => {
     it('should add entry to existing .gitignore', async () => {
       await writeFile(join(testDir, '.gitignore'), 'node_modules/\n');
 
-      const result = await addToGitignore(testDir, '.spec-gen/');
+      const result = await addToGitignore(testDir, '.openlore/');
       expect(result).toBe(true);
 
       const content = await readFile(join(testDir, '.gitignore'), 'utf-8');
-      expect(content).toContain('.spec-gen/');
+      expect(content).toContain('.openlore/');
       expect(content).toContain('node_modules/');
     });
 
     it('should add entry with comment', async () => {
       await writeFile(join(testDir, '.gitignore'), 'node_modules/\n');
 
-      await addToGitignore(testDir, '.spec-gen/', 'spec-gen analysis artifacts');
+      await addToGitignore(testDir, '.openlore/', 'openlore analysis artifacts');
 
       const content = await readFile(join(testDir, '.gitignore'), 'utf-8');
-      expect(content).toContain('# spec-gen analysis artifacts');
-      expect(content).toContain('.spec-gen/');
+      expect(content).toContain('# openlore analysis artifacts');
+      expect(content).toContain('.openlore/');
     });
 
     it('should return false if entry already exists', async () => {
-      await writeFile(join(testDir, '.gitignore'), '.spec-gen/\n');
+      await writeFile(join(testDir, '.gitignore'), '.openlore/\n');
 
-      const result = await addToGitignore(testDir, '.spec-gen/');
+      const result = await addToGitignore(testDir, '.openlore/');
       expect(result).toBe(false);
     });
 
     it('should create .gitignore if it does not exist', async () => {
-      const result = await addToGitignore(testDir, '.spec-gen/');
+      const result = await addToGitignore(testDir, '.openlore/');
       expect(result).toBe(true);
 
       const content = await readFile(join(testDir, '.gitignore'), 'utf-8');
-      expect(content).toContain('.spec-gen/');
+      expect(content).toContain('.openlore/');
     });
 
     it('should ensure newline before adding entry', async () => {
       await writeFile(join(testDir, '.gitignore'), 'node_modules/'); // No trailing newline
 
-      await addToGitignore(testDir, '.spec-gen/');
+      await addToGitignore(testDir, '.openlore/');
 
       const content = await readFile(join(testDir, '.gitignore'), 'utf-8');
       expect(content).toContain('node_modules/\n');
-      expect(content).toContain('.spec-gen/\n');
+      expect(content).toContain('.openlore/\n');
     });
   });
 

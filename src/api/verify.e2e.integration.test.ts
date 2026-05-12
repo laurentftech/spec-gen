@@ -1,7 +1,7 @@
 /**
- * End-to-end integration tests for specGenVerify()
+ * End-to-end integration tests for openloreVerify()
  *
- * These tests drive the full public API — specGenVerify() — with a real
+ * These tests drive the full public API — openloreVerify() — with a real
  * project directory on disk. The only mock is createLLMService(), which is
  * swapped for a MockLLMProvider to avoid live network calls. Everything else
  * is real: config loading, dep graph loading, candidate selection, scoring,
@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { specGenVerify } from './verify.js';
+import { openloreVerify } from './verify.js';
 import { MockLLMProvider, LLMService } from '../core/services/llm-service.js';
 
 // Only createLLMService is mocked — everything else (fs, config, scoring) is real.
@@ -41,9 +41,9 @@ const mockCreateLLMService = vi.mocked(createLLMService);
 // ============================================================================
 
 /**
- * Minimal spec-gen config written to .spec-gen/config.json
+ * Minimal openlore config written to .openlore/config.json
  */
-const SPEC_GEN_CONFIG = {
+const OPENLORE_CONFIG = {
   version: '1.0.0',
   projectType: 'nodejs',
   openspecPath: './openspec',
@@ -180,17 +180,17 @@ export function createAuthService(): AuthService { return new AuthService(); }
 // SETUP / TEARDOWN
 // ============================================================================
 
-describe('specGenVerify — e2e via public API', () => {
+describe('openloreVerify — e2e via public API', () => {
   let rootDir: string;
   let mockProvider: MockLLMProvider;
 
   beforeEach(async () => {
-    rootDir = join(tmpdir(), `spec-gen-api-e2e-${Date.now()}`);
+    rootDir = join(tmpdir(), `openlore-api-e2e-${Date.now()}`);
 
-    // Directory structure expected by specGenVerify()
-    const specGenDir     = join(rootDir, '.spec-gen');
-    const analysisDir    = join(specGenDir, 'analysis');
-    const outputsDir     = join(specGenDir, 'outputs');
+    // Directory structure expected by openloreVerify()
+    const openloreDir     = join(rootDir, '.openlore');
+    const analysisDir    = join(openloreDir, 'analysis');
+    const outputsDir     = join(openloreDir, 'outputs');
     const paymentSpecDir = join(rootDir, 'openspec', 'specs', 'payment');
     const authSpecDir    = join(rootDir, 'openspec', 'specs', 'auth');
     const srcPaymentDir  = join(rootDir, 'src', 'payment');
@@ -206,7 +206,7 @@ describe('specGenVerify — e2e via public API', () => {
     ]);
 
     // Write config
-    await writeFile(join(specGenDir, 'config.json'), JSON.stringify(SPEC_GEN_CONFIG));
+    await writeFile(join(openloreDir, 'config.json'), JSON.stringify(OPENLORE_CONFIG));
 
     // Write specs
     await writeFile(join(paymentSpecDir, 'spec.md'), PAYMENT_SPEC);
@@ -218,7 +218,7 @@ describe('specGenVerify — e2e via public API', () => {
     await writeFile(paymentSrcPath, PAYMENT_SERVICE_SRC);
     await writeFile(authSrcPath,    AUTH_SERVICE_SRC);
 
-    // Write dependency graph (what specGenAnalyze() would produce)
+    // Write dependency graph (what openloreAnalyze() would produce)
     const depGraph = buildDepGraph([
       { path: 'src/payment/payment-service.ts', absolutePath: paymentSrcPath, lines: PAYMENT_SERVICE_SRC.split('\n').length },
       { path: 'src/auth/auth-service.ts',       absolutePath: authSrcPath,    lines: AUTH_SERVICE_SRC.split('\n').length },
@@ -255,7 +255,7 @@ describe('specGenVerify — e2e via public API', () => {
       reasoning: 'Matches payment spec',
     }));
 
-    const result = await specGenVerify({ rootPath: rootDir });
+    const result = await openloreVerify({ rootPath: rootDir });
 
     expect(result.report).toBeDefined();
     expect(result.report.specVersion).toBe('1.0.0');
@@ -274,7 +274,7 @@ describe('specGenVerify — e2e via public API', () => {
       reasoning: 'Strong match',
     }));
 
-    const result = await specGenVerify({ rootPath: rootDir });
+    const result = await openloreVerify({ rootPath: rootDir });
 
     const paymentResult = result.report.results.find(r => r.filePath.includes('payment'));
     expect(paymentResult).toBeDefined();
@@ -293,7 +293,7 @@ describe('specGenVerify — e2e via public API', () => {
       reasoning: 'Auth spec describes these operations',
     }));
 
-    const result = await specGenVerify({ rootPath: rootDir });
+    const result = await openloreVerify({ rootPath: rootDir });
 
     const authResult = result.report.results.find(r => r.filePath.includes('auth'));
     expect(authResult).toBeDefined();
@@ -305,14 +305,14 @@ describe('specGenVerify — e2e via public API', () => {
   it('skips files whose LLM prediction fails and excludes them from report', async () => {
     mockProvider.setDefaultResponse('NOT VALID JSON {{{');
 
-    const result = await specGenVerify({ rootPath: rootDir });
+    const result = await openloreVerify({ rootPath: rootDir });
 
     // Fix #3: no phantom 0% results — failed files are simply absent
     expect(result.report.sampledFiles).toBe(0);
     expect(result.report.results).toHaveLength(0);
   });
 
-  it('writes report.json and REPORT.md to .spec-gen/verification/', async () => {
+  it('writes report.json and REPORT.md to .openlore/verification/', async () => {
     mockProvider.setDefaultResponse(JSON.stringify({
       predictedPurpose: 'Processes payments',
       predictedImports: [],
@@ -323,9 +323,9 @@ describe('specGenVerify — e2e via public API', () => {
       reasoning: 'ok',
     }));
 
-    await specGenVerify({ rootPath: rootDir });
+    await openloreVerify({ rootPath: rootDir });
 
-    const verificationDir = join(rootDir, '.spec-gen', 'verification');
+    const verificationDir = join(rootDir, '.openlore', 'verification');
     const jsonRaw  = await readFile(join(verificationDir, 'report.json'), 'utf-8');
     const mdRaw    = await readFile(join(verificationDir, 'REPORT.md'),   'utf-8');
 
@@ -341,11 +341,11 @@ describe('specGenVerify — e2e via public API', () => {
     expect(mdRaw).toContain('## Domain Breakdown');
   });
 
-  it('throws when no spec-gen config exists', async () => {
-    const emptyDir = join(tmpdir(), `spec-gen-no-config-${Date.now()}`);
+  it('throws when no openlore config exists', async () => {
+    const emptyDir = join(tmpdir(), `openlore-no-config-${Date.now()}`);
     await mkdir(emptyDir, { recursive: true });
     try {
-      await expect(specGenVerify({ rootPath: emptyDir })).rejects.toThrow(/configuration/i);
+      await expect(openloreVerify({ rootPath: emptyDir })).rejects.toThrow(/configuration/i);
     } finally {
       await rm(emptyDir, { recursive: true, force: true });
     }
@@ -353,13 +353,13 @@ describe('specGenVerify — e2e via public API', () => {
 
   it('throws when no LLM API key is set', async () => {
     delete process.env.ANTHROPIC_API_KEY;
-    await expect(specGenVerify({ rootPath: rootDir })).rejects.toThrow(/API key/i);
+    await expect(openloreVerify({ rootPath: rootDir })).rejects.toThrow(/API key/i);
   });
 
   it('throws when dep graph is missing', async () => {
-    await rm(join(rootDir, '.spec-gen', 'analysis', 'dependency-graph.json'));
+    await rm(join(rootDir, '.openlore', 'analysis', 'dependency-graph.json'));
     process.env.ANTHROPIC_API_KEY = 'test-key';
-    await expect(specGenVerify({ rootPath: rootDir })).rejects.toThrow();
+    await expect(openloreVerify({ rootPath: rootDir })).rejects.toThrow();
   });
 
   it('passes onProgress callbacks through the pipeline', async () => {
@@ -374,7 +374,7 @@ describe('specGenVerify — e2e via public API', () => {
     }));
 
     const events: string[] = [];
-    await specGenVerify({
+    await openloreVerify({
       rootPath: rootDir,
       onProgress: ({ step, status }) => events.push(`${step}:${status}`),
     });
