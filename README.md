@@ -1,5 +1,8 @@
 # openlore
 
+> [!NOTE]
+> **`spec-gen` has been renamed to `OpenLore`.** The npm package is now [`openlore`](https://www.npmjs.com/package/openlore) and the CLI command is `openlore`. Existing projects: rename your `.spec-gen/` directory to `.openlore/` and reinstall (`npm i -g openlore`). See [docs/RENAME-TO-OPENLORE.md](docs/RENAME-TO-OPENLORE.md) for the full migration checklist.
+
 **Persistent architectural memory and structural cognition for AI coding agents.**
 
 openlore turns any evolving codebase into a navigable knowledge graph backed by [OpenSpec](https://github.com/Fission-AI/OpenSpec) living specifications. It maintains persistent architectural context across agent sessions: graph structure, specs, decisions, drift state, and semantic retrieval — so agents start each task already oriented instead of re-discovering the system from file reads.
