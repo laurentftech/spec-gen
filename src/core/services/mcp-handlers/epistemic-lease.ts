@@ -24,7 +24,13 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import {
+  OPENLORE_DIR,
+  OPENLORE_ANALYSIS_SUBDIR,
+  ARTIFACT_CALL_GRAPH_DB,
+} from '../../../constants.js';
 
 // ============================================================================
 // TYPES
@@ -143,27 +149,29 @@ function getGitHash(directory: string): string {
 
 // ============================================================================
 // MODULE EXTRACTION
-// Extract top-level module segment from a file path, using the actual source
-// root directories scanned from the project at tracker creation time.
+// Extract top-level module segment from a file path, using the source root
+// directories derived from the call-graph db (files actually analyzed, already
+// filtered by config include/exclude patterns).
 //
-//   (project has packages/, src/)
-//   packages/auth/src/jwt.ts → "auth"
-//   src/core/services/mcp.ts → "core"
+//   src/core/services/mcp.ts → root "src" → module "core"
+//   packages/auth/src/jwt.ts → root "packages" → module "auth"
 //
-// Paths with no matching source root return null — prevents OS path segment
-// pollution from absolute paths like /Users/foo/bar.ts.
+// Returns [] when no analysis exists yet — module tracking stays silent rather
+// than tracking arbitrary filesystem dirs as if they were analyzed modules.
 // ============================================================================
-
-const IGNORED_DIRS = new Set([
-  'node_modules', 'dist', 'build', 'out', 'target', 'coverage',
-  'vendor', '.cache', '__pycache__',
-]);
 
 export function getSourceRoots(directory: string): string[] {
   try {
-    return readdirSync(directory, { withFileTypes: true })
-      .filter(e => e.isDirectory() && !e.name.startsWith('.') && !IGNORED_DIRS.has(e.name))
-      .map(e => e.name);
+    const dbPath = join(directory, OPENLORE_DIR, OPENLORE_ANALYSIS_SUBDIR, ARTIFACT_CALL_GRAPH_DB);
+    const db = new DatabaseSync(dbPath);
+    const rows = db.prepare('SELECT DISTINCT file_path FROM nodes WHERE is_external = 0').all() as Array<{ file_path: string }>;
+    db.close();
+    const roots = new Set<string>();
+    for (const { file_path } of rows) {
+      const first = file_path.split(/[/\\]/)[0];
+      if (first) roots.add(first);
+    }
+    return [...roots];
   } catch {
     return [];
   }

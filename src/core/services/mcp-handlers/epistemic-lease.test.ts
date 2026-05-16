@@ -14,14 +14,6 @@ vi.mock('node:child_process', () => ({
   spawnSync: vi.fn(() => ({ stdout: 'deadbeef1234\n', status: 0 })),
 }));
 
-vi.mock('node:fs', () => ({
-  readdirSync: vi.fn(() => [
-    { name: 'src', isDirectory: () => true },
-    { name: 'node_modules', isDirectory: () => true },
-    { name: 'dist', isDirectory: () => true },
-    { name: 'package.json', isDirectory: () => false },
-  ]),
-}));
 
 import { spawnSync } from 'node:child_process';
 const mockSpawnSync = vi.mocked(spawnSync);
@@ -31,7 +23,10 @@ const mockSpawnSync = vi.mocked(spawnSync);
 // ============================================================================
 
 function freshTracker(): EpistemicTracker {
-  return createTracker('/fake/repo');
+  const t = createTracker('/fake/repo');
+  // No db at /fake/repo so sourceRoots=[] — set explicitly for module-drift tests.
+  t.sourceRoots = ['src'];
+  return t;
 }
 
 // ============================================================================
@@ -39,24 +34,18 @@ function freshTracker(): EpistemicTracker {
 // ============================================================================
 
 describe('getSourceRoots', () => {
-  it('returns directories that are not ignored and not hidden', () => {
-    // readdirSync mock returns src, node_modules, dist, package.json
-    const roots = getSourceRoots('/fake/repo');
-    expect(roots).toContain('src');
-    expect(roots).not.toContain('node_modules');
-    expect(roots).not.toContain('dist');
-    expect(roots).not.toContain('package.json');
+  it('returns empty array when no analysis db exists', () => {
+    // /fake/repo has no .openlore/analysis/call-graph.db
+    expect(getSourceRoots('/fake/repo')).toEqual([]);
   });
 
-  it('returns empty array on non-existent directory', async () => {
-    const { readdirSync } = await import('node:fs');
-    vi.mocked(readdirSync).mockImplementationOnce(() => { throw new Error('ENOENT'); });
+  it('returns empty array for non-existent directory', () => {
     expect(getSourceRoots('/does/not/exist')).toEqual([]);
   });
 
-  it('tracker carries sourceRoots from project scan', () => {
+  it('tracker sourceRoots empty before analyze has run', () => {
     const t = createTracker('/fake/repo');
-    expect(t.sourceRoots).toContain('src');
+    expect(t.sourceRoots).toEqual([]);
   });
 });
 
