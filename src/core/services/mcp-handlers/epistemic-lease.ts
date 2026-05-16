@@ -61,6 +61,8 @@ export interface EpistemicTracker {
   lastDensityPenaltyAt: number;
   /** V3.1: epoch ms of last module switch (dampening). */
   lastSwitchAt: number;
+  /** V3.2: oscillation score — repeated bigram transitions / total transitions [0,1]. */
+  oscillation: number;
 }
 
 // ============================================================================
@@ -149,6 +151,10 @@ const BURST_DEBT_SPIKE              = 20;
 const DENSITY_BONUS_COOLDOWN_MS     = 60_000;
 const SWITCH_DAMPENING_MS           = 5_000;
 
+// V3.2 oscillation model — detects back-and-forth (A→B→A→B) vs exploration
+const BURST_DENSITY_THRESHOLD       = 0.60;  // density for post-stale burst escalation
+const BURST_TOOL_WEIGHT_THRESHOLD   = 8;     // tool weight for post-stale burst escalation
+
 // ============================================================================
 // GIT HASH
 // ============================================================================
@@ -230,6 +236,25 @@ function computeCrossModuleDensity(window: (string | null)[]): number {
 }
 
 // ============================================================================
+// OSCILLATION SCORE
+// Bigram repetition ratio: how often the module 2 calls ago reappears.
+// A→B→A→B→A scores 1.0 (pure confusion loop); A→B→C→D→E scores 0.0.
+// Fixed denominator = window entries ≥ 3 so early-session doesn't spike.
+// ============================================================================
+
+function computeOscillationScore(window: (string | null)[]): number {
+  const modules = window.filter((m): m is string => m !== null);
+  if (modules.length < 3) return 0;
+  let repeated = 0;
+  let total = 0;
+  for (let i = 2; i < modules.length; i++) {
+    total++;
+    if (modules[i] === modules[i - 2]) repeated++;
+  }
+  return total > 0 ? repeated / total : 0;
+}
+
+// ============================================================================
 // STALE DEPTH
 // Monotonic — depth can only increase, never decrease until orient() reset.
 // ============================================================================
@@ -258,6 +283,7 @@ export function createTracker(directory: string): EpistemicTracker {
     moduleAccessWindow: [],
     lastDensityPenaltyAt: 0,
     lastSwitchAt: 0,
+    oscillation: 0,
   };
 }
 
@@ -273,6 +299,7 @@ function resetTracker(tracker: EpistemicTracker, directory: string): void {
   tracker.moduleAccessWindow = [];
   tracker.lastDensityPenaltyAt = 0;
   tracker.lastSwitchAt = 0;
+  tracker.oscillation = 0;
   // sourceRoots not reset — project layout doesn't change during a session
 }
 
@@ -294,7 +321,8 @@ export function updateTracker(
         from_state: tracker.freshnessState,
         prior_load: tracker.cognitiveLoad,
         prior_depth: tracker.staleDepth,
-        tool: 'orient', module: null, cognitive_load: tracker.cognitiveLoad, density: 0, age_min: Math.floor((Date.now() - tracker.lastOrientAt.getTime()) / 60_000),
+        tool: 'orient', module: null, cognitive_load: tracker.cognitiveLoad, density: 0,
+        oscillation: tracker.oscillation, age_min: Math.floor((Date.now() - tracker.lastOrientAt.getTime()) / 60_000),
       });
     }
     resetTracker(tracker, directory);
@@ -303,17 +331,39 @@ export function updateTracker(
 
   const now = Date.now();
   const ageMs = now - tracker.lastOrientAt.getTime();
+  const weight = TOOL_WEIGHTS[toolName] ?? 1;
 
-  // Already stale — update depth only (time-based escalation, monotonic).
-  // Load stops accumulating here, so post-transition depth escalation is purely
-  // time-driven regardless of how many more heavy tools are called.
+  // Update trajectory window on EVERY call (including when stale) so burst
+  // detection and oscillation scoring reflect the actual navigation path.
+  const mod = filePath ? moduleFromPath(filePath, tracker.sourceRoots) : null;
+  tracker.moduleAccessWindow.push(mod);
+  if (tracker.moduleAccessWindow.length > CROSS_MODULE_WINDOW_SIZE) {
+    tracker.moduleAccessWindow.shift();
+  }
+
+  const density = computeCrossModuleDensity(tracker.moduleAccessWindow);
+  const oscillation = computeOscillationScore(tracker.moduleAccessWindow);
+  tracker.oscillation = oscillation;
+
+  // Already stale — time-based depth escalation only, plus V3.2 burst sensitivity.
+  // Load stops accumulating here; burst detection uses tool weight and density instead.
   if (tracker.freshnessState === 'stale') {
+    // Post-stale burst: heavy architectural tool or trajectory burst → immediate depth 3
+    if (tracker.staleDepth < 3 && (weight >= BURST_TOOL_WEIGHT_THRESHOLD || density >= BURST_DENSITY_THRESHOLD)) {
+      emit(directory, 'epistemic-lease', {
+        event: 'depth_escalate', from_depth: tracker.staleDepth, to_depth: 3,
+        tool: toolName, module: mod, cognitive_load: tracker.cognitiveLoad,
+        density, oscillation, age_min: Math.floor(ageMs / 60_000), trigger: 'burst',
+      });
+      tracker.staleDepth = 3;
+      return;
+    }
     const newDepth = computeStaleDepth(tracker.cognitiveLoad, ageMs);
     if (newDepth > tracker.staleDepth) {
       emit(directory, 'epistemic-lease', {
         event: 'depth_escalate', from_depth: tracker.staleDepth, to_depth: newDepth,
-        tool: toolName, module: null, cognitive_load: tracker.cognitiveLoad,
-        density: 0, age_min: Math.floor(ageMs / 60_000),
+        tool: toolName, module: mod, cognitive_load: tracker.cognitiveLoad,
+        density, oscillation, age_min: Math.floor(ageMs / 60_000),
       });
       tracker.staleDepth = newDepth as StaleDepth;
     }
@@ -321,17 +371,7 @@ export function updateTracker(
   }
 
   // Accumulate cognitive load from tool weight
-  const weight = TOOL_WEIGHTS[toolName] ?? 1;
   tracker.cognitiveLoad += weight;
-
-  // V3.1: trajectory-based cross-module drift tracking
-  const mod = filePath ? moduleFromPath(filePath, tracker.sourceRoots) : null;
-
-  // Sliding window — push on every call so density denominator = total calls
-  tracker.moduleAccessWindow.push(mod);
-  if (tracker.moduleAccessWindow.length > CROSS_MODULE_WINDOW_SIZE) {
-    tracker.moduleAccessWindow.shift();
-  }
 
   if (mod !== null) {
     tracker.modulesVisited.add(mod);
@@ -344,16 +384,15 @@ export function updateTracker(
     tracker.lastModule = mod;
   }
 
-  // Density-based debt bonus (with cooldown to prevent oscillation)
-  const density = computeCrossModuleDensity(tracker.moduleAccessWindow);
+  // Density-based debt bonus (with cooldown to prevent double-counting)
   if (density >= CROSS_MODULE_STALE_DENSITY && now - tracker.lastDensityPenaltyAt > DENSITY_BONUS_COOLDOWN_MS) {
-    const isBurst = density >= CROSS_MODULE_STALE_DENSITY * 2;
+    const isBurst = density >= BURST_DENSITY_THRESHOLD;
     tracker.cognitiveLoad += isBurst ? BURST_DEBT_SPIKE : HIGH_DENSITY_DEBT_BONUS;
     tracker.lastDensityPenaltyAt = now;
   }
 
   const ageMin = Math.floor(ageMs / 60_000);
-  const telCtx = { tool: toolName, module: mod, cognitive_load: tracker.cognitiveLoad, density, age_min: ageMin };
+  const telCtx = { tool: toolName, module: mod, cognitive_load: tracker.cognitiveLoad, density, oscillation, age_min: ageMin };
 
   // Rate-limited git hash check (~every 30s) — structural invalidation
   if (now - tracker.lastGitCheckAt > GIT_CHECK_INTERVAL_MS) {

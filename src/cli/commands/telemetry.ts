@@ -48,7 +48,7 @@ interface LeaseEvent {
   event: 'degraded' | 'stale' | 'depth_escalate' | 'orient_reset';
   trigger?: string; depth?: number; from_depth?: number; to_depth?: number;
   from_state?: string; tool?: string; cognitive_load?: number;
-  density?: number; age_min?: number; prior_load?: number; prior_depth?: number;
+  density?: number; oscillation?: number; age_min?: number; prior_load?: number; prior_depth?: number;
 }
 
 // ============================================================================
@@ -139,7 +139,8 @@ function computeObstinacy(mcp: McpEvent[], lease: LeaseEvent[]) {
 }
 
 /**
- * Recovery efficiency: time from stale to orient call (ms).
+ * Recovery efficiency: time from stale to orient call (ms),
+ * and recovery half-life: time from orient_reset to first degraded/stale after it.
  */
 function computeRecovery(mcp: McpEvent[], lease: LeaseEvent[]) {
   const staleTs = lease.filter(e => e.event === 'stale').map(e => e.ts).sort();
@@ -151,12 +152,27 @@ function computeRecovery(mcp: McpEvent[], lease: LeaseEvent[]) {
     if (next) latencies.push(new Date(next).getTime() - new Date(st).getTime());
   }
   const avg = latencies.length ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : null;
+
+  // Recovery half-life: orient_reset → next degraded/stale (how long context stays fresh post-orient).
+  const resetTs = lease.filter(e => e.event === 'orient_reset').map(e => e.ts).sort();
+  const degradationTs = lease.filter(e => e.event === 'degraded' || e.event === 'stale').map(e => e.ts).sort();
+  const stableDurations: number[] = [];
+  for (const rt of resetTs) {
+    const next = degradationTs.find(d => d > rt);
+    if (next) stableDurations.push(new Date(next).getTime() - new Date(rt).getTime());
+  }
+  const avgStableMs = stableDurations.length
+    ? Math.round(stableDurations.reduce((a, b) => a + b, 0) / stableDurations.length)
+    : null;
+
   const staleRecurrences = lease.filter(e => e.event === 'stale').length;
   const orients = orientTs.length;
   return {
     stale_events: staleRecurrences,
     orient_calls: orients,
+    orient_resets: resetTs.length,
     avg_recovery_ms: avg,
+    avg_stable_after_orient_ms: avgStableMs,
     recurrence_rate: orients ? `${(staleRecurrences / orients).toFixed(2)} stale/orient` : '—',
   };
 }
@@ -254,6 +270,8 @@ function renderSummary(
 
   section('RECOVERY EFFICIENCY');
   console.log(`  avg stale→orient latency : ${recovery.avg_recovery_ms != null ? `${recovery.avg_recovery_ms}ms` : '—'}`);
+  console.log(`  recovery half-life       : ${recovery.avg_stable_after_orient_ms != null ? `${recovery.avg_stable_after_orient_ms}ms` : '—'}  (orient_reset → next degradation)`);
+  console.log(`  orient resets            : ${recovery.orient_resets}`);
   console.log(`  recurrence rate          : ${recovery.recurrence_rate}`);
 
   section('TRAJECTORY DYNAMICS');
@@ -290,10 +308,22 @@ function renderLive(dir: string) {
           const ts = String(ev['ts'] ?? '').slice(11, 23);
           if (filePath === leaseFile) {
             const evt = ev['event'];
-            if (evt === 'stale') console.log(`${ts}  STALE depth=${ev['depth']} trigger=${ev['trigger']} load=${ev['cognitive_load']} density=${ev['density']}`);
-            else if (evt === 'degraded') console.log(`${ts}  DEGRADED trigger=${ev['trigger']} density=${ev['density']}`);
-            else if (evt === 'orient_reset') console.log(`${ts}  ORIENT_RESET from=${ev['from_state']} prior_load=${ev['prior_load']}`);
-            else if (evt === 'depth_escalate') console.log(`${ts}  DEPTH ${ev['from_depth']} → ${ev['to_depth']}`);
+            if (evt === 'stale' || evt === 'degraded') {
+              const density = Number(ev['density'] ?? 0);
+              const oscillation = Number(ev['oscillation'] ?? 0);
+              const isSpike = density >= 0.60;
+              const isOscillating = oscillation >= 0.50;
+              const structuredType = isSpike ? 'TRAJECTORY_SPIKE' : 'STATE_TRANSITION';
+              const depthStr = evt === 'stale' ? ` depth=${ev['depth']}` : '';
+              let line = `${ts}  [${structuredType}] ${String(evt).toUpperCase()}${depthStr} trigger=${ev['trigger']} load=${ev['cognitive_load']} density=${density.toFixed(3)}`;
+              if (isOscillating) line += `  [OSCILLATION_DETECTED osc=${oscillation.toFixed(2)}]`;
+              console.log(line);
+            } else if (evt === 'orient_reset') {
+              console.log(`${ts}  [ORIENT_RECOVERY] from=${ev['from_state']} prior_load=${ev['prior_load']} prior_depth=${ev['prior_depth']}`);
+            } else if (evt === 'depth_escalate') {
+              const burstStr = ev['trigger'] === 'burst' ? ' (burst)' : '';
+              console.log(`${ts}  [STATE_TRANSITION] DEPTH ${ev['from_depth']} → ${ev['to_depth']}${burstStr} density=${Number(ev['density'] ?? 0).toFixed(3)}`);
+            }
           } else {
             const tool = ev['tool'];
             const agent = ev['agent'] ? ` [${ev['agent']}]` : '';
