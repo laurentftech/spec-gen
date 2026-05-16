@@ -24,6 +24,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { readdirSync } from 'node:fs';
 
 // ============================================================================
 // TYPES
@@ -41,6 +42,8 @@ export interface EpistemicTracker {
   /** Escalating severity within stale state. 0 when not stale. */
   staleDepth: 0 | StaleDepth;
   lastGitCheckAt: number;
+  /** Top-level source directories derived from the actual project layout. */
+  sourceRoots: string[];
 }
 
 // ============================================================================
@@ -140,15 +143,39 @@ function getGitHash(directory: string): string {
 
 // ============================================================================
 // MODULE EXTRACTION
-// Extract top-level module segment from a file path: src/core/... → "core"
-// Paths without a src/ segment return null — no module pollution from absolute paths.
+// Extract top-level module segment from a file path, using the actual source
+// root directories scanned from the project at tracker creation time.
+//
+//   (project has packages/, src/)
+//   packages/auth/src/jwt.ts → "auth"
+//   src/core/services/mcp.ts → "core"
+//
+// Paths with no matching source root return null — prevents OS path segment
+// pollution from absolute paths like /Users/foo/bar.ts.
 // ============================================================================
 
-function moduleFromPath(filePath: string): string | null {
+const IGNORED_DIRS = new Set([
+  'node_modules', 'dist', 'build', 'out', 'target', 'coverage',
+  'vendor', '.cache', '__pycache__',
+]);
+
+export function getSourceRoots(directory: string): string[] {
+  try {
+    return readdirSync(directory, { withFileTypes: true })
+      .filter(e => e.isDirectory() && !e.name.startsWith('.') && !IGNORED_DIRS.has(e.name))
+      .map(e => e.name);
+  } catch {
+    return [];
+  }
+}
+
+function moduleFromPath(filePath: string, sourceRoots: string[]): string | null {
   const parts = filePath.split(/[/\\]/);
-  const srcIdx = parts.indexOf('src');
-  if (srcIdx >= 0 && srcIdx + 1 < parts.length) {
-    return parts[srcIdx + 1];
+  for (const root of sourceRoots) {
+    const idx = parts.indexOf(root);
+    if (idx >= 0 && idx + 1 < parts.length) {
+      return parts[idx + 1];
+    }
   }
   return null;
 }
@@ -177,6 +204,7 @@ export function createTracker(directory: string): EpistemicTracker {
     freshnessState: 'fresh',
     staleDepth: 0,
     lastGitCheckAt: Date.now(),
+    sourceRoots: getSourceRoots(directory),
   };
 }
 
@@ -188,6 +216,7 @@ function resetTracker(tracker: EpistemicTracker, directory: string): void {
   tracker.freshnessState = 'fresh';
   tracker.staleDepth = 0;
   tracker.lastGitCheckAt = Date.now();
+  // sourceRoots not reset — project layout doesn't change during a session
 }
 
 function transitionToStale(tracker: EpistemicTracker, load: number, ageMs: number): void {
@@ -224,7 +253,7 @@ export function updateTracker(
 
   // Track cross-module file access
   if (filePath) {
-    const mod = moduleFromPath(filePath);
+    const mod = moduleFromPath(filePath, tracker.sourceRoots);
     if (mod) tracker.modulesVisited.add(mod);
   }
 
@@ -316,16 +345,37 @@ function degradedSignal(ageMin: number, modules: number): string {
   );
 }
 
-export function injectFreshness(text: string, tracker: EpistemicTracker): string {
-  if (tracker.freshnessState === 'fresh') return text;
+/**
+ * Returns the freshness signal for the current tracker state, or null if fresh.
+ * prepend=true → signal should appear before the tool result (stale).
+ * prepend=false → signal should appear after the tool result (degraded).
+ *
+ * Callers that build MCP content arrays should add this as a separate TextContent
+ * item rather than string-concatenating into the result body.
+ */
+export function getFreshnessSignal(
+  tracker: EpistemicTracker,
+): { text: string; prepend: boolean } | null {
+  if (tracker.freshnessState === 'fresh') return null;
 
   const ageMin = Math.floor((Date.now() - tracker.lastOrientAt.getTime()) / 60_000);
 
   if (tracker.freshnessState === 'stale') {
     // staleDepth is always ≥1 when freshnessState === 'stale' — invariant enforced by transitionToStale.
-    // The cast is safe; staleDepth=0 + state=stale is unreachable through the public API.
-    return staleBlock(ageMin, tracker.cognitiveLoad, tracker.staleDepth as StaleDepth) + text;
+    return {
+      text: staleBlock(ageMin, tracker.cognitiveLoad, tracker.staleDepth as StaleDepth),
+      prepend: true,
+    };
   }
 
-  return text + degradedSignal(ageMin, tracker.modulesVisited.size);
+  return {
+    text: degradedSignal(ageMin, tracker.modulesVisited.size),
+    prepend: false,
+  };
+}
+
+export function injectFreshness(text: string, tracker: EpistemicTracker): string {
+  const signal = getFreshnessSignal(tracker);
+  if (!signal) return text;
+  return signal.prepend ? signal.text + text : text + signal.text;
 }

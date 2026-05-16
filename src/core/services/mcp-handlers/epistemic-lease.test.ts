@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createTracker, updateTracker, injectFreshness } from './epistemic-lease.js';
+import { createTracker, updateTracker, injectFreshness, getSourceRoots } from './epistemic-lease.js';
 import type { EpistemicTracker, StaleDepth } from './epistemic-lease.js';
 
 // ============================================================================
@@ -12,6 +12,15 @@ import type { EpistemicTracker, StaleDepth } from './epistemic-lease.js';
 
 vi.mock('node:child_process', () => ({
   spawnSync: vi.fn(() => ({ stdout: 'deadbeef1234\n', status: 0 })),
+}));
+
+vi.mock('node:fs', () => ({
+  readdirSync: vi.fn(() => [
+    { name: 'src', isDirectory: () => true },
+    { name: 'node_modules', isDirectory: () => true },
+    { name: 'dist', isDirectory: () => true },
+    { name: 'package.json', isDirectory: () => false },
+  ]),
 }));
 
 import { spawnSync } from 'node:child_process';
@@ -24,6 +33,32 @@ const mockSpawnSync = vi.mocked(spawnSync);
 function freshTracker(): EpistemicTracker {
   return createTracker('/fake/repo');
 }
+
+// ============================================================================
+// getSourceRoots
+// ============================================================================
+
+describe('getSourceRoots', () => {
+  it('returns directories that are not ignored and not hidden', () => {
+    // readdirSync mock returns src, node_modules, dist, package.json
+    const roots = getSourceRoots('/fake/repo');
+    expect(roots).toContain('src');
+    expect(roots).not.toContain('node_modules');
+    expect(roots).not.toContain('dist');
+    expect(roots).not.toContain('package.json');
+  });
+
+  it('returns empty array on non-existent directory', async () => {
+    const { readdirSync } = await import('node:fs');
+    vi.mocked(readdirSync).mockImplementationOnce(() => { throw new Error('ENOENT'); });
+    expect(getSourceRoots('/does/not/exist')).toEqual([]);
+  });
+
+  it('tracker carries sourceRoots from project scan', () => {
+    const t = createTracker('/fake/repo');
+    expect(t.sourceRoots).toContain('src');
+  });
+});
 
 // ============================================================================
 // createTracker

@@ -26,7 +26,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { sanitizeMcpError, validateDirectory } from '../../core/services/mcp-handlers/utils.js';
-import { createTracker, updateTracker, injectFreshness } from '../../core/services/mcp-handlers/epistemic-lease.js';
+import { createTracker, updateTracker, getFreshnessSignal } from '../../core/services/mcp-handlers/epistemic-lease.js';
 import { DEFAULT_DRIFT_MAX_FILES } from '../../constants.js';
 import {
   handleGetCallGraph,
@@ -1503,13 +1503,19 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
         };
       }
 
-      let text =
+      const text =
         typeof result === 'string' ? result : JSON.stringify(result, null, 2);
-      if (tracker) text = injectFreshness(text, tracker);
+      const signal = tracker ? getFreshnessSignal(tracker) : null;
 
-      return {
-        content: [{ type: 'text', text }],
-      };
+      // Freshness signal is a separate content item — never concatenated into
+      // the result body — so structured outputs (JSON, patches) are not corrupted.
+      const content: Array<{ type: 'text'; text: string }> = signal
+        ? signal.prepend
+          ? [{ type: 'text', text: signal.text }, { type: 'text', text }]
+          : [{ type: 'text', text }, { type: 'text', text: signal.text }]
+        : [{ type: 'text', text }];
+
+      return { content };
     } catch (err) {
       return {
         content: [{ type: 'text', text: `Tool error: ${sanitizeMcpError(err)}` }],
