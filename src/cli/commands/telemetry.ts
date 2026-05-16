@@ -81,13 +81,23 @@ function computeCacheStats(cache: CacheEvent[]) {
 function computeOrientQuality(orient: OrientEvent[]) {
   if (!orient.length) return null;
   const avg = (arr: number[]) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
-  return {
-    calls: orient.length,
-    avg_functions: avg(orient.map(e => e.functions)),
-    avg_files: avg(orient.map(e => e.files)),
-    avg_insertion_points: avg(orient.map(e => e.insertion_points)),
-    agents: [...new Set(orient.map(e => e.agent ?? 'unknown'))],
-  };
+  const byAgent = new Map<string, OrientEvent[]>();
+  for (const e of orient) {
+    const agent = e.agent ?? 'unknown';
+    const arr = byAgent.get(agent) ?? [];
+    arr.push(e);
+    byAgent.set(agent, arr);
+  }
+  const perAgent = [...byAgent.entries()]
+    .map(([agent, events]) => ({
+      agent,
+      calls: events.length,
+      avg_functions: avg(events.map(e => e.functions)),
+      avg_files: avg(events.map(e => e.files)),
+      avg_insertion_points: avg(events.map(e => e.insertion_points)),
+    }))
+    .sort((a, b) => b.calls - a.calls);
+  return { total_calls: orient.length, per_agent: perAgent };
 }
 
 /**
@@ -217,12 +227,6 @@ function renderSummary(
   const recovery = computeRecovery(mcp, lease);
   const trajectory = computeTrajectoryEntropy(lease);
 
-  const agents = [...new Set(mcp.map(e => e.agent).filter(Boolean))];
-  if (agents.length) {
-    section('AGENTS');
-    for (const a of agents) console.log(`  ${a}`);
-  }
-
   section('TOOL LATENCY');
   if (tools.stats.length) {
     console.log(`  ${'tool'.padEnd(32)} ${'calls'.padStart(6)} ${'avg ms'.padStart(8)} ${'max ms'.padStart(8)}`);
@@ -239,11 +243,11 @@ function renderSummary(
 
   section('ORIENT QUALITY');
   if (quality) {
-    console.log(`  calls              : ${quality.calls}`);
-    console.log(`  avg functions      : ${quality.avg_functions}`);
-    console.log(`  avg files          : ${quality.avg_files}`);
-    console.log(`  avg insertion pts  : ${quality.avg_insertion_points}`);
-    if (quality.agents.length) console.log(`  agents             : ${quality.agents.join(', ')}`);
+    console.log(`  total calls : ${quality.total_calls}\n`);
+    console.log(`  ${'agent'.padEnd(28)} ${'calls'.padStart(6)} ${'avg fn'.padStart(8)} ${'avg files'.padStart(10)} ${'avg ins pts'.padStart(12)}`);
+    for (const r of quality.per_agent) {
+      console.log(`  ${r.agent.padEnd(28)} ${String(r.calls).padStart(6)} ${String(r.avg_functions).padStart(8)} ${String(r.avg_files).padStart(10)} ${String(r.avg_insertion_points).padStart(12)}`);
+    }
   } else {
     console.log('  no orient.jsonl data');
   }
