@@ -26,6 +26,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { sanitizeMcpError, validateDirectory } from '../../core/services/mcp-handlers/utils.js';
+import { createTracker, updateTracker, injectFreshness } from '../../core/services/mcp-handlers/epistemic-lease.js';
 import { DEFAULT_DRIFT_MAX_FILES } from '../../constants.js';
 import {
   handleGetCallGraph,
@@ -1295,6 +1296,9 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
     tools: activeTools.map(t => ({ ...t, annotations: TOOL_ANNOTATIONS[t.name] })),
   }));
 
+  // Per-session epistemic lease tracker — initialized on first tool call that carries a directory.
+  let tracker: ReturnType<typeof createTracker> | undefined;
+
   // --watch-auto: start the watcher on the first tool call that carries a directory
   let autoWatcher: import('../../core/services/mcp-watcher.js').McpWatcher | undefined;
 
@@ -1319,6 +1323,15 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
     }
 
     try {
+      const dir = (args as Record<string, unknown>).directory;
+      const directory = typeof dir === 'string' ? dir : '';
+      const filePath = (args as Record<string, unknown>).filePath;
+
+      // Lazy-init tracker on first call with a directory
+      if (!tracker && directory) tracker = createTracker(directory);
+      // Update epistemic state before dispatch (orient resets tracker)
+      if (tracker && directory) updateTracker(tracker, name, directory, typeof filePath === 'string' ? filePath : undefined);
+
       let result: unknown;
 
       if (name === 'orient') {
@@ -1490,8 +1503,9 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
         };
       }
 
-      const text =
+      let text =
         typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+      if (tracker) text = injectFreshness(text, tracker);
 
       return {
         content: [{ type: 'text', text }],
