@@ -12,10 +12,15 @@
  *   - Weighted cognitive load: >30 → degraded, >60 → stale
  *   - Cross-module file access diversity: >3 distinct top-level modules → degraded
  *
+ * Stale escalates through 3 depths to prevent warning blindness:
+ *   - Depth 1 (load≥60, age≥30min): procedural — explains what NOT to do
+ *   - Depth 2 (load≥85, age≥45min): risk-framing — names downstream consequences
+ *   - Depth 3 (load≥110, age≥60min): imperative — minimal text, hardest to skim
+ *
  * Injection:
- *   - fresh  → no injection (zero overhead)
- *   - degraded → 2-line signal appended (low friction)
- *   - stale  → explicit capability-invalidation block prepended (hard to miss)
+ *   - fresh    → no injection (zero overhead)
+ *   - degraded → 3-line signal appended (low friction)
+ *   - stale    → depth-varying capability-invalidation block prepended
  */
 
 import { spawnSync } from 'node:child_process';
@@ -25,6 +30,7 @@ import { spawnSync } from 'node:child_process';
 // ============================================================================
 
 export type FreshnessState = 'fresh' | 'degraded' | 'stale';
+export type StaleDepth = 1 | 2 | 3;
 
 export interface EpistemicTracker {
   lastOrientAt: Date;
@@ -32,6 +38,8 @@ export interface EpistemicTracker {
   cognitiveLoad: number;
   modulesVisited: Set<string>;
   freshnessState: FreshnessState;
+  /** Escalating severity within stale state. 0 when not stale. */
+  staleDepth: 0 | StaleDepth;
   lastGitCheckAt: number;
 }
 
@@ -99,12 +107,18 @@ const TOOL_WEIGHTS: Record<string, number> = {
 // THRESHOLDS
 // ============================================================================
 
-const DEGRADE_LOAD_THRESHOLD = 30;
-const STALE_LOAD_THRESHOLD = 60;
-const DEGRADE_AGE_MS = 15 * 60 * 1000;
-const STALE_AGE_MS = 30 * 60 * 1000;
+const DEGRADE_LOAD_THRESHOLD  = 30;
+const STALE_LOAD_THRESHOLD    = 60;
+const STALE_D2_LOAD_THRESHOLD = 85;
+const STALE_D3_LOAD_THRESHOLD = 110;
+
+const DEGRADE_AGE_MS  = 15 * 60 * 1000;
+const STALE_AGE_MS    = 30 * 60 * 1000;
+const STALE_D2_AGE_MS = 45 * 60 * 1000;
+const STALE_D3_AGE_MS = 60 * 60 * 1000;
+
 const DEGRADE_MODULE_THRESHOLD = 3;
-const GIT_CHECK_INTERVAL_MS = 30_000;
+const GIT_CHECK_INTERVAL_MS    = 30_000;
 
 // ============================================================================
 // GIT HASH
@@ -127,6 +141,7 @@ function getGitHash(directory: string): string {
 // ============================================================================
 // MODULE EXTRACTION
 // Extract top-level module segment from a file path: src/core/... → "core"
+// Paths without a src/ segment return null — no module pollution from absolute paths.
 // ============================================================================
 
 function moduleFromPath(filePath: string): string | null {
@@ -136,6 +151,17 @@ function moduleFromPath(filePath: string): string | null {
     return parts[srcIdx + 1];
   }
   return null;
+}
+
+// ============================================================================
+// STALE DEPTH
+// Monotonic — depth can only increase, never decrease until orient() reset.
+// ============================================================================
+
+function computeStaleDepth(load: number, ageMs: number): StaleDepth {
+  if (load >= STALE_D3_LOAD_THRESHOLD || ageMs >= STALE_D3_AGE_MS) return 3;
+  if (load >= STALE_D2_LOAD_THRESHOLD || ageMs >= STALE_D2_AGE_MS) return 2;
+  return 1;
 }
 
 // ============================================================================
@@ -149,6 +175,7 @@ export function createTracker(directory: string): EpistemicTracker {
     cognitiveLoad: 0,
     modulesVisited: new Set(),
     freshnessState: 'fresh',
+    staleDepth: 0,
     lastGitCheckAt: Date.now(),
   };
 }
@@ -159,7 +186,13 @@ function resetTracker(tracker: EpistemicTracker, directory: string): void {
   tracker.cognitiveLoad = 0;
   tracker.modulesVisited = new Set();
   tracker.freshnessState = 'fresh';
+  tracker.staleDepth = 0;
   tracker.lastGitCheckAt = Date.now();
+}
+
+function transitionToStale(tracker: EpistemicTracker, load: number, ageMs: number): void {
+  tracker.freshnessState = 'stale';
+  tracker.staleDepth = computeStaleDepth(load, ageMs);
 }
 
 export function updateTracker(
@@ -173,8 +206,15 @@ export function updateTracker(
     return;
   }
 
-  // Already stale — skip all accumulation and state evaluation
-  if (tracker.freshnessState === 'stale') return;
+  const now = Date.now();
+  const ageMs = now - tracker.lastOrientAt.getTime();
+
+  // Already stale — update depth only (time-based escalation, monotonic)
+  if (tracker.freshnessState === 'stale') {
+    const newDepth = computeStaleDepth(tracker.cognitiveLoad, ageMs);
+    if (newDepth > tracker.staleDepth) tracker.staleDepth = newDepth as StaleDepth;
+    return;
+  }
 
   // Accumulate cognitive load
   const weight = TOOL_WEIGHTS[toolName] ?? 1;
@@ -187,21 +227,18 @@ export function updateTracker(
   }
 
   // Rate-limited git hash check (~every 30s) — structural invalidation
-  const now = Date.now();
   if (now - tracker.lastGitCheckAt > GIT_CHECK_INTERVAL_MS) {
     tracker.lastGitCheckAt = now;
     const currentHash = getGitHash(directory);
     if (currentHash && tracker.graphVersionAtOrient && currentHash !== tracker.graphVersionAtOrient) {
-      tracker.freshnessState = 'stale';
+      transitionToStale(tracker, tracker.cognitiveLoad, ageMs);
       return;
     }
   }
 
   // Time and load based decay (never reverses: stale > degraded > fresh)
-  const ageMs = now - tracker.lastOrientAt.getTime();
-
   if (ageMs >= STALE_AGE_MS || tracker.cognitiveLoad >= STALE_LOAD_THRESHOLD) {
-    tracker.freshnessState = 'stale';
+    transitionToStale(tracker, tracker.cognitiveLoad, ageMs);
   } else if (
     tracker.freshnessState === 'fresh' && (
       ageMs >= DEGRADE_AGE_MS ||
@@ -215,27 +252,57 @@ export function updateTracker(
 
 // ============================================================================
 // FRESHNESS SIGNALS
-// Stale: prepended — agent sees it before reading any result.
-// Degraded: appended — low friction, visible but not blocking.
+//
+// Stale depth variants use different rhetorical strategies to resist blindness:
+//   Depth 1 — procedural: enumerates what NOT to do, offers orient()
+//   Depth 2 — consequential: names downstream risks of ignoring the signal
+//   Depth 3 — imperative: minimal text, command form, hardest to skim past
+//
+// Degraded: appended (low friction, visible but not blocking).
+// Stale:    prepended (agent sees it before reading any result).
 // ============================================================================
 
-function staleBlock(ageMin: number, load: number): string {
-  return (
+function staleBlock(ageMin: number, load: number, depth: StaleDepth): string {
+  const header =
     `\n╔══════════════════════════════════════════════════════════╗\n` +
-    `║  EPISTEMIC LEASE: STALE                                  ║\n` +
+    (depth === 1
+      ? `║  EPISTEMIC LEASE: STALE                                  ║\n`
+      : depth === 2
+      ? `║  EPISTEMIC LEASE: STALE [ELEVATED]                       ║\n`
+      : `║  EPISTEMIC LEASE: STALE [CRITICAL]                       ║\n`) +
     `╚══════════════════════════════════════════════════════════╝\n` +
-    `Context age: ${ageMin}min | Cognitive load score: ${load}\n\n` +
-    `Cached architectural reasoning reliability: LOW\n` +
-    `Cross-module dependency assumptions: UNRELIABLE\n` +
-    `Internal repository model: NOT AUTHORITATIVE\n\n` +
-    `Before continuing:\n` +
-    `  - Do NOT rely on previous dependency assumptions\n` +
-    `  - Do NOT infer cross-module relationships from memory\n` +
-    `  - Do NOT compile delegation prompts from cached architectural model\n` +
-    `  - Do NOT continue architectural reasoning from internal state\n\n` +
-    `Call orient() to restore architectural authority.\n` +
-    `─────────────────────────────────────────────────────────────\n\n`
-  );
+    `Context age: ${ageMin}min | Cognitive load score: ${load}\n\n`;
+
+  const body =
+    depth === 1
+      ? (
+        `Cached architectural reasoning reliability: LOW\n` +
+        `Cross-module dependency assumptions: UNRELIABLE\n` +
+        `Internal repository model: NOT AUTHORITATIVE\n\n` +
+        `Before continuing:\n` +
+        `  - Do NOT rely on previous dependency assumptions\n` +
+        `  - Do NOT infer cross-module relationships from memory\n` +
+        `  - Do NOT compile delegation prompts from cached architectural model\n` +
+        `  - Do NOT continue architectural reasoning from internal state\n\n` +
+        `Call orient() to restore architectural authority.\n`
+      )
+      : depth === 2
+      ? (
+        `Dependency assumptions: NO LONGER AUTHORITATIVE\n` +
+        `Architectural inference from memory: HIGH HALLUCINATION RISK\n` +
+        `Delegation prompt compilation: UNSAFE — context unreliable\n\n` +
+        `Continuing without orient() risks embedding stale architectural\n` +
+        `assumptions into refactor plans, cross-module reasoning, and\n` +
+        `delegation context that cannot easily be corrected downstream.\n\n` +
+        `orient() required before architectural decisions.\n`
+      )
+      : (
+        `Cross-module reasoning reliability: CRITICALLY LOW\n` +
+        `Repository model: EXPIRED — do not use for architectural decisions\n\n` +
+        `STOP. Call orient() before any architectural reasoning.\n`
+      );
+
+  return header + body + `─────────────────────────────────────────────────────────────\n\n`;
 }
 
 function degradedSignal(ageMin: number, modules: number): string {
@@ -253,7 +320,7 @@ export function injectFreshness(text: string, tracker: EpistemicTracker): string
   const ageMin = Math.floor((Date.now() - tracker.lastOrientAt.getTime()) / 60_000);
 
   if (tracker.freshnessState === 'stale') {
-    return staleBlock(ageMin, tracker.cognitiveLoad) + text;
+    return staleBlock(ageMin, tracker.cognitiveLoad, (tracker.staleDepth || 1) as StaleDepth) + text;
   }
 
   return text + degradedSignal(ageMin, tracker.modulesVisited.size);

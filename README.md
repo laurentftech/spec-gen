@@ -17,6 +17,7 @@ AI agents are powerful but amnesiac. On every new task:
 - They forget architectural decisions made two sessions ago
 - They have no link between specs and code — drift is invisible
 - File-by-file navigation often burns **15,000–50,000 tokens** per orientation pass, before a single line of useful code is written
+- In long sessions, they drift from authoritative retrieval toward internally cached reasoning — producing subtly wrong architectural assumptions that compound silently until a refactor breaks
 
 openlore closes this loop. Run a full analysis once, then keep the graph incrementally updated as the codebase evolves. Even greenfield projects become cognitively "brownfield" after only a few agent sessions — architectural context fragments, decisions disappear, and agents repeatedly reconstruct the same understanding from scratch.
 
@@ -49,6 +50,7 @@ You can use layer 1 alone to give agents structural context. Add layer 2 for sem
 | Token-efficient orient() | ❌ | ❌ | ✓ ~1–3k vs 15–50k tokens |
 | Living spec generation | ❌ | ❌ | ✓ |
 | Persistent cross-session architectural memory | ❌ | Partial | ✓ |
+| Long-session confidence decay (Epistemic Lease) | ❌ | ❌ | ✓ |
 
 Traditional coding agents reconstruct architecture from repeated file reads every session. openlore persists it as a queryable graph.
 
@@ -166,6 +168,23 @@ Compares git changes against spec mappings in milliseconds. Detects: Gap (code c
 `orient()` is the main entry point — one call replaces 10+ file reads. `detect_changes` risk-scores changed functions using call graph centrality × change type multiplier. See [docs/mcp-tools.md](docs/mcp-tools.md).
 
 `orient()` runs in **~430µs p50** against a 15k-node codebase (TypeScript compiler, ~79k edges). Full benchmark results: [scripts/BENCHMARKS.md](scripts/BENCHMARKS.md).
+
+**Epistemic Lease** (no API key)
+
+As a session grows longer, agents naturally shift from authoritative graph retrieval toward internally cached reasoning. This is useful for fluency but dangerous for architectural correctness — cross-module assumptions go stale, dependency hallucinations accumulate, and delegation prompts embed incorrect repository understanding that cannot easily be corrected downstream.
+
+The Epistemic Lease models this decay explicitly. Every MCP tool response carries a freshness signal when the agent's architectural context has degraded or expired. Decay is triggered by any of: time elapsed since `orient()`, git hash divergence from the orient baseline, weighted cognitive load accumulation (heavier tools count more), or cross-module file access breadth.
+
+The signal escalates through three levels to resist [warning blindness](https://en.wikipedia.org/wiki/Alarm_fatigue):
+
+| Level | Trigger | Signal style |
+|---|---|---|
+| Degraded | load ≥ 30, age ≥ 15min, or >3 modules | 3-line advisory appended |
+| Stale [1] | load ≥ 60 or age ≥ 30min or git change | Procedural block prepended: what NOT to do |
+| Stale [Elevated] | load ≥ 85 or age ≥ 45min | Risk-framing: names downstream consequences |
+| Stale [Critical] | load ≥ 110 or age ≥ 60min | Imperative: `STOP. Call orient().` — minimal, hardest to skim |
+
+When fresh, injection is zero-overhead. Calling `orient()` resets the tracker. Unlike governance systems, the lease never blocks — it modulates the agent's confidence in its own cached reasoning rather than constraining its actions.
 
 **Decisions** (API key for consolidation)
 

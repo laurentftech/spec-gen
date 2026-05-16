@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createTracker, updateTracker, injectFreshness } from './epistemic-lease.js';
-import type { EpistemicTracker } from './epistemic-lease.js';
+import type { EpistemicTracker, StaleDepth } from './epistemic-lease.js';
 
 // ============================================================================
 // Mock git hash — default returns stable hash
@@ -367,8 +367,123 @@ describe('injectFreshness', () => {
   it('stale block shows cognitive load score', () => {
     const t = freshTracker();
     t.freshnessState = 'stale';
+    t.staleDepth = 1;
     t.cognitiveLoad = 42;
     const out = injectFreshness('', t);
     expect(out).toContain('42');
+  });
+});
+
+// ============================================================================
+// Stale depth escalation
+// ============================================================================
+
+describe('stale depth escalation', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('starts at depth 1 when crossing stale threshold', () => {
+    const t = freshTracker();
+    // load = 64, below depth-2 threshold of 85
+    for (let i = 0; i < 8; i++) updateTracker(t, 'trace_execution_path', '/fake/repo');
+    expect(t.freshnessState).toBe('stale');
+    expect(t.staleDepth).toBe(1);
+  });
+
+  it('enters depth 2 when load >= 85 at stale transition', () => {
+    const t = freshTracker();
+    // Pre-seed just below depth-2 threshold, then one more call crosses it
+    t.cognitiveLoad = 84;
+    updateTracker(t, 'search_code', '/fake/repo'); // +1 → 85 >= 85, also >= stale threshold 60
+    expect(t.freshnessState).toBe('stale');
+    expect(t.staleDepth).toBe(2);
+  });
+
+  it('enters depth 3 when load >= 110 at stale transition', () => {
+    const t = freshTracker();
+    t.cognitiveLoad = 109;
+    updateTracker(t, 'search_code', '/fake/repo'); // +1 → 110
+    expect(t.freshnessState).toBe('stale');
+    expect(t.staleDepth).toBe(3);
+  });
+
+  it('escalates depth 1 → 2 via time when already stale', () => {
+    const t = freshTracker();
+    t.freshnessState = 'stale';
+    t.staleDepth = 1;
+    // Advance to 45+ minutes
+    vi.advanceTimersByTime(46 * 60 * 1000);
+    updateTracker(t, 'list_spec_domains', '/fake/repo');
+    expect(t.staleDepth).toBe(2);
+  });
+
+  it('escalates depth 2 → 3 via time when already stale', () => {
+    const t = freshTracker();
+    t.freshnessState = 'stale';
+    t.staleDepth = 2;
+    vi.advanceTimersByTime(61 * 60 * 1000);
+    updateTracker(t, 'list_spec_domains', '/fake/repo');
+    expect(t.staleDepth).toBe(3);
+  });
+
+  it('depth never decreases — stays at 3', () => {
+    const t = freshTracker();
+    t.freshnessState = 'stale';
+    t.staleDepth = 3;
+    vi.advanceTimersByTime(1000);
+    updateTracker(t, 'list_spec_domains', '/fake/repo');
+    expect(t.staleDepth).toBe(3);
+  });
+
+  it('depth resets to 0 on orient', () => {
+    const t = freshTracker();
+    t.freshnessState = 'stale';
+    t.staleDepth = 3;
+    updateTracker(t, 'orient', '/fake/repo');
+    expect(t.staleDepth).toBe(0);
+    expect(t.freshnessState).toBe('fresh');
+  });
+
+  it('depth 1 block contains procedural NOT-DO instructions', () => {
+    const t = freshTracker();
+    t.freshnessState = 'stale';
+    t.staleDepth = 1;
+    const out = injectFreshness('', t);
+    expect(out).toContain('Do NOT rely on previous dependency assumptions');
+    expect(out).toContain('STALE');
+    expect(out).not.toContain('[ELEVATED]');
+    expect(out).not.toContain('[CRITICAL]');
+  });
+
+  it('depth 2 block names downstream risks', () => {
+    const t = freshTracker();
+    t.freshnessState = 'stale';
+    t.staleDepth = 2;
+    const out = injectFreshness('', t);
+    expect(out).toContain('[ELEVATED]');
+    expect(out).toContain('HALLUCINATION RISK');
+  });
+
+  it('depth 3 block is imperative — STOP command present', () => {
+    const t = freshTracker();
+    t.freshnessState = 'stale';
+    t.staleDepth = 3;
+    const out = injectFreshness('', t);
+    expect(out).toContain('[CRITICAL]');
+    expect(out).toContain('STOP');
+    expect(out).toContain('CRITICALLY LOW');
+  });
+
+  it('depth 3 block is shorter than depth 1 — harder to skim', () => {
+    const t = freshTracker();
+    t.freshnessState = 'stale';
+
+    t.staleDepth = 1;
+    const d1 = injectFreshness('', t);
+
+    t.staleDepth = 3;
+    const d3 = injectFreshness('', t);
+
+    expect(d3.length).toBeLessThan(d1.length);
   });
 });
