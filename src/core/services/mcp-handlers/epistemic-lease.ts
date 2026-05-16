@@ -10,7 +10,9 @@
  *   - Time: >15min → degraded, >30min → stale
  *   - Git hash divergence from orient baseline → immediate stale
  *   - Weighted cognitive load: >30 → degraded, >60 → stale
- *   - Cross-module file access diversity: >3 distinct top-level modules → degraded
+ *   - Cross-module trajectory density: ≥0.15 → degraded, ≥0.30 → stale
+ *     Density = module switches in last 15 calls / window size.
+ *     Each switch also adds +5 debt; high-density window +15; burst +20.
  *
  * Stale escalates through 3 depths to prevent warning blindness:
  *   - Depth 1 (load≥60, age≥30min): procedural — explains what NOT to do
@@ -50,6 +52,14 @@ export interface EpistemicTracker {
   lastGitCheckAt: number;
   /** Top-level source directories derived from the actual project layout. */
   sourceRoots: string[];
+  /** V3.1: last resolved module for switch detection. */
+  lastModule: string | null;
+  /** V3.1: sliding window of last N module accesses (null = no filePath on that call). */
+  moduleAccessWindow: (string | null)[];
+  /** V3.1: epoch ms of last density-bonus application (cooldown). */
+  lastDensityPenaltyAt: number;
+  /** V3.1: epoch ms of last module switch (dampening). */
+  lastSwitchAt: number;
 }
 
 // ============================================================================
@@ -126,8 +136,17 @@ const STALE_AGE_MS    = 30 * 60 * 1000;
 const STALE_D2_AGE_MS = 45 * 60 * 1000;
 const STALE_D3_AGE_MS = 60 * 60 * 1000;
 
-const DEGRADE_MODULE_THRESHOLD = 3;
 const GIT_CHECK_INTERVAL_MS    = 30_000;
+
+// V3.1 cross-module trajectory model
+const CROSS_MODULE_WINDOW_SIZE      = 15;
+const CROSS_MODULE_DEGRADE_DENSITY  = 0.15;
+const CROSS_MODULE_STALE_DENSITY    = 0.30;
+const MODULE_SWITCH_BASE_WEIGHT     = 5;
+const HIGH_DENSITY_DEBT_BONUS       = 15;
+const BURST_DEBT_SPIKE              = 20;
+const DENSITY_BONUS_COOLDOWN_MS     = 60_000;
+const SWITCH_DAMPENING_MS           = 5_000;
 
 // ============================================================================
 // GIT HASH
@@ -189,6 +208,25 @@ function moduleFromPath(filePath: string, sourceRoots: string[]): string | null 
 }
 
 // ============================================================================
+// CROSS-MODULE DENSITY
+// Counts module transitions in the sliding window, skipping null entries.
+// Denominator is total window length so non-file calls dilute density.
+// ============================================================================
+
+function computeCrossModuleDensity(window: (string | null)[]): number {
+  if (window.length < 2) return 0;
+  let switches = 0;
+  let prev: string | null = null;
+  for (const mod of window) {
+    if (mod !== null) {
+      if (prev !== null && mod !== prev) switches++;
+      prev = mod;
+    }
+  }
+  return switches / window.length;
+}
+
+// ============================================================================
 // STALE DEPTH
 // Monotonic — depth can only increase, never decrease until orient() reset.
 // ============================================================================
@@ -213,6 +251,10 @@ export function createTracker(directory: string): EpistemicTracker {
     staleDepth: 0,
     lastGitCheckAt: Date.now(),
     sourceRoots: getSourceRoots(directory),
+    lastModule: null,
+    moduleAccessWindow: [],
+    lastDensityPenaltyAt: 0,
+    lastSwitchAt: 0,
   };
 }
 
@@ -224,6 +266,10 @@ function resetTracker(tracker: EpistemicTracker, directory: string): void {
   tracker.freshnessState = 'fresh';
   tracker.staleDepth = 0;
   tracker.lastGitCheckAt = Date.now();
+  tracker.lastModule = null;
+  tracker.moduleAccessWindow = [];
+  tracker.lastDensityPenaltyAt = 0;
+  tracker.lastSwitchAt = 0;
   // sourceRoots not reset — project layout doesn't change during a session
 }
 
@@ -255,14 +301,36 @@ export function updateTracker(
     return;
   }
 
-  // Accumulate cognitive load
+  // Accumulate cognitive load from tool weight
   const weight = TOOL_WEIGHTS[toolName] ?? 1;
   tracker.cognitiveLoad += weight;
 
-  // Track cross-module file access
-  if (filePath) {
-    const mod = moduleFromPath(filePath, tracker.sourceRoots);
-    if (mod) tracker.modulesVisited.add(mod);
+  // V3.1: trajectory-based cross-module drift tracking
+  const mod = filePath ? moduleFromPath(filePath, tracker.sourceRoots) : null;
+
+  // Sliding window — push on every call so density denominator = total calls
+  tracker.moduleAccessWindow.push(mod);
+  if (tracker.moduleAccessWindow.length > CROSS_MODULE_WINDOW_SIZE) {
+    tracker.moduleAccessWindow.shift();
+  }
+
+  if (mod !== null) {
+    tracker.modulesVisited.add(mod);
+    const isSwitch = tracker.lastModule !== null && mod !== tracker.lastModule;
+    // Dampen rapid back-and-forth (same switch pair within SWITCH_DAMPENING_MS)
+    if (isSwitch && now - tracker.lastSwitchAt > SWITCH_DAMPENING_MS) {
+      tracker.cognitiveLoad += MODULE_SWITCH_BASE_WEIGHT;
+      tracker.lastSwitchAt = now;
+    }
+    tracker.lastModule = mod;
+  }
+
+  // Density-based debt bonus (with cooldown to prevent oscillation)
+  const density = computeCrossModuleDensity(tracker.moduleAccessWindow);
+  if (density >= CROSS_MODULE_STALE_DENSITY && now - tracker.lastDensityPenaltyAt > DENSITY_BONUS_COOLDOWN_MS) {
+    const isBurst = density >= CROSS_MODULE_STALE_DENSITY * 2;
+    tracker.cognitiveLoad += isBurst ? BURST_DEBT_SPIKE : HIGH_DENSITY_DEBT_BONUS;
+    tracker.lastDensityPenaltyAt = now;
   }
 
   // Rate-limited git hash check (~every 30s) — structural invalidation
@@ -275,14 +343,14 @@ export function updateTracker(
     }
   }
 
-  // Time and load based decay (never reverses: stale > degraded > fresh)
-  if (ageMs >= STALE_AGE_MS || tracker.cognitiveLoad >= STALE_LOAD_THRESHOLD) {
+  // State transitions: stale > degraded > fresh (never reverses)
+  if (ageMs >= STALE_AGE_MS || tracker.cognitiveLoad >= STALE_LOAD_THRESHOLD || density >= CROSS_MODULE_STALE_DENSITY) {
     transitionToStale(tracker, tracker.cognitiveLoad, ageMs);
   } else if (
     tracker.freshnessState === 'fresh' && (
       ageMs >= DEGRADE_AGE_MS ||
       tracker.cognitiveLoad >= DEGRADE_LOAD_THRESHOLD ||
-      tracker.modulesVisited.size > DEGRADE_MODULE_THRESHOLD
+      density >= CROSS_MODULE_DEGRADE_DENSITY
     )
   ) {
     tracker.freshnessState = 'degraded';

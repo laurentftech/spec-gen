@@ -277,21 +277,23 @@ describe('updateTracker — module drift', () => {
     expect(t.modulesVisited.has('auth')).toBe(true);
   });
 
-  it('tracks distinct modules', () => {
+  it('tracks distinct modules (capped by stale short-circuit)', () => {
     const t = freshTracker();
     updateTracker(t, 'get_function_body', '/fake/repo', 'src/auth/jwt.ts');
     updateTracker(t, 'get_function_body', '/fake/repo', 'src/billing/stripe.ts');
-    updateTracker(t, 'get_function_body', '/fake/repo', 'src/analytics/events.ts');
-    expect(t.modulesVisited.size).toBe(3);
+    // density = 1/2 = 0.50 >= 0.30 → stale after billing
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/analytics/events.ts'); // short-circuit
+    expect(t.modulesVisited.size).toBe(2); // analytics not tracked — stale before that call
   });
 
-  it('degrades at > 3 distinct modules', () => {
+  it('goes stale via high cross-module density (4 sequential distinct modules)', () => {
     const t = freshTracker();
     updateTracker(t, 'get_function_body', '/fake/repo', 'src/auth/jwt.ts');
     updateTracker(t, 'get_function_body', '/fake/repo', 'src/billing/stripe.ts');
     updateTracker(t, 'get_function_body', '/fake/repo', 'src/analytics/events.ts');
     updateTracker(t, 'get_function_body', '/fake/repo', 'src/infra/db.ts');
-    expect(t.freshnessState).toBe('degraded');
+    // 3 switches / 4 entries = 0.75 density >= 0.30 stale threshold
+    expect(t.freshnessState).toBe('stale');
   });
 
   it('ignores filePath without src/ prefix — no module pollution', () => {
@@ -520,5 +522,98 @@ describe('stale depth escalation', () => {
     const d3 = injectFreshness('', t);
 
     expect(d3.length).toBeLessThan(d1.length);
+  });
+});
+
+// ============================================================================
+// V3.1 cross-module trajectory model
+// ============================================================================
+
+describe('updateTracker — V3.1 cross-module trajectory', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('degrades when density reaches 0.15 threshold', () => {
+    const t = freshTracker();
+    // 8 calls same module, then switch to billing, then back to auth
+    // Window: 10 entries, 2 non-null switches => density 2/10 = 0.20 >= 0.15
+    for (let i = 0; i < 8; i++) updateTracker(t, 'get_function_body', '/fake/repo', 'src/auth/x.ts');
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/billing/x.ts');
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/auth/y.ts');
+    expect(t.freshnessState).toBe('degraded');
+  });
+
+  it('module switch adds 5 to cognitiveLoad', () => {
+    const t = freshTracker();
+    // Pre-pad window with 13 nulls so first switch stays at density 1/15 ≈ 0.07 — no bonus fires
+    for (let i = 0; i < 13; i++) updateTracker(t, 'search_code', '/fake/repo');
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/auth/x.ts'); // no switch (lastModule null)
+    const loadBeforeSwitch = t.cognitiveLoad; // 13*1 + 2 = 15
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/billing/x.ts');
+    // window=[null×13,auth,billing], switch=1, density=1/15≈0.067 — no bonus, no stale
+    expect(t.cognitiveLoad).toBe(loadBeforeSwitch + 2 + 5);
+  });
+
+  it('switch dampening prevents double-counting rapid back-and-forth', () => {
+    const t = freshTracker();
+    // Pre-pad so density stays low throughout
+    for (let i = 0; i < 12; i++) updateTracker(t, 'search_code', '/fake/repo');
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/auth/x.ts'); // no switch
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/billing/x.ts'); // switch +5, density=1/14≈0.07
+    const loadAfterSwitch = t.cognitiveLoad; // 12 + 2 + 2 + 5 = 21
+    // Return immediately — within dampening window, no +5
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/auth/x.ts'); // density=2/15≈0.13, no stale
+    expect(t.cognitiveLoad).toBe(loadAfterSwitch + 2); // only tool weight
+  });
+
+  it('switch dampening lifts after 5s', () => {
+    const t = freshTracker();
+    for (let i = 0; i < 12; i++) updateTracker(t, 'search_code', '/fake/repo');
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/auth/x.ts'); // no switch
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/billing/x.ts'); // switch +5
+    vi.advanceTimersByTime(5001);
+    const loadBefore = t.cognitiveLoad; // 12 + 2 + 2 + 5 = 21
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/auth/x.ts'); // switch fires again
+    // density=2/15≈0.13, no stale, no bonus
+    expect(t.cognitiveLoad).toBe(loadBefore + 2 + 5);
+  });
+
+  it('burst spike (+20) applied when density >= 0.60', () => {
+    const t = freshTracker();
+    // Seed window directly with high-alternating pattern to control density
+    // [a,b,a,b,a,b,a,b,a] = 8 switches / 9 entries = 0.89 >= 0.60
+    t.moduleAccessWindow = ['auth','billing','auth','billing','auth','billing','auth','billing','auth'] as (string | null)[];
+    t.lastModule = 'auth';
+    // One non-file call: density check fires, burst spike (+20) applied, then stale
+    updateTracker(t, 'search_code', '/fake/repo'); // weight=1, no new switch, density≈0.78 >= 0.60
+    expect(t.cognitiveLoad).toBe(1 + 20); // tool weight + burst spike
+  });
+
+  it('orient resets lastModule and moduleAccessWindow', () => {
+    const t = freshTracker();
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/auth/x.ts');
+    updateTracker(t, 'orient', '/fake/repo');
+    expect(t.lastModule).toBeNull();
+    expect(t.moduleAccessWindow).toHaveLength(0);
+  });
+
+  it('non-file calls dilute density below threshold', () => {
+    const t = freshTracker();
+    // Pre-pad 13 nulls, then 1 switch — density = 1/15 ≈ 0.067 < 0.15 → fresh
+    for (let i = 0; i < 13; i++) updateTracker(t, 'search_code', '/fake/repo');
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/auth/x.ts');
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/billing/x.ts');
+    // window=[null×13,auth,billing], density=1/15≈0.067 < 0.15
+    expect(t.freshnessState).toBe('fresh');
+  });
+
+  it('window slides — old entries fall off after 15 calls', () => {
+    const t = freshTracker();
+    // Fill window with auth calls (no switches)
+    for (let i = 0; i < 15; i++) updateTracker(t, 'get_function_body', '/fake/repo', 'src/auth/x.ts');
+    expect(t.moduleAccessWindow).toHaveLength(15);
+    // One more call — oldest entry drops off
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/auth/y.ts');
+    expect(t.moduleAccessWindow).toHaveLength(15);
   });
 });
