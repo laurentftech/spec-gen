@@ -27,6 +27,7 @@ import {
 
 import { sanitizeMcpError, validateDirectory } from '../../core/services/mcp-handlers/utils.js';
 import { createTracker, updateTracker, getFreshnessSignal } from '../../core/services/mcp-handlers/epistemic-lease.js';
+import { emit } from '../../core/services/telemetry.js';
 import { DEFAULT_DRIFT_MAX_FILES } from '../../constants.js';
 import {
   handleGetCallGraph,
@@ -1322,9 +1323,11 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
       }
     }
 
+    const _dir = (args as Record<string, unknown>).directory;
+    const directory = typeof _dir === 'string' ? _dir : '';
+    const _t0 = Date.now();
+
     try {
-      const dir = (args as Record<string, unknown>).directory;
-      const directory = typeof dir === 'string' ? dir : '';
       const filePath = (args as Record<string, unknown>).filePath;
 
       // Lazy-init tracker on first call with a directory
@@ -1337,6 +1340,16 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
       if (name === 'orient') {
         const { directory, task, limit = 5 } = args as { directory: string; task: string; limit?: number };
         result = await handleOrient(directory, task, limit);
+        if (result && typeof result === 'object') {
+          const r = result as Record<string, unknown>;
+          emit(directory, 'orient', {
+            event: 'orient_call',
+            functions: Array.isArray(r['relevantFunctions']) ? r['relevantFunctions'].length : 0,
+            files: Array.isArray(r['relevantFiles']) ? r['relevantFiles'].length : 0,
+            spec_domains: Array.isArray(r['specDomains']) ? r['specDomains'].length : 0,
+            insertion_points: Array.isArray(r['insertionPoints']) ? r['insertionPoints'].length : 0,
+          });
+        }
       } else if (name === 'analyze_codebase') {
         const { directory, force = false } = args as { directory: string; force?: boolean };
         result = await handleAnalyzeCodebase(directory, force);
@@ -1503,6 +1516,8 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
         };
       }
 
+      emit(directory, 'mcp', { event: 'tool_call', tool: name, ms: Date.now() - _t0 });
+
       const text =
         typeof result === 'string' ? result : JSON.stringify(result, null, 2);
       const signal = tracker ? getFreshnessSignal(tracker) : null;
@@ -1517,6 +1532,7 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
 
       return { content };
     } catch (err) {
+      emit(directory, 'mcp', { event: 'tool_error', tool: name, ms: Date.now() - _t0, error: sanitizeMcpError(err) });
       return {
         content: [{ type: 'text', text: `Tool error: ${sanitizeMcpError(err)}` }],
         isError: true,

@@ -12,6 +12,7 @@ import { ANALYSIS_STALE_THRESHOLD_MS, ARTIFACT_FINGERPRINT, ARTIFACT_LLM_CONTEXT
 /** LLMContext with optional SQLite edge store attached (present when call-graph.db exists). */
 export type CachedContext = LLMContext & { edgeStore?: EdgeStore };
 import { logger } from '../../../utils/logger.js';
+import { emit } from '../telemetry.js';
 
 /**
  * Resolve and validate a user-supplied directory path.
@@ -117,8 +118,10 @@ export async function readCachedContext(directory: string, timeout?: number): Pr
       if (EdgeStore.exists(analysisDir)) {
         ctx.edgeStore = EdgeStore.open(EdgeStore.dbPath(analysisDir));
       }
+      emit(directory, 'cache', { event: 'cache_read', hit: true });
       return ctx;
     } catch {
+      emit(directory, 'cache', { event: 'cache_read', hit: false });
       return null;
     }
   }
