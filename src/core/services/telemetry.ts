@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { OPENLORE_DIR } from '../../constants.js';
 
 const TELEMETRY_SUBDIR = 'telemetry';
+const _createdDirs = new Set<string>();
 
 /**
  * Emit a telemetry event to .openlore/telemetry/<domain>.jsonl.
@@ -28,7 +29,7 @@ export function emit(
   if (!directory) return;
   try {
     const dir = join(directory, OPENLORE_DIR, TELEMETRY_SUBDIR);
-    mkdirSync(dir, { recursive: true });
+    if (!_createdDirs.has(dir)) { mkdirSync(dir, { recursive: true }); _createdDirs.add(dir); }
     const line = JSON.stringify({ ts: new Date().toISOString(), ...payload }) + '\n';
     appendFileSync(join(dir, `${domain}.jsonl`), line, 'utf-8');
   } catch {

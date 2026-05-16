@@ -17,6 +17,10 @@
  *   }
  */
 
+import { createRequire } from 'node:module';
+const _require = createRequire(import.meta.url);
+const _pkgVersion = (_require('../../../package.json') as { version: string }).version;
+
 import { Command } from 'commander';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -28,6 +32,7 @@ import {
 
 import { sanitizeMcpError, validateDirectory } from '../../core/services/mcp-handlers/utils.js';
 import { createTracker, updateTracker, getFreshnessSignal } from '../../core/services/mcp-handlers/epistemic-lease.js';
+import type { EpistemicTracker } from '../../core/services/mcp-handlers/epistemic-lease.js';
 import { emit } from '../../core/services/telemetry.js';
 import { DEFAULT_DRIFT_MAX_FILES } from '../../constants.js';
 import {
@@ -1298,8 +1303,9 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
     tools: activeTools.map(t => ({ ...t, annotations: TOOL_ANNOTATIONS[t.name] })),
   }));
 
-  // Per-session epistemic lease tracker — initialized on first tool call that carries a directory.
-  let tracker: ReturnType<typeof createTracker> | undefined;
+  // Per-session epistemic lease tracker — re-initialized when directory changes.
+  let tracker: EpistemicTracker | undefined;
+  let trackerDir = '';
 
   // --watch-auto: start the watcher on the first tool call that carries a directory
   let autoWatcher: import('../../core/services/mcp-watcher.js').McpWatcher | undefined;
@@ -1313,7 +1319,7 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
     return {
       protocolVersion: request.params.protocolVersion,
       capabilities: { tools: {} },
-      serverInfo: { name: 'openlore', version: '1.0.0' },
+      serverInfo: { name: 'openlore', version: _pkgVersion },
     };
   });
 
@@ -1344,15 +1350,18 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
     try {
       const filePath = (args as Record<string, unknown>).filePath;
 
-      // Lazy-init tracker on first call with a directory
-      if (!tracker && directory) tracker = createTracker(directory);
-      // Update epistemic state before dispatch (orient resets tracker)
+      // Init (or re-init when project directory changes between calls)
+      if (directory && (!tracker || directory !== trackerDir)) {
+        tracker = createTracker(directory);
+        trackerDir = directory;
+      }
+      // Update epistemic state before dispatch (orient resets tracker internally)
       if (tracker && directory) updateTracker(tracker, name, directory, typeof filePath === 'string' ? filePath : undefined);
 
       let result: unknown;
 
       if (name === 'orient') {
-        const { directory, task, limit = 5 } = args as { directory: string; task: string; limit?: number };
+        const { task, limit = 5 } = args as { task: string; limit?: number };
         result = await handleOrient(directory, task, limit);
         if (result && typeof result === 'object') {
           const r = result as Record<string, unknown>;

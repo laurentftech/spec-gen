@@ -106,6 +106,7 @@ function computeObstinacy(mcp: McpEvent[], lease: LeaseEvent[]) {
   for (const e of mcp) {
     if (e.event === 'tool_call') events.push({ ts: e.ts, kind: e.tool === 'orient' ? 'orient' : 'tool', tool: e.tool });
   }
+  // ISO 8601 strings from toISOString() are lexicographically sortable
   events.sort((a, b) => a.ts.localeCompare(b.ts));
 
   const segments: { depth: number; calls_before_orient: number }[] = [];
@@ -286,13 +287,17 @@ function renderLive(dir: string) {
   const leaseFile = join(dir, OPENLORE_DIR, TELEMETRY_SUBDIR, 'epistemic-lease.jsonl');
   const mcpFile = join(dir, OPENLORE_DIR, TELEMETRY_SUBDIR, 'mcp.jsonl');
 
-  // Track file positions to only read new lines
+  // Track file positions to only read new lines; in-flight guard prevents
+  // overlapping reads when watch() fires twice before the first stream ends.
   const offsets = new Map<string, number>([
     [leaseFile, 0], [mcpFile, 0],
   ]);
+  const inFlight = new Set<string>();
 
   async function tail(filePath: string) {
     if (!existsSync(filePath)) return;
+    if (inFlight.has(filePath)) return;
+    inFlight.add(filePath);
     const { createReadStream } = await import('node:fs');
     const offset = offsets.get(filePath) ?? 0;
     const stream = createReadStream(filePath, { start: offset, encoding: 'utf-8' });
@@ -300,6 +305,7 @@ function renderLive(dir: string) {
     stream.on('data', chunk => { buf += chunk; });
     stream.on('end', () => {
       offsets.set(filePath, offset + Buffer.byteLength(buf, 'utf-8'));
+      inFlight.delete(filePath);
       for (const line of buf.split('\n')) {
         const trimmed = line.trim();
         if (!trimmed) continue;
