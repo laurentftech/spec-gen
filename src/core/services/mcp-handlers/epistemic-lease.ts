@@ -26,6 +26,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import {
@@ -147,6 +148,34 @@ const HIGH_DENSITY_DEBT_BONUS       = 15;
 const BURST_DEBT_SPIKE              = 20;
 const DENSITY_BONUS_COOLDOWN_MS     = 60_000;
 const SWITCH_DAMPENING_MS           = 5_000;
+
+// ============================================================================
+// TELEMETRY
+// Opt-in via OPENLORE_LEASE_TELEMETRY=1. Logs state-transition events only
+// (not every tool call) to .openlore/telemetry/epistemic-lease.jsonl.
+// ============================================================================
+
+type TelemetryEvent =
+  | { event: 'degraded';        trigger: 'load' | 'density' | 'time' }
+  | { event: 'stale';           trigger: 'load' | 'density' | 'time' | 'git'; depth: StaleDepth }
+  | { event: 'depth_escalate';  from_depth: number; to_depth: StaleDepth }
+  | { event: 'orient_reset';    from_state: FreshnessState; prior_load: number; prior_depth: number };
+
+function emitTelemetry(
+  directory: string,
+  ev: TelemetryEvent,
+  ctx: { tool: string; module: string | null; cognitive_load: number; density: number; age_min: number },
+): void {
+  if (!process.env['OPENLORE_LEASE_TELEMETRY']) return;
+  try {
+    const dir = join(directory, OPENLORE_DIR, 'telemetry');
+    mkdirSync(dir, { recursive: true });
+    const line = JSON.stringify({ ts: new Date().toISOString(), ...ev, ...ctx }) + '\n';
+    appendFileSync(join(dir, 'epistemic-lease.jsonl'), line, 'utf-8');
+  } catch {
+    // telemetry must never crash the hot path
+  }
+}
 
 // ============================================================================
 // GIT HASH
@@ -287,6 +316,14 @@ export function updateTracker(
   filePath?: string,
 ): void {
   if (toolName === 'orient') {
+    if (tracker.freshnessState !== 'fresh') {
+      emitTelemetry(directory, {
+        event: 'orient_reset',
+        from_state: tracker.freshnessState,
+        prior_load: tracker.cognitiveLoad,
+        prior_depth: tracker.staleDepth,
+      }, { tool: 'orient', module: null, cognitive_load: tracker.cognitiveLoad, density: 0, age_min: Math.floor((Date.now() - tracker.lastOrientAt.getTime()) / 60_000) });
+    }
     resetTracker(tracker, directory);
     return;
   }
@@ -299,7 +336,13 @@ export function updateTracker(
   // time-driven regardless of how many more heavy tools are called.
   if (tracker.freshnessState === 'stale') {
     const newDepth = computeStaleDepth(tracker.cognitiveLoad, ageMs);
-    if (newDepth > tracker.staleDepth) tracker.staleDepth = newDepth as StaleDepth;
+    if (newDepth > tracker.staleDepth) {
+      emitTelemetry(directory, { event: 'depth_escalate', from_depth: tracker.staleDepth, to_depth: newDepth }, {
+        tool: toolName, module: null, cognitive_load: tracker.cognitiveLoad,
+        density: 0, age_min: Math.floor(ageMs / 60_000),
+      });
+      tracker.staleDepth = newDepth as StaleDepth;
+    }
     return;
   }
 
@@ -335,19 +378,25 @@ export function updateTracker(
     tracker.lastDensityPenaltyAt = now;
   }
 
+  const ageMin = Math.floor(ageMs / 60_000);
+  const telCtx = { tool: toolName, module: mod, cognitive_load: tracker.cognitiveLoad, density, age_min: ageMin };
+
   // Rate-limited git hash check (~every 30s) — structural invalidation
   if (now - tracker.lastGitCheckAt > GIT_CHECK_INTERVAL_MS) {
     tracker.lastGitCheckAt = now;
     const currentHash = getGitHash(directory);
     if (currentHash && tracker.graphVersionAtOrient && currentHash !== tracker.graphVersionAtOrient) {
       transitionToStale(tracker, tracker.cognitiveLoad, ageMs);
+      emitTelemetry(directory, { event: 'stale', trigger: 'git', depth: tracker.staleDepth as StaleDepth }, telCtx);
       return;
     }
   }
 
   // State transitions: stale > degraded > fresh (never reverses)
   if (ageMs >= STALE_AGE_MS || tracker.cognitiveLoad >= STALE_LOAD_THRESHOLD || density >= CROSS_MODULE_STALE_DENSITY) {
+    const trigger = density >= CROSS_MODULE_STALE_DENSITY ? 'density' : tracker.cognitiveLoad >= STALE_LOAD_THRESHOLD ? 'load' : 'time';
     transitionToStale(tracker, tracker.cognitiveLoad, ageMs);
+    emitTelemetry(directory, { event: 'stale', trigger, depth: tracker.staleDepth as StaleDepth }, telCtx);
   } else if (
     tracker.freshnessState === 'fresh' && (
       ageMs >= DEGRADE_AGE_MS ||
@@ -355,7 +404,9 @@ export function updateTracker(
       density >= CROSS_MODULE_DEGRADE_DENSITY
     )
   ) {
+    const trigger = density >= CROSS_MODULE_DEGRADE_DENSITY ? 'density' : tracker.cognitiveLoad >= DEGRADE_LOAD_THRESHOLD ? 'load' : 'time';
     tracker.freshnessState = 'degraded';
+    emitTelemetry(directory, { event: 'degraded', trigger }, telCtx);
   }
 }
 
