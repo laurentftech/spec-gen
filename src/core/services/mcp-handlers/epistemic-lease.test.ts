@@ -221,6 +221,16 @@ describe('updateTracker — git hash invalidation', () => {
     expect(t.freshnessState).toBe('fresh');
   });
 
+  it('git-divergence stale transition starts at depth 1 (load and age below d2 thresholds)', () => {
+    const t = freshTracker();
+    t.graphVersionAtOrient = 'old-hash';
+    vi.advanceTimersByTime(31_000);
+    mockSpawnSync.mockReturnValueOnce({ stdout: 'new-hash\n', status: 0 } as ReturnType<typeof spawnSync>);
+    updateTracker(t, 'search_code', '/fake/repo');
+    expect(t.freshnessState).toBe('stale');
+    expect(t.staleDepth).toBe(1);
+  });
+
   it('skips git comparison when either hash is empty', () => {
     const t = freshTracker();
     t.graphVersionAtOrient = '';
@@ -328,9 +338,10 @@ describe('injectFreshness', () => {
     expect(out.indexOf('EPISTEMIC LEASE: STALE')).toBeLessThan(out.indexOf('tool result'));
   });
 
-  it('stale block contains capability-invalidation language', () => {
+  it('stale block contains capability-invalidation language (depth 1)', () => {
     const t = freshTracker();
     t.freshnessState = 'stale';
+    t.staleDepth = 1;
     const out = injectFreshness('', t);
     expect(out).toContain('Cached architectural reasoning reliability: LOW');
     expect(out).toContain('Cross-module dependency assumptions: UNRELIABLE');

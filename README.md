@@ -179,8 +179,8 @@ The signal escalates through three levels to resist [warning blindness](https://
 
 | Level | Trigger | Signal style |
 |---|---|---|
-| Degraded | load ≥ 30, age ≥ 15min, or >3 modules | 3-line advisory appended |
-| Stale [1] | load ≥ 60 or age ≥ 30min or git change | Procedural block prepended: what NOT to do |
+| Degraded | load ≥ 30, age ≥ 15min, or >3 modules | Advisory signal appended |
+| Stale | load ≥ 60 or age ≥ 30min or git change | Procedural block prepended: what NOT to do |
 | Stale [Elevated] | load ≥ 85 or age ≥ 45min | Risk-framing: names downstream consequences |
 | Stale [Critical] | load ≥ 110 or age ≥ 60min | Imperative: `STOP. Call orient().` — minimal, hardest to skim |
 

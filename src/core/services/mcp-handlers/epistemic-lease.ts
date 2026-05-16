@@ -209,7 +209,9 @@ export function updateTracker(
   const now = Date.now();
   const ageMs = now - tracker.lastOrientAt.getTime();
 
-  // Already stale — update depth only (time-based escalation, monotonic)
+  // Already stale — update depth only (time-based escalation, monotonic).
+  // Load stops accumulating here, so post-transition depth escalation is purely
+  // time-driven regardless of how many more heavy tools are called.
   if (tracker.freshnessState === 'stale') {
     const newDepth = computeStaleDepth(tracker.cognitiveLoad, ageMs);
     if (newDepth > tracker.staleDepth) tracker.staleDepth = newDepth as StaleDepth;
@@ -320,7 +322,9 @@ export function injectFreshness(text: string, tracker: EpistemicTracker): string
   const ageMin = Math.floor((Date.now() - tracker.lastOrientAt.getTime()) / 60_000);
 
   if (tracker.freshnessState === 'stale') {
-    return staleBlock(ageMin, tracker.cognitiveLoad, (tracker.staleDepth || 1) as StaleDepth) + text;
+    // staleDepth is always ≥1 when freshnessState === 'stale' — invariant enforced by transitionToStale.
+    // The cast is safe; staleDepth=0 + state=stale is unreachable through the public API.
+    return staleBlock(ageMin, tracker.cognitiveLoad, tracker.staleDepth as StaleDepth) + text;
   }
 
   return text + degradedSignal(ageMin, tracker.modulesVisited.size);
