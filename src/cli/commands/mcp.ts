@@ -22,6 +22,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
+  InitializeRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 
@@ -1303,6 +1304,19 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
   // --watch-auto: start the watcher on the first tool call that carries a directory
   let autoWatcher: import('../../core/services/mcp-watcher.js').McpWatcher | undefined;
 
+  // Agent identity captured from initialize handshake
+  let agentName = 'unknown';
+  let agentVersion = 'unknown';
+  server.setRequestHandler(InitializeRequestSchema, async (request) => {
+    agentName = request.params.clientInfo?.name ?? 'unknown';
+    agentVersion = request.params.clientInfo?.version ?? 'unknown';
+    return {
+      protocolVersion: request.params.protocolVersion,
+      capabilities: { tools: {} },
+      serverInfo: { name: 'openlore', version: '1.0.0' },
+    };
+  });
+
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args = {} } = request.params;
 
@@ -1344,6 +1358,7 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
           const r = result as Record<string, unknown>;
           emit(directory, 'orient', {
             event: 'orient_call',
+            agent: agentName,
             functions: Array.isArray(r['relevantFunctions']) ? r['relevantFunctions'].length : 0,
             files: Array.isArray(r['relevantFiles']) ? r['relevantFiles'].length : 0,
             spec_domains: Array.isArray(r['specDomains']) ? r['specDomains'].length : 0,
@@ -1516,7 +1531,7 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
         };
       }
 
-      emit(directory, 'mcp', { event: 'tool_call', tool: name, ms: Date.now() - _t0 });
+      emit(directory, 'mcp', { event: 'tool_call', tool: name, ms: Date.now() - _t0, agent: agentName, agent_version: agentVersion });
 
       const text =
         typeof result === 'string' ? result : JSON.stringify(result, null, 2);
@@ -1532,7 +1547,7 @@ async function startMcpServer(options: McpServerOptions = {}): Promise<void> {
 
       return { content };
     } catch (err) {
-      emit(directory, 'mcp', { event: 'tool_error', tool: name, ms: Date.now() - _t0, error: sanitizeMcpError(err) });
+      emit(directory, 'mcp', { event: 'tool_error', tool: name, ms: Date.now() - _t0, agent: agentName, error: sanitizeMcpError(err) });
       return {
         content: [{ type: 'text', text: `Tool error: ${sanitizeMcpError(err)}` }],
         isError: true,
