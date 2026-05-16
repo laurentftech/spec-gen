@@ -223,7 +223,9 @@ function computeCrossModuleDensity(window: (string | null)[]): number {
       prev = mod;
     }
   }
-  return switches / window.length;
+  // Fixed denominator = window capacity so early-session (small window) doesn't
+  // produce inflated density — density only reaches threshold after real accumulation.
+  return switches / CROSS_MODULE_WINDOW_SIZE;
 }
 
 // ============================================================================

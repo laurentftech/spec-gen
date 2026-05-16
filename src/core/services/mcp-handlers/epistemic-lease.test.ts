@@ -277,22 +277,23 @@ describe('updateTracker — module drift', () => {
     expect(t.modulesVisited.has('auth')).toBe(true);
   });
 
-  it('tracks distinct modules (capped by stale short-circuit)', () => {
+  it('tracks distinct modules', () => {
     const t = freshTracker();
     updateTracker(t, 'get_function_body', '/fake/repo', 'src/auth/jwt.ts');
     updateTracker(t, 'get_function_body', '/fake/repo', 'src/billing/stripe.ts');
-    // density = 1/2 = 0.50 >= 0.30 → stale after billing
-    updateTracker(t, 'get_function_body', '/fake/repo', 'src/analytics/events.ts'); // short-circuit
-    expect(t.modulesVisited.size).toBe(2); // analytics not tracked — stale before that call
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/analytics/events.ts');
+    expect(t.modulesVisited.size).toBe(3);
   });
 
-  it('goes stale via high cross-module density (4 sequential distinct modules)', () => {
+  it('goes stale via high cross-module density (6 sequential distinct modules)', () => {
     const t = freshTracker();
     updateTracker(t, 'get_function_body', '/fake/repo', 'src/auth/jwt.ts');
     updateTracker(t, 'get_function_body', '/fake/repo', 'src/billing/stripe.ts');
     updateTracker(t, 'get_function_body', '/fake/repo', 'src/analytics/events.ts');
     updateTracker(t, 'get_function_body', '/fake/repo', 'src/infra/db.ts');
-    // 3 switches / 4 entries = 0.75 density >= 0.30 stale threshold
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/core/index.ts');
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/api/run.ts');
+    // 5 switches / 15 window size = 0.33 >= 0.30 stale threshold
     expect(t.freshnessState).toBe('stale');
   });
 
@@ -535,11 +536,12 @@ describe('updateTracker — V3.1 cross-module trajectory', () => {
 
   it('degrades when density reaches 0.15 threshold', () => {
     const t = freshTracker();
-    // 8 calls same module, then switch to billing, then back to auth
-    // Window: 10 entries, 2 non-null switches => density 2/10 = 0.20 >= 0.15
-    for (let i = 0; i < 8; i++) updateTracker(t, 'get_function_body', '/fake/repo', 'src/auth/x.ts');
+    // 9 nulls + 4 alternating file calls = 3 switches / 15 window = 0.20 >= 0.15
+    for (let i = 0; i < 9; i++) updateTracker(t, 'search_code', '/fake/repo');
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/auth/x.ts');
     updateTracker(t, 'get_function_body', '/fake/repo', 'src/billing/x.ts');
     updateTracker(t, 'get_function_body', '/fake/repo', 'src/auth/y.ts');
+    updateTracker(t, 'get_function_body', '/fake/repo', 'src/billing/y.ts');
     expect(t.freshnessState).toBe('degraded');
   });
 
@@ -580,12 +582,14 @@ describe('updateTracker — V3.1 cross-module trajectory', () => {
 
   it('burst spike (+20) applied when density >= 0.60', () => {
     const t = freshTracker();
-    // Seed window directly with high-alternating pattern to control density
-    // [a,b,a,b,a,b,a,b,a] = 8 switches / 9 entries = 0.89 >= 0.60
-    t.moduleAccessWindow = ['auth','billing','auth','billing','auth','billing','auth','billing','auth'] as (string | null)[];
+    // Full window of 15 alternating entries = 14 switches / 15 = 0.93 >= 0.60
+    t.moduleAccessWindow = [
+      'auth','billing','auth','billing','auth','billing','auth','billing',
+      'auth','billing','auth','billing','auth','billing','auth',
+    ] as (string | null)[];
     t.lastModule = 'auth';
-    // One non-file call: density check fires, burst spike (+20) applied, then stale
-    updateTracker(t, 'search_code', '/fake/repo'); // weight=1, no new switch, density≈0.78 >= 0.60
+    // One non-file call: density check fires with burst spike (+20), then stale
+    updateTracker(t, 'search_code', '/fake/repo'); // weight=1
     expect(t.cognitiveLoad).toBe(1 + 20); // tool weight + burst spike
   });
 
