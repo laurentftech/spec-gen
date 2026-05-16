@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createTracker, updateTracker, injectFreshness, getSourceRoots } from './epistemic-lease.js';
-import type { EpistemicTracker, StaleDepth } from './epistemic-lease.js';
+import type { EpistemicTracker } from './epistemic-lease.js';
 
 // ============================================================================
 // Mock git hash — default returns stable hash

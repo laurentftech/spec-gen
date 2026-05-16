@@ -311,15 +311,13 @@ function renderLive(dir: string) {
   // Initial tail
   Promise.all(files.map(tail));
 
-  for (const f of files) {
-    const watchDir = join(dir, OPENLORE_DIR, TELEMETRY_SUBDIR);
-    if (existsSync(watchDir)) {
-      watch(watchDir, { persistent: true }, async (_event, filename) => {
-        if (!filename) return;
-        const full = join(watchDir, filename);
-        if (files.includes(full)) await tail(full);
-      });
-    }
+  const watchDir = join(dir, OPENLORE_DIR, TELEMETRY_SUBDIR);
+  if (existsSync(watchDir)) {
+    watch(watchDir, { persistent: true }, async (_event, filename) => {
+      if (!filename) return;
+      const full = join(watchDir, filename);
+      if (files.includes(full)) await tail(full);
+    });
   }
 }
 
